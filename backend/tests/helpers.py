@@ -110,7 +110,7 @@ class Receiver:
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.server.daemon_threads = True
-        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        threading.Thread(target=self.server.serve_forever, args=(0.05,), daemon=True).start()
 
     @property
     def port(self) -> int:
