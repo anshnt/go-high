@@ -36,6 +36,7 @@ docs/      plan, module specs, research, ADRs
 
 - [ADR 0002](0002-record-engine.md): one record engine for contacts, companies, deals and custom objects.
 - [ADR 0003](0003-events-webhooks-api.md): event log, webhooks and API conventions.
+- [ADR 0004](0004-permissions-audit.md): roles, record and field permissions, and the audit log.
 
 ## Consequences
 
