@@ -44,6 +44,8 @@ async function errorFrom(res: Response): Promise<ApiError> {
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  // Constant-folded away in normal builds, so the demo responder never ships with the real app.
+  if (import.meta.env.VITE_DEMO === "1") return (await import("./demo")).demoRequest<T>(method, path, body);
   const headers: Record<string, string> = { Accept: "application/json" };
   const ws = workspaceId.get();
   if (ws) headers["X-Workspace-Id"] = ws;

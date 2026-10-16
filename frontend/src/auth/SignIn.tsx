@@ -151,7 +151,7 @@ export function SignIn() {
   return (
     <AuthLayout
       title="Sign in"
-      subtitle="Welcome back to go-high."
+      subtitle={import.meta.env.VITE_DEMO === "1" ? "Demo: any email and password signs you in." : "Welcome back to go-high."}
       footer={
         <>
           New here? <Link to={`/signup${query}`}>Create an account</Link>
