@@ -12,10 +12,10 @@ HELP = frozenset({"HELP", "INFO"})
 
 
 def keyword(body: str) -> Literal["stop", "start", "help"] | None:
-    """The opt-out, opt-in or help keyword a message consists of, ignoring case and surrounding whitespace. The
-    whole message must be the keyword: "please stop" and "STOP." are ordinary messages. ponytail: punctuation is not
-    stripped, as the carriers do not; widen it here if customers keep typing "Stop."."""
-    word = body.strip().upper()
+    """The opt-out, opt-in or help keyword a message consists of, ignoring case and surrounding whitespace and
+    punctuation ("Stop." and "STOP!" opt out: honoring more opt-outs is the safe side). The rest of the message must
+    be the keyword alone, so "please stop" is an ordinary message."""
+    word = re.sub(r"^[\W_]+|[\W_]+$", "", body).upper()
     return "stop" if word in STOP else "start" if word in START else "help" if word in HELP else None
 
 

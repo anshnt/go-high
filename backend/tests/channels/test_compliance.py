@@ -32,12 +32,19 @@ def test_case_and_surrounding_whitespace_do_not_matter(body):
 
 
 @pytest.mark.parametrize("body", [
-    "", "   ", "\n", "hello", "please stop", "stop please", "STOP texting me", "I said STOP", "stop.", "STOP!", "Stop,",
-    "stop stop", "STOP ALL", "st op", "s​top", "stopped", "stops", "yes please", "yes!", "yes yes", "no", "helpme",
-    "information", "info?", "quit it", "end of story", "opt out", "opt-out", "un-subscribe", "‘STOP’", "\"STOP\"",
+    "", "   ", "\n", "hello", "please stop", "stop please", "STOP texting me", "I said STOP",
+    "stop stop", "STOP ALL", "st op", "s​top", "stopped", "stops", "yes please", "yes yes", "no", "helpme",
+    "information", "quit it", "end of story", "opt out", "opt-out", "un-subscribe",
     "STOP\nSTOP", "cancel my order", "STOPALLL"])
 def test_only_a_message_that_is_the_keyword_counts(body):
     assert keyword(body) is None
+
+
+@pytest.mark.parametrize("body, expected", [
+    ("stop.", "stop"), ("STOP!", "stop"), ("Stop,", "stop"), ("‘STOP’", "stop"), ('"STOP"', "stop"),
+    ("yes!", "start"), ("info?", "help"), ("...unsubscribe...", "stop")])
+def test_surrounding_punctuation_is_ignored(body, expected):
+    assert keyword(body) == expected
 
 
 def test_the_keyword_lists_do_not_overlap():
