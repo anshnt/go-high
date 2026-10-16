@@ -20,4 +20,5 @@ MAGIC_LINK_MINUTES = int(os.getenv("MAGIC_LINK_MINUTES", "15"))
 LOGIN_MAX_FAILURES = int(os.getenv("LOGIN_MAX_FAILURES", "5"))  # per email and IP
 LOGIN_MAX_FAILURES_PER_EMAIL = int(os.getenv("LOGIN_MAX_FAILURES_PER_EMAIL", "20"))  # across all IPs
 LOGIN_WINDOW_MINUTES = int(os.getenv("LOGIN_WINDOW_MINUTES", "15"))
+RECENT_AUTH_MINUTES = int(os.getenv("RECENT_AUTH_MINUTES", "15"))  # setting a first password needs a fresh session
 DEV_EXPOSE_MAGIC_LINKS = os.getenv("DEV_EXPOSE_MAGIC_LINKS", "0") == "1"  # tests and local dev only

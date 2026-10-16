@@ -1,32 +1,21 @@
-import { Bell, ChevronsUpDown, Keyboard, Moon, Rows3, Search, SlidersHorizontal, Sun } from "lucide-react";
+import { Bell, Keyboard, LogOut, Moon, Rows3, Search, SlidersHorizontal, Sun } from "lucide-react";
 import { MOD } from "../lib/platform";
 import { density, theme, toggleDensity, toggleTheme } from "../lib/prefs";
+import { signOut, useMe } from "../lib/session";
 import { useStore } from "../lib/store";
 import { Avatar, Button, DropdownMenu, Kbd, MenuItem, MenuLabel, MenuSeparator, Tooltip } from "../ui";
 import { HealthDot } from "./HealthDot";
+import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 type Props = { onSearch: () => void; onCustomize: () => void; onShortcuts: () => void };
 
 export function TopBar({ onSearch, onCustomize, onShortcuts }: Props) {
   const dark = useStore(theme) === "dark";
   const compact = useStore(density) === "compact";
+  const user = useMe()?.user;
   return (
     <header className="sh-topbar">
-      {/* Placeholder until workspaces land (#2). */}
-      <DropdownMenu
-        align="start"
-        label="Workspaces"
-        trigger={
-          <Button variant="ghost" className="sh-workspace">
-            <span className="sh-workspace-name">Demo workspace</span>
-            <ChevronsUpDown size={14} aria-hidden />
-          </Button>
-        }
-      >
-        <MenuLabel>Workspaces</MenuLabel>
-        <MenuItem disabled>Demo workspace</MenuItem>
-        <MenuItem disabled>Switching workspaces arrives with sign in</MenuItem>
-      </DropdownMenu>
+      <WorkspaceSwitcher />
 
       <button type="button" className="sh-search" onClick={onSearch} aria-label="Search and run commands">
         <Search size={16} aria-hidden />
@@ -60,11 +49,17 @@ export function TopBar({ onSearch, onCustomize, onShortcuts }: Props) {
           label="Profile"
           trigger={
             <Button variant="ghost" size="icon" aria-label="Profile menu">
-              <Avatar name="Demo User" size="sm" />
+              <Avatar name={user?.name ?? "Account"} size="sm" />
             </Button>
           }
         >
-          <MenuLabel>Demo User</MenuLabel>
+          {user && (
+            <div className="sh-profile-id">
+              <strong>{user.name}</strong>
+              <span>{user.email}</span>
+            </div>
+          )}
+          <MenuSeparator />
           <MenuItem icon={dark ? <Sun size={16} aria-hidden /> : <Moon size={16} aria-hidden />} onSelect={toggleTheme}>
             {dark ? "Light theme" : "Dark theme"}
           </MenuItem>
@@ -76,6 +71,10 @@ export function TopBar({ onSearch, onCustomize, onShortcuts }: Props) {
           </MenuItem>
           <MenuItem icon={<Keyboard size={16} aria-hidden />} onSelect={onShortcuts}>
             Keyboard shortcuts
+          </MenuItem>
+          <MenuSeparator />
+          <MenuItem icon={<LogOut size={16} aria-hidden />} onSelect={() => void signOut()}>
+            Sign out
           </MenuItem>
           <MenuSeparator />
           <div className="sh-menu-status">

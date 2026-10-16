@@ -571,3 +571,115 @@
   gap: var(--space-2);
   width: 220px;
 }
+
+/* ---- Workspace switcher, profile menu ---- */
+.sh-ws-name {
+  flex: 1;
+  min-width: 0;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sh-ws-check {
+  display: inline-flex;
+  flex: none;
+  width: 14px;
+  color: var(--accent-text);
+}
+.sh-profile-id {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-width: 260px;
+  padding: var(--space-2);
+}
+.sh-profile-id span {
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sh-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* ---- Settings sections, sessions ---- */
+.sh-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 0 var(--space-3) calc(var(--space-1) * -1);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  text-decoration: none;
+}
+.sh-back:hover {
+  color: var(--text);
+}
+.sh-section + .sh-section {
+  margin-top: var(--space-10);
+}
+.sh-section h2 {
+  font-size: var(--fs-md);
+}
+.sh-section > p {
+  margin: 2px 0 var(--space-3);
+  color: var(--text-2);
+}
+.sh-sess-device {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: var(--space-2) 0;
+  white-space: normal;
+}
+.sh-sess-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  font-weight: 500;
+}
+.sh-sess-meta {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+/* ---- Loading outline of the shell ---- */
+.sh-skel-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-4);
+}
+.sh-sidebar[data-collapsed] .sh-skel-nav {
+  align-items: center;
+}
+.sh-skel-search {
+  flex: 1;
+  max-width: 440px;
+  height: var(--control-h);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.sh-skel-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+}
+@media (max-width: 767px) {
+  .sh-skel-search {
+    display: none;
+  }
+}
+
+.sh-password {
+  max-width: 24rem;
+  margin-top: var(--space-3);
+}

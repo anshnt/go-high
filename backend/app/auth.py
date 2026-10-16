@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from . import config, security
+from .db import scoped
 from .models import AuthSession, Brand, MagicLink, Organization, OrgMember, User, Workspace
 from .security import COOKIE, Ctx, system_db, token_hash, user
 from .tenancy import my_orgs, my_workspaces
@@ -49,7 +50,8 @@ class MagicConsume(BaseModel):
 
 
 def user_json(u: User) -> dict:
-    return {"id": u.id, "email": u.email, "name": u.name, "email_verified": u.email_verified_at is not None}
+    return {"id": u.id, "email": u.email, "name": u.name, "email_verified": u.email_verified_at is not None,
+            "has_password": u.password_hash is not None}
 
 
 @router.post("/auth/signup", status_code=201)
@@ -76,9 +78,8 @@ def signup(body: SignUp, request: Request, response: Response, db: Session = Dep
 @router.post("/auth/signin")
 def signin(body: SignIn, request: Request, response: Response, db: Session = Depends(system_db)):
     ip = security.client_ip(request)
-    if security.throttled(db, body.email, ip):
-        raise HTTPException(429, "Too many failed attempts, try again later",
-                            headers={"Retry-After": str(config.LOGIN_WINDOW_MINUTES * 60)})
+    if wait := security.retry_after(db, body.email, ip):
+        raise HTTPException(429, "Too many failed attempts, try again later", headers={"Retry-After": str(wait)})
     account = db.scalar(select(User).where(User.email == body.email))
     stored = account.password_hash if account and account.password_hash else security.DUMMY_HASH
     if not security.verify_password(body.password, stored) or not account or not account.password_hash:
@@ -145,7 +146,8 @@ def consume_magic_link(body: MagicConsume, request: Request, response: Response,
 @router.get("/auth/sessions")
 def list_sessions(c: Ctx = Depends(user)):
     rows = c.db.scalars(select(AuthSession).where(
-        AuthSession.user_id == c.user_id, AuthSession.revoked_at.is_(None), AuthSession.expires_at > func.now())
+        AuthSession.user_id == c.user_id, AuthSession.revoked_at.is_(None), AuthSession.expires_at > func.now(),
+        AuthSession.last_seen_at > func.now() - timedelta(minutes=config.SESSION_IDLE_MINUTES))
         .order_by(AuthSession.created_at.desc()))
     return [{"id": s.id, "created_at": s.created_at, "last_seen_at": s.last_seen_at, "expires_at": s.expires_at,
              "ip": s.ip, "user_agent": s.user_agent, "current": s.id == c.session_id} for s in rows]
@@ -161,6 +163,49 @@ def revoke_session(session_id: uuid.UUID, response: Response, c: Ctx = Depends(u
         raise HTTPException(404, "Session not found")
     if revoked == c.session_id:
         response.delete_cookie(COOKIE, path="/")
+
+
+@router.post("/auth/sessions/revoke-others")
+def revoke_other_sessions(c: Ctx = Depends(user)):
+    revoked = c.db.execute(update(AuthSession).where(
+        AuthSession.user_id == c.user_id, AuthSession.id != c.session_id, AuthSession.revoked_at.is_(None))
+        .values(revoked_at=func.now())).rowcount
+    c.db.commit()
+    return {"revoked": revoked}
+
+
+class PasswordChange(BaseModel):
+    password: NewPassword
+    current_password: Annotated[str, StringConstraints(max_length=256)] | None = None
+
+
+@router.post("/auth/password", status_code=204)
+def set_password(body: PasswordChange, request: Request, c: Ctx = Depends(user)):
+    """Changing a password needs the current one. Setting a first one (magic-link users, or after the first
+    link cleared a pre-verification password) needs a session started in the last few minutes instead, so a
+    stolen old session cannot lock the owner out. Other sessions are signed out either way."""
+    account = c.db.get(User, c.user_id)
+    ip = security.client_ip(request)
+    if account.password_hash:
+        if wait := security.retry_after(c.db, account.email, ip):
+            raise HTTPException(429, "Too many failed attempts, try again later", headers={"Retry-After": str(wait)})
+        if not security.verify_password(body.current_password or "", account.password_hash):
+            with scoped(system="on") as sdb:
+                security.record_failure(sdb, account.email, ip)
+            raise HTTPException(403, "Current password is wrong")
+    else:
+        fresh = c.db.scalar(select(AuthSession.id).where(
+            AuthSession.id == c.session_id,
+            AuthSession.created_at > func.now() - timedelta(minutes=config.RECENT_AUTH_MINUTES)))
+        if fresh is None:
+            raise HTTPException(403, "Sign in again with an email link to set a password")
+    c.db.commit()
+    with scoped(system="on") as sdb:  # users rows are writable only in the system scope
+        new_hash = security.hash_password(body.password)
+        sdb.execute(update(User).where(User.id == c.user_id).values(password_hash=new_hash))
+        sdb.execute(update(AuthSession).where(AuthSession.user_id == c.user_id, AuthSession.id != c.session_id,
+                                              AuthSession.revoked_at.is_(None)).values(revoked_at=func.now()))
+        sdb.commit()
 
 
 @router.get("/me")
