@@ -462,3 +462,10 @@ def test_deleting_an_endpoint_drops_its_pending_deliveries(hook, receiver, db):
     drain()  # the delivery job finds nothing to do
     assert receiver.requests == []
     assert db.scalar(text("SELECT count(*) FROM jobs WHERE status IN ('queued', 'dead')")) == 0
+
+
+def test_delivery_retries_span_about_a_day():
+    from app.webhooks import MAX_ATTEMPTS, retry_delay
+    total = sum((retry_delay(n) for n in range(1, MAX_ATTEMPTS)), timedelta())
+    assert retry_delay(1) == timedelta(minutes=1)
+    assert timedelta(hours=18) < total < timedelta(hours=30)

@@ -274,9 +274,16 @@ def describe(error: Exception) -> str:
 
 
 # The attempt result is committed here, before raising, because the queue rolls back what a failed job did.
-# ponytail: delivery.attempts counts sends; the job's own attempt count is only a backstop (same limit). The queue's
-# backoff is 10 s doubling to 1 h, so 12 attempts span about 3.4 hours, not the 24 hours of ADR 0003.
-@jobs.handler("webhook.deliver")
+# Front-loaded so a receiver that blinked catches up within minutes; the 12 attempts span about 22 hours.
+RETRY_MINUTES = (1, 2, 5, 10, 30, 60, 120, 180, 240, 300, 360)
+
+
+def retry_delay(attempts: int) -> timedelta:
+    return timedelta(minutes=RETRY_MINUTES[min(attempts, len(RETRY_MINUTES)) - 1])
+
+
+# delivery.attempts counts sends; the job's own attempt count is only a backstop (same limit).
+@jobs.handler("webhook.deliver", backoff=retry_delay)
 def deliver(db: Session, payload: dict) -> None:
     d = db.get(WebhookDelivery, uuid.UUID(payload["delivery_id"]))
     if d is None or d.status in ("succeeded", "failed"):
@@ -321,6 +328,6 @@ def deliver(db: Session, payload: dict) -> None:
         d.status = "failed"
         db.commit()
         return
-    d.status, d.next_attempt_at = "retrying", now + jobs.backoff(d.attempts)
+    d.status, d.next_attempt_at = "retrying", now + retry_delay(d.attempts)
     db.commit()
     raise DeliveryFailed(d.error or f"HTTP {d.response_status}")
