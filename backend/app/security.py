@@ -62,11 +62,17 @@ def start_session(db: Session, response: Response, request: Request, user_id: uu
 # ponytail: failures counted in a table. Per email+IP stops one guesser fast; the per-email ceiling stops
 # IP rotation, at the cost that a flood of failures locks the real user out for the window. Add a CAPTCHA
 # step instead of the hard ceiling when that becomes a nuisance.
-def throttled(db: Session, email: str, ip: str) -> bool:
-    window = func.now() - timedelta(minutes=config.LOGIN_WINDOW_MINUTES)
-    recent = select(func.count()).where(LoginAttempt.email == email, LoginAttempt.created_at > window)
-    return (db.scalar(recent.where(LoginAttempt.ip == ip)) >= config.LOGIN_MAX_FAILURES
-            or db.scalar(recent) >= config.LOGIN_MAX_FAILURES_PER_EMAIL)
+def retry_after(db: Session, email: str, ip: str) -> int:
+    """Seconds until this email may try again from this IP; 0 when it may try now. Blocked while the
+    limit-th most recent failure is still inside the window, so the wait is until that one ages out."""
+    window = timedelta(minutes=config.LOGIN_WINDOW_MINUTES)
+    left = func.ceil(func.extract("epoch", LoginAttempt.created_at + window - func.now()))
+    recent = (select(left).where(LoginAttempt.email == email, LoginAttempt.created_at > func.now() - window)
+              .order_by(LoginAttempt.created_at.desc()))
+    limits = ((recent.where(LoginAttempt.ip == ip), config.LOGIN_MAX_FAILURES),
+              (recent, config.LOGIN_MAX_FAILURES_PER_EMAIL))
+    waits = [db.scalar(q.offset(n - 1).limit(1)) for q, n in limits]
+    return max([int(w) for w in waits if w is not None] + [0])
 
 
 def record_failure(db: Session, email: str, ip: str) -> None:

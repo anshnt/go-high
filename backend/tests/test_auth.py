@@ -234,3 +234,60 @@ def test_failures_from_many_addresses_hit_the_per_email_ceiling(make_user, monke
     for _ in range(3):
         assert signin("a@example.com", "wrong password!")[1].status_code == 401
     assert signin("a@example.com", PASSWORD)[1].status_code == 429
+
+
+def test_retry_after_is_the_time_left_not_the_whole_window(make_user, db):
+    make_user("a@example.com")
+    for _ in range(config.LOGIN_MAX_FAILURES):
+        signin("a@example.com", "wrong password!")
+    db.execute(text("UPDATE login_attempts SET created_at = created_at - interval '10 minutes'"))
+    db.commit()
+    wait = int(signin("a@example.com", PASSWORD)[1].headers["retry-after"])
+    assert 4 * 60 < wait <= 5 * 60
+
+
+def test_me_lists_each_orgs_brands(make_user):
+    client, ids = make_user("a@example.com", "Acme")
+    assert client.get("/api/me").json()["orgs"][0]["brands"] == [{"id": ids["brand_id"], "name": "Default"}]
+
+
+def test_idle_sessions_are_not_listed(make_user, db):
+    client, _ = make_user("a@example.com")
+    signin()
+    db.execute(text("UPDATE auth_sessions SET last_seen_at = now() - interval '2 days' "
+                    "WHERE id = (SELECT id FROM auth_sessions ORDER BY created_at DESC LIMIT 1)"))
+    db.commit()
+    assert len(client.get("/api/auth/sessions").json()) == 1
+
+
+def test_revoke_others_keeps_only_this_session(make_user):
+    client, _ = make_user("a@example.com")
+    other, _ = signin()
+    assert client.post("/api/auth/sessions/revoke-others").json() == {"revoked": 1}
+    assert other.get("/api/me").status_code == 401
+    assert [s["current"] for s in client.get("/api/auth/sessions").json()] == [True]
+
+
+def test_changing_a_password_needs_the_current_one_and_signs_out_other_sessions(make_user):
+    client, _ = make_user("a@example.com")
+    other, _ = signin()
+    new = "another long password"
+    assert client.post("/api/auth/password", json={"password": new}).status_code == 403
+    assert client.post("/api/auth/password", json={"password": new, "current_password": "nope"}).status_code == 403
+    assert client.post("/api/auth/password", json={"password": new, "current_password": PASSWORD}).status_code == 204
+    assert other.get("/api/me").status_code == 401 and client.get("/api/me").status_code == 200
+    assert signin("a@example.com", PASSWORD)[1].status_code == 401
+    assert signin("a@example.com", new)[1].status_code == 200
+
+
+def test_a_first_password_needs_a_fresh_session(db):
+    client = TestClient(app)
+    assert client.post("/api/auth/signup", json={"email": "m@example.com", "name": "M"}).status_code == 201
+    assert client.get("/api/me").json()["user"]["has_password"] is False
+    db.execute(text("UPDATE auth_sessions SET created_at = now() - interval '1 hour'"))
+    db.commit()
+    assert client.post("/api/auth/password", json={"password": "a long new password"}).status_code == 403
+    db.execute(text("UPDATE auth_sessions SET created_at = now()"))
+    db.commit()
+    assert client.post("/api/auth/password", json={"password": "a long new password"}).status_code == 204
+    assert signin("m@example.com", "a long new password")[1].status_code == 200

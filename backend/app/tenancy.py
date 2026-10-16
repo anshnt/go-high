@@ -1,11 +1,12 @@
 """Who can see what: roles and the organization/workspace listing behind /api/me and /api/workspaces.
 Every query here runs in a scoped session, so row level security already limits it to the user's tenants."""
 import uuid
+from collections import defaultdict
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import Organization, OrgMember, Workspace, WorkspaceMember
+from .models import Brand, Organization, OrgMember, Workspace, WorkspaceMember
 
 ADMIN_ORG_ROLES = ("owner", "admin")
 
@@ -37,5 +38,8 @@ def my_workspaces(db: Session, user_id: uuid.UUID) -> list[dict]:
 def my_orgs(db: Session, user_id: uuid.UUID) -> list[dict]:
     rows = db.execute(select(Organization, OrgMember.role).join(OrgMember, OrgMember.org_id == Organization.id)
                       .where(OrgMember.user_id == user_id).order_by(Organization.created_at)).all()
-    return [{"id": org.id, "name": org.name, "role": role} for org, role in rows]
+    brands = defaultdict(list)
+    for b in db.scalars(select(Brand).where(Brand.org_id.in_([org.id for org, _ in rows])).order_by(Brand.created_at)):
+        brands[b.org_id].append({"id": b.id, "name": b.name})
+    return [{"id": org.id, "name": org.name, "role": role, "brands": brands[org.id]} for org, role in rows]
 

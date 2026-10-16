@@ -620,6 +620,9 @@
 .sh-back:hover {
   color: var(--text);
 }
+.sh-section + .sh-section {
+  margin-top: var(--space-10);
+}
 .sh-section h2 {
   font-size: var(--fs-md);
 }
@@ -674,4 +677,9 @@
   .sh-skel-search {
     display: none;
   }
+}
+
+.sh-password {
+  max-width: 24rem;
+  margin-top: var(--space-3);
 }

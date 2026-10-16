@@ -1,11 +1,11 @@
 import { ChevronLeft, CircleAlert, LogOut } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router";
 import { api, errorText } from "../lib/api";
 import { describeDevice, timeAgo } from "../lib/device";
-import { leave } from "../lib/session";
+import { leave, refreshMe, useMe } from "../lib/session";
 import { PageHeader } from "../shell/PageHeader";
-import { Badge, Button, Dialog, EmptyState, Table, useToast, type Column } from "../ui";
+import { Badge, Button, Dialog, EmptyState, Input, Table, useToast, type Column } from "../ui";
 
 type Row = { id: string; created_at: string; last_seen_at: string; expires_at: string; ip: string | null; user_agent: string | null; current: boolean };
 type Confirm = { kind: "one"; row: Row } | { kind: "others" } | null;
@@ -43,14 +43,8 @@ export function SecuritySettings() {
         }
         toast({ title: "Session revoked", description: describeDevice(c.row.user_agent), tone: "success" });
       } else {
-        // ponytail: one request per session, there is no bulk endpoint. Add one if people have dozens.
-        const results = await Promise.allSettled(others.map((r) => api.del(`/api/auth/sessions/${r.id}`)));
-        const failed = results.filter((r) => r.status === "rejected").length;
-        toast(
-          failed
-            ? { title: `Signed out ${others.length - failed} of ${others.length}`, description: "Some sessions could not be revoked. Try again.", tone: "danger" }
-            : { title: `Signed out ${plural(others.length, "other device")}`, tone: "success" },
-        );
+        const { revoked } = await api.post<{ revoked: number }>("/api/auth/sessions/revoke-others");
+        toast({ title: `Signed out ${plural(revoked, "other device")}`, tone: "success" });
       }
     } catch (e) {
       toast({ title: "Could not revoke the session", description: errorText(e), tone: "danger" });
@@ -136,6 +130,7 @@ export function SecuritySettings() {
           <Table caption="Active sessions" columns={columns} rows={rows ?? []} rowId={(r) => r.id} loading={rows === null} />
         )}
       </section>
+      <PasswordSection onSaved={load} />
 
       <Dialog
         open={!!confirm}
@@ -154,5 +149,63 @@ export function SecuritySettings() {
         }
       />
     </div>
+  );
+}
+
+/** Change the password, or set a first one (magic-link users). The server signs out every other session. */
+function PasswordSection({ onSaved }: { onSaved: () => void }) {
+  const me = useMe();
+  const toast = useToast();
+  const has = me?.user.has_password ?? false;
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [error, setError] = useState<string>();
+  const [busy, setBusy] = useState(false);
+
+  async function submit(ev: FormEvent) {
+    ev.preventDefault();
+    if (next.length < 10) return setError("Use at least 10 characters.");
+    setError(undefined);
+    setBusy(true);
+    try {
+      await api.post("/api/auth/password", has ? { password: next, current_password: current } : { password: next });
+      toast({ title: has ? "Password changed" : "Password set", description: "Other devices were signed out.", tone: "success" });
+      setCurrent("");
+      setNext("");
+      await refreshMe();
+      onSaved();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="sh-section" aria-labelledby="password-title">
+      <h2 id="password-title">Password</h2>
+      <p>
+        {has
+          ? "Changing it signs you out everywhere else."
+          : "You sign in with email links. Add a password to sign in without opening your inbox. For your safety this works within 15 minutes of signing in."}
+      </p>
+      <form className="sh-form sh-password" onSubmit={submit} noValidate>
+        {has && <Input label="Current password" type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} />}
+        <Input
+          label={has ? "New password" : "Password"}
+          type="password"
+          autoComplete="new-password"
+          hint="At least 10 characters."
+          error={error}
+          value={next}
+          onChange={(e) => setNext(e.target.value)}
+        />
+        <div>
+          <Button type="submit" variant="primary" loading={busy}>
+            {has ? "Change password" : "Set password"}
+          </Button>
+        </div>
+      </form>
+    </section>
   );
 }

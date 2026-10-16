@@ -1,8 +1,9 @@
 import { api, ApiError, errorText, setUnauthorizedHandler, workspaceId } from "./api";
 import { memory, useStore } from "./store";
 
-export type User = { id: string; email: string; name: string; email_verified: boolean };
-export type Org = { id: string; name: string; role: "owner" | "admin" | "member" };
+export type User = { id: string; email: string; name: string; email_verified: boolean; has_password: boolean };
+export type Brand = { id: string; name: string };
+export type Org = { id: string; name: string; role: "owner" | "admin" | "member"; brands: Brand[] };
 export type Workspace = { id: string; name: string; org_id: string; brand_id: string; role: "admin" | "member" | null };
 export type Me = { user: User; orgs: Org[]; workspaces: Workspace[] };
 
@@ -80,11 +81,9 @@ export async function signOut() {
 
 /** Organizations where the user may create workspaces, each with the brand to put them under.
  * ponytail: /api/me has no brand list, so the brand is read off an existing workspace of the org. */
-export function creatableOrgs(me: Me): { org: Org; brandId: string }[] {
-  return me.orgs.flatMap((org) => {
-    const brandId = me.workspaces.find((w) => w.org_id === org.id)?.brand_id;
-    return org.role !== "member" && brandId ? [{ org, brandId }] : [];
-  });
+/** Organizations where the user may create workspaces (owners and admins), each with at least one brand. */
+export function creatableOrgs(me: Me): Org[] {
+  return me.orgs.filter((org) => org.role !== "member" && org.brands.length > 0);
 }
 
 export const useSession = () => useStore(session);
