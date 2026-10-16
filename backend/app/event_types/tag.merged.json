@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "tag.merged",
+  "description": "A tag was merged into another and deleted. `id` and `name` are the surviving tag, `records` how many live records had the merged one. Subject: the surviving tag.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"},
+    "source_id": {"type": "string", "format": "uuid"},
+    "source_name": {"type": "string"},
+    "records": {"type": "integer"}
+  },
+  "required": ["id", "name", "source_id", "source_name", "records"],
+  "additionalProperties": false
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "record.deleted",
+  "description": "A record was moved to the trash. Subject: the record.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "object": {"type": "string"},
+    "display_name": {"type": "string"}
+  },
+  "required": ["id", "object", "display_name"],
+  "additionalProperties": false
+}

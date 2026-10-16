@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "tag.updated",
+  "description": "A tag was renamed or edited; `changes` maps each changed property to its old and new value. Subject: the tag.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"},
+    "color": {"type": ["string", "null"]},
+    "group": {"type": ["string", "null"]},
+    "description": {"type": ["string", "null"]},
+    "changes": {"type": "object"}
+  },
+  "required": ["id", "name", "color", "group", "description", "changes"],
+  "additionalProperties": false
+}

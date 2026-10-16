@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "association.created",
+  "description": "Two records were linked; it shows on the timeline of both. Subject: the link.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "type_id": {"type": "string", "format": "uuid"},
+    "from_record_id": {"type": "string", "format": "uuid"},
+    "to_record_id": {"type": "string", "format": "uuid"},
+    "label": {"type": "string"},
+    "inverse_label": {"type": "string"}
+  },
+  "required": ["id", "type_id", "from_record_id", "to_record_id", "label", "inverse_label"],
+  "additionalProperties": false
+}
