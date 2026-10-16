@@ -49,7 +49,7 @@ class MagicConsume(BaseModel):
 
 
 def user_json(u: User) -> dict:
-    return {"id": u.id, "email": u.email, "name": u.name}
+    return {"id": u.id, "email": u.email, "name": u.name, "email_verified": u.email_verified_at is not None}
 
 
 @router.post("/auth/signup", status_code=201)
@@ -128,9 +128,18 @@ def consume_magic_link(body: MagicConsume, request: Request, response: Response,
     if user_id is None:
         db.commit()
         raise HTTPException(401, "This link is invalid, expired or already used")
+    account = db.get(User, user_id)
+    if account.email_verified_at is None:
+        # The first link proves the address. Sign up does not, so a password or session created before
+        # this point may belong to someone who registered the address without owning it: both go.
+        account.email_verified_at = func.now()
+        account.password_hash = None
+        db.execute(update(AuthSession).where(AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None))
+                   .values(revoked_at=func.now()))
     security.start_session(db, response, request, user_id)
     db.commit()
-    return {"user": user_json(db.get(User, user_id))}
+    db.refresh(account)
+    return {"user": user_json(account)}
 
 
 @router.get("/auth/sessions")

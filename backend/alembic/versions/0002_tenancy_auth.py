@@ -45,7 +45,8 @@ def tables() -> None:
     op.create_index("ix_workspaces_org_id", "workspaces", ["org_id"])
     op.create_index("ix_workspaces_brand_id", "workspaces", ["brand_id"])
     op.create_table("users", pk(), col("email", str_(254)), col("name", str_(200)),
-                    col("password_hash", str_(300), nullable=True), created(), sa.UniqueConstraint("email"),
+                    col("password_hash", str_(300), nullable=True), col("email_verified_at", TS, nullable=True),
+                    created(), sa.UniqueConstraint("email"),
                     sa.CheckConstraint("email = lower(email)", name="ck_users_email_lower"))
     op.create_table("org_members", ref("user_id", "users", primary_key=True),
                     ref("org_id", "organizations", primary_key=True), col("role", str_(10)), created(),

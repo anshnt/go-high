@@ -17,6 +17,7 @@ COOKIE_SECURE = os.getenv("COOKIE_SECURE", "1") == "1"
 SESSION_IDLE_MINUTES = int(os.getenv("SESSION_IDLE_MINUTES", "720"))
 SESSION_ABSOLUTE_HOURS = int(os.getenv("SESSION_ABSOLUTE_HOURS", str(24 * 30)))
 MAGIC_LINK_MINUTES = int(os.getenv("MAGIC_LINK_MINUTES", "15"))
-LOGIN_MAX_FAILURES = int(os.getenv("LOGIN_MAX_FAILURES", "5"))
+LOGIN_MAX_FAILURES = int(os.getenv("LOGIN_MAX_FAILURES", "5"))  # per email and IP
+LOGIN_MAX_FAILURES_PER_EMAIL = int(os.getenv("LOGIN_MAX_FAILURES_PER_EMAIL", "20"))  # across all IPs
 LOGIN_WINDOW_MINUTES = int(os.getenv("LOGIN_WINDOW_MINUTES", "15"))
 DEV_EXPOSE_MAGIC_LINKS = os.getenv("DEV_EXPOSE_MAGIC_LINKS", "0") == "1"  # tests and local dev only

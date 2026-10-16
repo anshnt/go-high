@@ -59,13 +59,14 @@ def start_session(db: Session, response: Response, request: Request, user_id: uu
                         secure=config.COOKIE_SECURE, path="/")
 
 
-# ponytail: failures counted in a table per email+ip; an attacker rotating IPs gets 5 tries per IP.
-# Add a per-email ceiling or a CAPTCHA when that matters.
+# ponytail: failures counted in a table. Per email+IP stops one guesser fast; the per-email ceiling stops
+# IP rotation, at the cost that a flood of failures locks the real user out for the window. Add a CAPTCHA
+# step instead of the hard ceiling when that becomes a nuisance.
 def throttled(db: Session, email: str, ip: str) -> bool:
     window = func.now() - timedelta(minutes=config.LOGIN_WINDOW_MINUTES)
-    failures = db.scalar(select(func.count()).where(
-        LoginAttempt.email == email, LoginAttempt.ip == ip, LoginAttempt.created_at > window))
-    return failures >= config.LOGIN_MAX_FAILURES
+    recent = select(func.count()).where(LoginAttempt.email == email, LoginAttempt.created_at > window)
+    return (db.scalar(recent.where(LoginAttempt.ip == ip)) >= config.LOGIN_MAX_FAILURES
+            or db.scalar(recent) >= config.LOGIN_MAX_FAILURES_PER_EMAIL)
 
 
 def record_failure(db: Session, email: str, ip: str) -> None:

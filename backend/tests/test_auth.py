@@ -210,3 +210,27 @@ def test_writes_without_an_origin_header_or_without_a_cookie_are_not_blocked():
     r = anonymous.post("/api/auth/signup", json={"email": "a@example.com", "name": "A", "password": PASSWORD},
                        headers={"Origin": "https://partner.example"})
     assert r.status_code == 201  # no cookie yet; third-party pages may post to public endpoints
+
+
+def test_first_magic_link_evicts_whoever_registered_the_address_before_it_was_verified(make_user):
+    squatter, _ = make_user("victim@example.com")  # signed up with someone else's address and a password
+    assert squatter.get("/api/me").json()["user"]["email_verified"] is False
+    link = TestClient(app).post("/api/auth/magic-link", json={"email": "victim@example.com"}).json()["link"]
+    owner = TestClient(app)
+    r = owner.post("/api/auth/magic-link/consume", json={"token": link_token(link)})
+    assert r.status_code == 200 and r.json()["user"]["email_verified"] is True
+    assert squatter.get("/api/me").status_code == 401  # pre-verification session revoked
+    assert signin("victim@example.com", PASSWORD)[1].status_code == 401  # pre-verification password cleared
+    # Later links only sign in: the verified owner's session survives.
+    link = TestClient(app).post("/api/auth/magic-link", json={"email": "victim@example.com"}).json()["link"]
+    assert TestClient(app).post("/api/auth/magic-link/consume", json={"token": link_token(link)}).status_code == 200
+    assert owner.get("/api/me").status_code == 200
+
+
+def test_failures_from_many_addresses_hit_the_per_email_ceiling(make_user, monkeypatch):
+    make_user("a@example.com")
+    monkeypatch.setattr(config, "LOGIN_MAX_FAILURES", 100)  # as if every guess came from a new IP
+    monkeypatch.setattr(config, "LOGIN_MAX_FAILURES_PER_EMAIL", 3)
+    for _ in range(3):
+        assert signin("a@example.com", "wrong password!")[1].status_code == 401
+    assert signin("a@example.com", PASSWORD)[1].status_code == 429

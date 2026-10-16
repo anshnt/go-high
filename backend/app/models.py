@@ -65,6 +65,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(254), unique=True)
     name: Mapped[str] = mapped_column(String(200))
     password_hash: Mapped[str | None] = mapped_column(String(300))  # null: magic-link-only user
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # set by the first magic link
     created_at: Mapped[datetime] = created()
 
 
