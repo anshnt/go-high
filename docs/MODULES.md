@@ -116,14 +116,14 @@ Milestones: **M0 Foundations**, **M1 Core CRM** (first sellable product), **M2 G
 - Contacts with standard and custom fields, custom values, tags, companies (late multi-company), custom objects (10 per workspace), associations, notes, tasks, activity timeline, DND per channel, engagement score.
 
 **Better**
-- [ ] One record engine for contacts, companies, deals and custom objects: same list, filters, views, associations, notes, files, timeline, permissions and API
-- [ ] No object cap; many-to-many associations with labels (contact has many companies, deal has many contacts with roles)
-- [ ] Typed fields: text, number, money (currency aware), date, select, multi-select, user, record link, file, formula, rollup; validation; conditional visibility and required rules; per-field history
+- [ ] One record engine for contacts, companies, deals and custom objects: same list, filters, views, associations, notes, files, timeline, permissions and API (lists, filters, views, associations, timeline and API are done on one `records` table; notes, files and permissions are not)
+- [x] No object cap; many-to-many associations with labels (contact has many companies, deal has many contacts with roles; a role is an association type, so "decision maker" is one more type between deal and contact)
+- [ ] Typed fields: text, number, money (currency aware), date, select, multi-select, user, record link, file, formula, rollup; validation; conditional visibility and required rules; per-field history (all of these but file are typed and validated, with required, length and range rules; formula and rollup are stored but not computed; conditional rules and field history are not)
 - [ ] Workspace variables (custom values) kept separate from fields and named clearly
-- [ ] Tags with groups, colors, descriptions, usage counts, rename and merge with preview
+- [x] Tags with groups, colors, descriptions, usage counts, rename and merge with preview
 - [ ] Consent and eligibility card per channel: source, timestamp, DND, quiet hours, "can I contact now?"
 - [ ] Configurable lead scoring with decay and an explainable breakdown
-- [ ] Trash with 30-day restore for every record type
+- [ ] Trash with 30-day restore for every record type (trash and restore work for every object; the purge after 30 days is not built)
 - [ ] Record page per [UI.md](UI.md): properties, timeline, associations, tasks, AI summary
 
 **Done when** a custom "Property" object can be created, linked to contacts and deals, filtered, and shows on both timelines.
@@ -135,10 +135,10 @@ Milestones: **M0 Foundations**, **M1 Core CRM** (first sellable product), **M2 G
 - Smart lists (saved filters) with bulk actions; no search inside messages (a top request).
 
 **Better**
-- [ ] Global full-text search over records, messages, notes, files and call transcripts, permission aware (Postgres FTS first)
-- [ ] Saved views shared with a team, stored server side, with counts in the sidebar
-- [ ] Dynamic lists (rules) and static lists (hand picked), with membership history
-- [ ] Filter builder with AND/OR groups, relative dates, association filters
+- [ ] Global full-text search over records, messages, notes, files and call transcripts, permission aware (Postgres FTS first) (records are searched by word prefix, best match first, through the permission scope hook; messages, notes, files and transcripts are not)
+- [ ] Saved views shared with a team, stored server side, with counts in the sidebar (stored server side with live counts, shared with the workspace or private; teams come with module 03)
+- [ ] Dynamic lists (rules) and static lists (hand picked), with membership history (a saved view is a dynamic list; static lists and membership history are not)
+- [ ] Filter builder with AND/OR groups, relative dates, association filters (the filter language and its compiler are done, with AND, OR, NOT, relative dates and association paths; the builder screen is not)
 - [ ] Natural language filters ("leads who asked about pricing and did not book") via AI, always shown as editable rules
 - [ ] Bulk actions as jobs with preview, progress and undo
 
