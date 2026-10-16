@@ -128,7 +128,10 @@ def post(url: str, body: bytes, headers: dict[str, str], timeout: float = 10) ->
     try:
         conn.request("POST", t.path, body, {"Host": host if t.port == default_port else f"{host}:{t.port}", **headers})
         response = conn.getresponse()
-        return response.status, response.read(EXCERPT)
+        status, excerpt = response.status, response.read(EXCERPT)
+        if expired.is_set():  # on Linux the shutdown reads as end of file, so partial headers parse as a response
+            raise TimeoutError
+        return status, excerpt
     except Exception as e:
         if expired.is_set() or isinstance(e, TimeoutError):
             raise TimeoutError(f"timed out after {timeout:g} s") from None
