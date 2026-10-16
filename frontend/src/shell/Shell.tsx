@@ -31,6 +31,9 @@ export function Shell() {
       </a>
       <Sidebar />
       <div className="sh-main">
+        {import.meta.env.VITE_DEMO === "1" && (
+          <p className="sh-demo-banner">Demo with fictional data. Changes stay in this tab until you reload.</p>
+        )}
         <TopBar onSearch={openPalette} onCustomize={openCustomize} onShortcuts={openShortcuts} />
         <main id="main" className="sh-content" tabIndex={-1}>
           {/* Keyed by workspace: switching remounts the page, so nothing from the old workspace stays on screen. */}

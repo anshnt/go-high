@@ -79,8 +79,6 @@ export async function signOut() {
   leave();
 }
 
-/** Organizations where the user may create workspaces, each with the brand to put them under.
- * ponytail: /api/me has no brand list, so the brand is read off an existing workspace of the org. */
 /** Organizations where the user may create workspaces (owners and admins), each with at least one brand. */
 export function creatableOrgs(me: Me): Org[] {
   return me.orgs.filter((org) => org.role !== "member" && org.brands.length > 0);
