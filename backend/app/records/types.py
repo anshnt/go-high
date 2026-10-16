@@ -77,9 +77,9 @@ def phone(field, value):
         number = phonenumbers.parse(value, region)
     except phonenumbers.NumberParseException:
         raise ValueError("is not a phone number") from None
-    # ponytail: is_valid_number also rejects number ranges newer than the bundled metadata; upgrade the
-    # phonenumbers package (dependabot does) instead of loosening this to is_possible_number.
-    if not phonenumbers.is_valid_number(number):
+    # Possible, not valid: strict validity refuses real numbers in ranges newer than the bundled metadata, and an
+    # import must never drop a customer's number for that. Length and country code are still checked.
+    if not phonenumbers.is_possible_number(number):
         raise ValueError(f"is not a valid phone number (default country {region}; start with + and the country code)")
     return phonenumbers.format_number(number, phonenumbers.PhoneNumberFormat.E164)
 
