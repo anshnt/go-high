@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { NavLink } from "react-router";
+import { NavLink, useLocation } from "react-router";
 import { Ellipsis, Keyboard, Moon, Sun } from "lucide-react";
-import { APPS_NAV, CORE, SETTINGS_NAV } from "../lib/nav";
+import { APPS_NAV, CORE, inArea, SETTINGS_NAV } from "../lib/nav";
 import { theme, toggleTheme } from "../lib/prefs";
 import { useStore } from "../lib/store";
 import { Sheet } from "../ui";
@@ -14,6 +14,7 @@ const MORE = [...CORE.filter((c) => !TABS.includes(c)), APPS_NAV, SETTINGS_NAV];
 export function TabBar({ onShortcuts }: { onShortcuts: () => void }) {
   const [more, setMore] = useState(false);
   const dark = useStore(theme) === "dark";
+  const { pathname } = useLocation();
   // Let the sheet finish closing before opening another overlay.
   const then = (fn: () => void) => () => {
     setMore(false);
@@ -23,7 +24,7 @@ export function TabBar({ onShortcuts }: { onShortcuts: () => void }) {
     <>
       <nav className="sh-tabbar" aria-label="Main">
         {TABS.map((t) => (
-          <NavLink key={t.id} to={t.path} className="sh-tab">
+          <NavLink key={t.id} to={t.path} className={`sh-tab${inArea(t, pathname) ? " active" : ""}`}>
             <t.icon size={20} aria-hidden />
             <span>{t.label}</span>
           </NavLink>

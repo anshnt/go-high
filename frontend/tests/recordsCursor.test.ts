@@ -111,6 +111,25 @@ test("timeline pages newest first and records changes with old and new values", 
   assert.equal(new Set(small.data.map((e) => e.id)).size, small.data.length);
 });
 
+test("a long timeline pages without gaps or repeats, even when events share a millisecond", async () => {
+  const c = fresh();
+  const id = (await c.query("contact", { limit: 1 })).data[0]!.id;
+  for (let i = 1; i <= 30; i++) await c.update("contact", id, { lead_score: i });
+  const seen: { id: string; to?: unknown }[] = [];
+  let cursor: string | null = null;
+  let pagesRead = 0;
+  do {
+    const p = await c.timeline(id, cursor);
+    seen.push(...p.data.map((e) => ({ id: e.id, to: e.changes?.[0]?.to })));
+    cursor = p.next_cursor;
+    pagesRead++;
+  } while (cursor);
+  assert.ok(pagesRead >= 2, "more than one page");
+  assert.equal(new Set(seen.map((e) => e.id)).size, seen.length);
+  assert.deepEqual(seen.slice(0, 30).map((e) => e.to), Array.from({ length: 30 }, (_, i) => 30 - i));
+  assert.equal(seen.length, (await c.timeline(id)).total);
+});
+
 test("writes are validated like the server will, and exit rules are enforced", async () => {
   const c = fresh();
   const bad = (status: number) => (e: unknown) => e instanceof RecordsError && e.status === status;

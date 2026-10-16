@@ -86,6 +86,16 @@ const startOfDay = (ms: number) => {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 };
 
+/** An instant as the value of <input type="datetime-local"> (the viewer's zone), and back. */
+export function toLocalInput(iso: unknown): string {
+  const d = new Date(Date.parse(String(iso)));
+  return Number.isNaN(d.getTime()) ? "" : `${toDay(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+export function fromLocalInput(s: string): string | undefined {
+  const t = new Date(s).getTime();
+  return s && !Number.isNaN(t) ? new Date(t).toISOString() : undefined;
+}
+
 const dayFmt = new Intl.DateTimeFormat(LOCALE, { day: "numeric", month: "short", year: "numeric" });
 /** "2026-10-17" -> "Oct 17, 2026" */
 export function formatDay(s: string): string {
@@ -173,4 +183,16 @@ export function valueText(field: Pick<FieldDef, "type" | "options">, value: unkn
     default:
       return String(value);
   }
+}
+
+const PLAIN: string[] = ["text", "email", "phone", "url", "number", "money", "select", "stage", "date"];
+
+/** One short line to tell records apart: the first filled field (after the name) of a type that reads as plain text. */
+export function subtitle(values: Record<string, unknown>, fields: Pick<FieldDef, "key" | "type" | "options">[], primary: string): string {
+  for (const f of fields) {
+    if (f.key === primary || !PLAIN.includes(f.type)) continue;
+    const v = values[f.key];
+    if (v !== undefined && v !== null && v !== "") return f.type === "url" ? String(v).replace(/^https?:\/\//i, "").replace(/\/$/, "") : valueText(f, v);
+  }
+  return "";
 }

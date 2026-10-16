@@ -17,9 +17,9 @@ export type Env = {
 };
 
 const DAY_MS = 86_400_000;
-const PSEUDO: Record<string, FieldDef> = Object.fromEntries(
-  ["id", "display_name"].map((key) => [key, { key, label: key, type: "text", options: {}, rules: {}, is_system: true, position: 0, archived: false } satisfies FieldDef]),
-);
+const PSEUDO: Record<string, FieldDef> = {
+  display_name: { key: "display_name", label: "Name", type: "text", options: {}, rules: {}, is_system: true, position: 0, archived: false },
+};
 
 // ---- time ----
 
@@ -55,6 +55,12 @@ export function evaluate(f: Filter | null | undefined, rec: RecordRow, env: Env)
 }
 
 function test(rec: RecordRow, c: FilterCondition, env: Env): boolean {
+  // Looking records up by id ("in") is how the screens fetch the names behind record links in one call.
+  if (c.field === "id") {
+    if (c.op === "in") return Array.isArray(c.value) && c.value.includes(rec.id);
+    if (c.op === "is") return rec.id === c.value;
+    throw new RecordsError(400, `"${c.op}" does not apply to id.`);
+  }
   const field = env.field(rec.object, c.field) ?? PSEUDO[c.field];
   if (!field) throw new RecordsError(400, `There is no field "${c.field}".`);
   if (!opsFor(field).includes(c.op)) throw new RecordsError(400, `"${c.op}" does not apply to ${field.label}.`);

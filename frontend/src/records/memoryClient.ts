@@ -84,7 +84,7 @@ export function createMemoryClient(opts: MemoryOptions = {}): RecordsClient {
   const stamp = () => new Date(now()).toISOString();
   const log = (rec: RecordRow, e: Omit<TimelineEvent, "id" | "record_id" | "at" | "actor_id">) => {
     const list = events.get(rec.id) ?? [];
-    list.push({ id: `ev_live_${++seq}`, record_id: rec.id, at: stamp(), actor_id: me()?.id ?? null, ...e });
+    list.push({ id: `ev_live_${String(++seq).padStart(8, "0")}`, record_id: rec.id, at: stamp(), actor_id: me()?.id ?? null, ...e });
     events.set(rec.id, list);
   };
 
