@@ -1,0 +1,139 @@
+/* Sign in, sign up and magic link screens: a calm centered card outside the shell. */
+
+.au-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100dvh;
+  padding: 0 var(--space-4);
+  background: var(--sidebar-bg);
+}
+.au-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 960px;
+  height: var(--topbar-h);
+  flex: none;
+}
+.au-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.au-main {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+  padding: var(--space-8) 0 var(--space-12);
+}
+.au-card {
+  width: min(420px, 100%);
+  padding: var(--space-8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.au-card h1 {
+  font-size: var(--fs-xl);
+}
+.au-sub {
+  margin-top: var(--space-1);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.au-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-6);
+}
+.au-form .ui-btn,
+.au-actions .ui-btn {
+  width: 100%;
+}
+.au-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+}
+.au-or {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+.au-or::before,
+.au-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.au-error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+  color: var(--danger-text);
+  font-size: var(--fs-sm);
+}
+.au-error svg {
+  flex: none;
+  margin-top: 1px;
+}
+.au-foot {
+  margin-top: var(--space-6);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+.au-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+.au-dev {
+  margin-top: var(--space-6);
+  padding: var(--space-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+}
+.au-dev p {
+  margin-bottom: var(--space-2);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+.au-busy {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+  color: var(--text-2);
+}
+
+@media (max-width: 767px) {
+  .au-main {
+    padding-top: var(--space-4);
+  }
+  .au-card {
+    padding: var(--space-5);
+  }
+}

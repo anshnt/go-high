@@ -1,10 +1,12 @@
 import * as RDialog from "@radix-ui/react-dialog";
-import { Keyboard, Moon, Rows3, Search, SlidersHorizontal, Sun, SquareDashed, type LucideIcon } from "lucide-react";
+import { ArrowRightLeft, Keyboard, LogOut, Moon, Rows3, Search, SlidersHorizontal, Sun, SquareDashed, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { APPS_NAV, CORE, SETTINGS, SETTINGS_NAV } from "../lib/nav";
 import { fuzzy, rank } from "../lib/fuzzy";
+import { workspaceId } from "../lib/api";
 import { density, theme, toggleDensity, toggleTheme } from "../lib/prefs";
+import { selectWorkspace, signOut, useMe } from "../lib/session";
 import { useStore } from "../lib/store";
 import { Kbd } from "../ui";
 
@@ -17,6 +19,8 @@ export function CommandPalette({ open, onOpenChange, onCustomize, onShortcuts }:
   const navigate = useNavigate();
   const dark = useStore(theme) === "dark";
   const compact = useStore(density) === "compact";
+  const me = useMe();
+  const currentWorkspace = useStore(workspaceId);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
@@ -33,8 +37,12 @@ export function CommandPalette({ open, onOpenChange, onCustomize, onShortcuts }:
       { id: "act-density", group: "Actions", label: compact ? "Use comfortable density" : "Use compact density", keywords: "toggle spacing rows", icon: Rows3, run: toggleDensity },
       { id: "act-sidebar", group: "Actions", label: "Customize sidebar", keywords: "hide reorder navigation", icon: SlidersHorizontal, run: onCustomize },
       { id: "act-keys", group: "Actions", label: "Show keyboard shortcuts", keywords: "help keys", icon: Keyboard, run: onShortcuts },
+      ...(me?.workspaces ?? [])
+        .filter((w) => w.id !== currentWorkspace)
+        .map((w) => ({ id: `ws-${w.id}`, group: "Actions", label: `Switch workspace: ${w.name}`, keywords: "change team account", icon: ArrowRightLeft, run: () => selectWorkspace(w.id) })),
+      { id: "act-signout", group: "Actions", label: "Sign out", keywords: "log out logout exit", icon: LogOut, run: () => void signOut() },
     ];
-  }, [navigate, dark, compact, onCustomize, onShortcuts]);
+  }, [navigate, dark, compact, me, currentWorkspace, onCustomize, onShortcuts]);
 
   const results = useMemo(() => {
     const scored = rank(commands, (c) => {
