@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "workspace.created",
+  "description": "A workspace was created, by sign up or by an organization admin. Subject: the workspace.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"},
+    "org_id": {"type": "string", "format": "uuid"},
+    "brand_id": {"type": "string", "format": "uuid"}
+  },
+  "required": ["id", "name", "org_id", "brand_id"],
+  "additionalProperties": false
+}

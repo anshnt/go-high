@@ -5,12 +5,12 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from . import auth, config, workspaces
+from . import api, auth, config, webhooks, workspaces
 from .db import get_db
 from .logs import setup_logging, trace_id
 from .security import COOKIE, UNSAFE
@@ -30,6 +30,8 @@ def migrate() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     setup_logging()
+    if config.SECRET_KEY == config.DEV_SECRET_KEY:
+        log.warning("SECRET_KEY is not set: pagination cursors are signed with a public development key")
     # ponytail: migrations on startup; run `alembic upgrade head` as a release step
     # once there is more than one API replica.
     migrate()
@@ -38,6 +40,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="go-high API", version="0.1.0", lifespan=lifespan, docs_url="/api/docs",
               openapi_url="/api/openapi.json", redoc_url=None)
+api.install(app)
 
 
 @app.middleware("http")
@@ -47,6 +50,8 @@ async def csrf(request: Request, call_next):
     origin = request.headers.get("origin")
     if (request.method in UNSAFE and COOKIE in request.cookies and origin is not None
             and origin.rstrip("/") not in config.ALLOWED_ORIGINS):
+        if api.is_v1(request):
+            return api.error_response(403, "forbidden", "Origin not allowed")
         return JSONResponse({"detail": "Origin not allowed"}, status_code=403)
     return await call_next(request)
 
@@ -78,13 +83,14 @@ def health(db: Session = Depends(get_db)):
 
 app.include_router(auth.router)
 app.include_router(workspaces.router)
+app.include_router(webhooks.router)
 
 
 @app.get("/{path:path}", include_in_schema=False)
 def web(path: str):
     """Static files from the built frontend; any other non-API path gets index.html (client routing)."""
     if path.startswith("api/"):
-        return JSONResponse({"detail": "Not Found"}, status_code=404)
+        raise HTTPException(404, "Not Found")
     dist = config.FRONTEND_DIST.resolve()
     file = (dist / path).resolve()
     if path and file.is_file() and file.is_relative_to(dist):

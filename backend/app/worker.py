@@ -5,7 +5,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from . import config, jobs
+from . import config, jobs, webhooks  # noqa: F401  (webhooks registers the delivery handlers)
 from .db import SessionLocal
 from .logs import setup_logging
 

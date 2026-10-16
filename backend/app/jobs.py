@@ -24,6 +24,9 @@ HANDLERS: dict[str, Callable[[Session, dict], None]] = {}
 class Job(Base):
     __tablename__ = "jobs"
     __table_args__ = (Index("ix_jobs_due", "run_at", postgresql_where=text("status = 'queued'")),)
+    # Request handlers (gohigh_app) may INSERT jobs and read back only the id. Fetching run_at and created_at after
+    # the insert would need SELECT on the whole queue, whose rows are not tenant scoped.
+    __mapper_args__ = {"eager_defaults": False}
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     kind: Mapped[str] = mapped_column(String(100))

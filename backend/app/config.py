@@ -22,3 +22,12 @@ LOGIN_MAX_FAILURES_PER_EMAIL = int(os.getenv("LOGIN_MAX_FAILURES_PER_EMAIL", "20
 LOGIN_WINDOW_MINUTES = int(os.getenv("LOGIN_WINDOW_MINUTES", "15"))
 RECENT_AUTH_MINUTES = int(os.getenv("RECENT_AUTH_MINUTES", "15"))  # setting a first password needs a fresh session
 DEV_EXPOSE_MAGIC_LINKS = os.getenv("DEV_EXPOSE_MAGIC_LINKS", "0") == "1"  # tests and local dev only
+
+DEV_SECRET_KEY = "dev-only-secret-key-change-me"
+SECRET_KEY = os.getenv("SECRET_KEY") or DEV_SECRET_KEY  # signs pagination cursors; set the same value on every replica
+
+# Webhook targets must be https and resolve to a public address. The two switches below are for tests and local
+# development: plain http, and exact addresses (a local receiver on 127.0.0.1) that pass the address check.
+# The addresses only count while ALLOW_HTTP_WEBHOOKS is on. Never set either on a reachable server.
+ALLOW_HTTP_WEBHOOKS = os.getenv("ALLOW_HTTP_WEBHOOKS", "0") == "1"
+WEBHOOK_ALLOW_IPS = {a.strip() for a in os.getenv("WEBHOOK_ALLOW_IPS", "").split(",") if a.strip()}
