@@ -8,8 +8,10 @@ COPY frontend/ ./
 RUN npm run build
 
 FROM python:3.13-slim
+ARG APP_VERSION=0.0.0-dev
+LABEL org.opencontainers.image.source=https://github.com/anshnt/go-high \n      org.opencontainers.image.description="go-high growth platform (API, web app and worker)"
 COPY --from=ghcr.io/astral-sh/uv:0.11 /uv /usr/local/bin/uv
-ENV PYTHONUNBUFFERED=1 UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy FRONTEND_DIST=/app/frontend/dist
+ENV PYTHONUNBUFFERED=1 UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy FRONTEND_DIST=/app/frontend/dist \n    APP_VERSION=$APP_VERSION
 WORKDIR /app/backend
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project

@@ -18,11 +18,31 @@ Work is tracked in [issues](https://github.com/anshnt/go-high/issues) grouped by
 
 ## Quick start
 
+From a clone, build and run everything locally:
+
 ```bash
 docker compose up --build
 ```
 
 Open http://localhost:8000 (API docs at `/api/docs`). The `worker` service runs background jobs from the same image.
+
+### Run a release
+
+Releases publish `ghcr.io/anshnt/go-high:<version>` (and `:latest`). With this repository's `docker-compose.yml` and a `.env` copied from [.env.example](.env.example):
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+Put it behind a TLS reverse proxy, set `PUBLIC_URL` to the https origin, `COOKIE_SECURE=1`, a long random `SECRET_KEY`, and `FORWARDED_ALLOW_IPS` to the proxy's address. `/api/health` reports the running version.
+
+### Cutting a release
+
+Tag `main` and push the tag; the Release workflow builds and publishes the image and creates the GitHub release with notes from the merged pull requests:
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
 
 ### Without Docker
 
