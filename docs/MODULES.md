@@ -30,8 +30,8 @@ Milestones: **M0 Foundations**, **M1 Core CRM** (first sellable product), **M2 G
 - Agency (company) > sub-account (location) > users; agency users can switch into any sub-account.
 
 **Better**
-- [ ] Organization > Brand > Workspace from day one (multi-brand white label without a second account)
-- [ ] `workspace_id` on every row plus Postgres Row Level Security, enforced in tests
+- [x] Organization > Brand > Workspace from day one (multi-brand white label without a second account)
+- [x] `workspace_id` on every row plus Postgres Row Level Security, enforced in tests
 - [ ] Sign in with email + password, magic link, Google, Microsoft; TOTP and passkeys; org-enforced 2FA policy
 - [ ] Session list with revoke, idle timeout, IP allowlist (higher plans)
 - [ ] Workspace switcher that remembers the last page per workspace
