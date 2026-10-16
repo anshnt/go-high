@@ -32,6 +32,11 @@ frontend/  React app (agency view, workspace view, builders)
 docs/      plan, module specs, research, ADRs
 ```
 
+## Related
+
+- [ADR 0002](0002-record-engine.md): one record engine for contacts, companies, deals and custom objects.
+- [ADR 0003](0003-events-webhooks-api.md): event log, webhooks and API conventions.
+
 ## Consequences
 
 - One Postgres to back up, monitor and scale; read replicas and partitioning of the event tables are the first scaling steps.
