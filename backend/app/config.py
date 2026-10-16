@@ -31,3 +31,7 @@ SECRET_KEY = os.getenv("SECRET_KEY") or DEV_SECRET_KEY  # signs pagination curso
 # The addresses only count while ALLOW_HTTP_WEBHOOKS is on. Never set either on a reachable server.
 ALLOW_HTTP_WEBHOOKS = os.getenv("ALLOW_HTTP_WEBHOOKS", "0") == "1"
 WEBHOOK_ALLOW_IPS = {a.strip() for a in os.getenv("WEBHOOK_ALLOW_IPS", "").split(",") if a.strip()}
+
+# ponytail: there is no workspace settings table yet, so a phone field's own `options.region` wins and this is the
+# fallback (ISO 3166 alpha-2). Move it to a workspace setting when that exists.
+DEFAULT_PHONE_REGION = os.getenv("DEFAULT_PHONE_REGION", "US")
