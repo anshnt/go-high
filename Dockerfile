@@ -20,4 +20,6 @@ USER gohigh
 ENV PATH=/app/backend/.venv/bin:$PATH
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4)"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# X-Forwarded-For is trusted only from FORWARDED_ALLOW_IPS (default 127.0.0.1): set it to the load balancer's
+# address, never "*", or any client can pick its own IP and dodge the sign-in throttle.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]

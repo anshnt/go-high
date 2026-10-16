@@ -10,9 +10,10 @@ from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from . import config
+from . import auth, config, workspaces
 from .db import get_db
 from .logs import setup_logging, trace_id
+from .security import COOKIE, UNSAFE
 
 BACKEND = Path(__file__).resolve().parents[1]
 log = logging.getLogger("api")
@@ -40,6 +41,17 @@ app = FastAPI(title="go-high API", version="0.1.0", lifespan=lifespan, docs_url=
 
 
 @app.middleware("http")
+async def csrf(request: Request, call_next):
+    """Cookie-authenticated writes from a browser page on another origin are refused. Requests without an
+    Origin header (curl, server to server) carry no ambient browser credentials worth defending."""
+    origin = request.headers.get("origin")
+    if (request.method in UNSAFE and COOKIE in request.cookies and origin is not None
+            and origin.rstrip("/") not in config.ALLOWED_ORIGINS):
+        return JSONResponse({"detail": "Origin not allowed"}, status_code=403)
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def trace(request: Request, call_next):
     tid = request.headers.get("x-request-id", "")[:64] or uuid.uuid4().hex
     token = trace_id.set(tid)
@@ -62,6 +74,10 @@ def health(db: Session = Depends(get_db)):
         log.exception("health check: database unreachable")
         return JSONResponse({"status": "degraded", "database": False}, status_code=503)
     return {"status": "ok", "database": True, "version": app.version}
+
+
+app.include_router(auth.router)
+app.include_router(workspaces.router)
 
 
 @app.get("/{path:path}", include_in_schema=False)

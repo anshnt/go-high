@@ -1,0 +1,39 @@
+# Security
+
+This is proprietary software of SROT AI LLP. Report a vulnerability privately to
+sjain@srot-ai.com with steps to reproduce; do not open a public issue.
+
+## Tenant isolation
+
+- Every tenant table has row level security with `FORCE ROW LEVEL SECURITY`. Request handlers run as
+  `gohigh_app`, a `NOLOGIN`, non-superuser, non-owner role without `BYPASSRLS`. The user, organization
+  and workspace context is set with `SET LOCAL` per transaction, so a missing `WHERE` clause cannot leak
+  another tenant's rows.
+- The workspace a request acts on (`X-Workspace-Id`) is resolved through row level security first. A
+  workspace the user cannot see is a 404 before any context is set.
+- Tests call every `/api` route as one tenant with another tenant's ids, and query every tenant table
+  unfiltered as `gohigh_app`, asserting nothing crosses over.
+
+## Accounts and sessions
+
+- Passwords hashed with scrypt (per-user salt, parameters stored with the hash so they can be raised).
+  Unknown emails burn a dummy hash so timing does not reveal which accounts exist.
+- Sessions are random tokens; only their SHA-256 is stored. Idle timeout, absolute expiry and revocation
+  are checked in SQL on every request; revoking a session takes effect on the next request.
+- Session cookie: `HttpOnly`, `SameSite=Lax`, `Secure` unless `COOKIE_SECURE=0` (local http only).
+- Cookie-authenticated writes whose `Origin` is not in `PUBLIC_URL` are refused (CSRF).
+- Failed sign-ins are throttled per email and IP (5 per 15 minutes) and per email across all IPs (20).
+  `X-Forwarded-For` is trusted only from `FORWARDED_ALLOW_IPS`; never set it to `*`.
+- Magic links are single use, expire after 15 minutes, are consumed by POST (so mail scanners cannot burn
+  them), and requesting one answers the same way whether or not the account exists.
+- Sign up does not verify the address. The first magic-link sign-in does, and it clears any password and
+  revokes every session created before it, so registering someone else's address gains nothing. Features
+  that trust an email address (invitations, sending as the user) must require `email_verified`.
+- `DEV_EXPOSE_MAGIC_LINKS=1` returns sign-in links in API responses. It is for tests and local development
+  only and must never be set on a reachable server.
+
+## Repository
+
+- `main` is protected: changes arrive by pull request with passing CI; force pushes and deletion are blocked.
+- Dependabot watches Python, npm and Actions dependencies.
+- Never commit secrets or `.env` files.

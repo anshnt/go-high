@@ -19,6 +19,9 @@ services:
         condition: service_healthy
     environment: &env
       DATABASE_URL: postgresql+psycopg://gohigh:${POSTGRES_PASSWORD:-change-me-locally}@db:5432/gohigh
+      # Local compose is plain http; set both for a real deployment (https origin, secure cookies).
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8000,http://127.0.0.1:8000}
+      COOKIE_SECURE: ${COOKIE_SECURE:-0}
     ports:
       - "8000:8000"
 

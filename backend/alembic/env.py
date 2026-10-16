@@ -1,6 +1,6 @@
 from alembic import context
 
-from app import jobs  # noqa: F401  (registers tables on Base.metadata)
+from app import jobs, models  # noqa: F401  (registers tables on Base.metadata)
 from app.db import Base, engine
 
 target_metadata = Base.metadata
