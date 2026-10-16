@@ -22,7 +22,7 @@ go-high is a multi-tenant growth platform (CRM, inbox, sites, automation, paymen
 | Payments | Stripe first (Connect for agencies), adapters later for PayPal, Razorpay, Square | Stripe covers invoices, subscriptions and Connect payouts. |
 | AI | Claude via the Anthropic SDK (Sonnet for agents and writing, Haiku for classification and routing) | Tool use against our own read and write APIs, with every AI action logged and reversible. |
 | Auth | Email + password, magic links, Google and Microsoft OAuth, TOTP 2FA, SAML SSO on higher plans | |
-| Deploy | Docker images (api, worker, web), docker compose for local and small installs | |
+| Deploy | One Docker image (the API serves the built web app; the worker is the same image with another command), docker compose for local and small installs | Fewer artifacts to build and version; split the web app onto a CDN when traffic needs it. |
 
 ## Repository layout
 
