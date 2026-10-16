@@ -136,3 +136,10 @@ def in_workspace(c: Ctx = Depends(user), x_workspace_id: str | None = Header(def
     c.workspace, c.workspace_role = ws, workspace_role(c.db, c.user_id, ws)
     rescope(c.db, user_id=c.user_id, org_id=ws.org_id, workspace_id=ws.id)
     return c
+
+
+def workspace_admin(c: Ctx = Depends(in_workspace)) -> Ctx:
+    """`in_workspace` for routes only workspace admins (and org owners and admins) may call."""
+    if c.workspace_role != "admin":
+        raise HTTPException(403, "Workspace admins only")
+    return c

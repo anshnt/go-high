@@ -11,11 +11,11 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import config, security
+from . import config, events, security
 from .db import scoped
 from .models import AuthSession, Brand, MagicLink, Organization, OrgMember, User, Workspace
 from .security import COOKIE, Ctx, system_db, token_hash, user
-from .tenancy import my_orgs, my_workspaces
+from .tenancy import my_orgs, my_workspaces, workspace_data
 
 log = logging.getLogger("auth")
 router = APIRouter(prefix="/api")
@@ -70,6 +70,13 @@ def signup(body: SignUp, request: Request, response: Response, db: Session = Dep
     db.flush()
     workspace = Workspace(org_id=org.id, brand_id=brand.id, name="Main")
     db.add(workspace)
+    db.flush()
+    actor = ("user", account.id)
+    events.emit(db, "workspace.created", "workspace", workspace.id, workspace_data(workspace), actor=actor,
+                workspace_id=workspace.id)
+    events.emit(db, "user.signed_up", "user", account.id,
+                {"id": account.id, "email": account.email, "name": account.name, "org_id": org.id,
+                 "workspace_id": workspace.id}, actor=actor, workspace_id=workspace.id)
     security.start_session(db, response, request, account.id)
     db.commit()
     return {"user": user_json(account), "org_id": org.id, "brand_id": brand.id, "workspace_id": workspace.id}

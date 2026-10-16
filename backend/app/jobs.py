@@ -19,11 +19,15 @@ LEASE = timedelta(minutes=15)
 MAX_BACKOFF = timedelta(hours=1)
 
 HANDLERS: dict[str, Callable[[Session, dict], None]] = {}
+BACKOFFS: dict[str, Callable[[int], timedelta]] = {}  # per kind; default backoff() below
 
 
 class Job(Base):
     __tablename__ = "jobs"
     __table_args__ = (Index("ix_jobs_due", "run_at", postgresql_where=text("status = 'queued'")),)
+    # Request handlers (gohigh_app) may INSERT jobs and read back only the id. Fetching run_at and created_at after
+    # the insert would need SELECT on the whole queue, whose rows are not tenant scoped.
+    __mapper_args__ = {"eager_defaults": False}
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     kind: Mapped[str] = mapped_column(String(100))
@@ -39,9 +43,11 @@ class Job(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
-def handler(kind: str):
+def handler(kind: str, backoff: Callable[[int], timedelta] | None = None):
     def register(fn):
         HANDLERS[kind] = fn
+        if backoff:
+            BACKOFFS[kind] = backoff
         return fn
     return register
 
@@ -101,7 +107,8 @@ def run_one(sessions: sessionmaker) -> bool:
             if job.attempts >= job.max_attempts:
                 outcome = dict(status="dead", finished_at=func.now(), last_error=error)
             else:
-                outcome = dict(status="queued", run_at=func.now() + backoff(job.attempts), last_error=error)
+                delay = BACKOFFS.get(job.kind, backoff)(job.attempts)
+                outcome = dict(status="queued", run_at=func.now() + delay, last_error=error)
         db.execute(update(Job).where(Job.id == job.id).values(**outcome, locked_at=None))
         db.commit()
     return True

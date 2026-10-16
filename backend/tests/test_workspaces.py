@@ -1,24 +1,5 @@
-from fastapi.testclient import TestClient
+from helpers import H, add_member
 from sqlalchemy import text
-
-from app.main import app
-
-H = "X-Workspace-Id"
-
-
-def add_member(db, org_id, email, org_role="member", workspace_id=None, workspace_role="member"):
-    """Creates a user directly (as the owner role) and returns a signed-in client."""
-    user_id = db.execute(text("INSERT INTO users (email, name) VALUES (:e, 'M') RETURNING id"), {"e": email}).scalar()
-    db.execute(text("INSERT INTO org_members (user_id, org_id, role) VALUES (:u, :o, :r)"),
-               {"u": user_id, "o": org_id, "r": org_role})
-    if workspace_id:
-        db.execute(text("INSERT INTO workspace_members (user_id, workspace_id, role) VALUES (:u, :w, :r)"),
-                   {"u": user_id, "w": workspace_id, "r": workspace_role})
-    db.commit()
-    client = TestClient(app)
-    link = client.post("/api/auth/magic-link", json={"email": email}).json()["link"]
-    assert client.post("/api/auth/magic-link/consume", json={"token": link.split("token=")[1]}).status_code == 200
-    return client
 
 
 def test_list_and_get_my_workspaces(make_user):

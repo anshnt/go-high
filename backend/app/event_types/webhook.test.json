@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "webhook.test",
+  "description": "A test event sent on request to one endpoint, whatever its subscriptions. Subject: the endpoint.",
+  "type": "object",
+  "properties": {
+    "endpoint_id": {"type": "string", "format": "uuid"},
+    "message": {"type": "string"}
+  },
+  "required": ["endpoint_id", "message"],
+  "additionalProperties": false
+}

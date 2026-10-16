@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "user.signed_up",
+  "description": "A new account was registered with its organization and first workspace. Subject: the user.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "email": {"type": "string", "format": "email"},
+    "name": {"type": "string"},
+    "org_id": {"type": "string", "format": "uuid"},
+    "workspace_id": {"type": "string", "format": "uuid"}
+  },
+  "required": ["id", "email", "name", "org_id", "workspace_id"],
+  "additionalProperties": false
+}

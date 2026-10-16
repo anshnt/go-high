@@ -82,9 +82,12 @@ Milestones: **M0 Foundations**, **M1 Core CRM** (first sellable product), **M2 G
 **Better**
 - [ ] API parity rule: the UI uses the same public API, so every UI action is an API call
 - [ ] OpenAPI 3.1 generated from the code; versioned by date; 12 month deprecation policy
-- [ ] Cursor pagination, idempotency keys, consistent errors with trace id, `Retry-After` on 429
-- [ ] Event catalog with JSON schemas for every state change; outbox table so events never get lost
-- [ ] Webhook subscriptions with filters, signed (HMAC), retries with backoff, delivery log with search and bulk replay
+- [x] Cursor pagination, idempotency keys, consistent errors with trace id (on `/api/v1`)
+- [ ] `Retry-After` on 429 for `/api/v1` (the error envelope passes it through; needs the per-workspace rate limits)
+- [x] Outbox table (`events`, written in the same transaction as the change) with snapshot-safe consumers, so events never get lost
+- [ ] Event catalog with JSON schemas for every state change (4 types so far; the public catalog page is generated from `backend/app/event_types`)
+- [x] Webhook subscriptions with filters, signed (HMAC), retries with backoff, delivery log with status filter and replay
+- [ ] Delivery log search by event type and date, bulk replay of failed deliveries, email to admins when an endpoint is disabled
 - [ ] API keys per workspace with scopes; OAuth apps for third parties
 - [ ] Event stream (SSE) for realtime integrations
 

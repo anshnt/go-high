@@ -112,3 +112,15 @@ def test_unknown_kind_is_rejected(db):
 def test_backoff_grows_and_caps():
     assert [backoff(n).total_seconds() for n in (1, 2, 3)] == [10, 20, 40]
     assert backoff(30) == jobs.MAX_BACKOFF
+
+
+def test_a_kind_can_bring_its_own_backoff(db):
+    @handler("slow_retry", backoff=lambda attempts: timedelta(hours=attempts))
+    def slow_retry(session, payload):
+        raise RuntimeError("down")
+
+    job = enqueue(db, "slow_retry", max_attempts=3)
+    db.commit()
+    run_one(SessionLocal)
+    retry = get(db, job.id)
+    assert retry.run_at > db.scalar(select(func.now())) + timedelta(minutes=59)

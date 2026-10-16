@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "webhook_endpoint.created",
+  "description": "A webhook endpoint was registered. Neither the signing secret nor the URL (which may carry a token) is part of the event. Subject: the endpoint.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "event_types": {"type": "array", "items": {"type": "string"}},
+    "filter": {"type": "object"},
+    "active": {"type": "boolean"}
+  },
+  "required": ["id", "event_types", "filter", "active"],
+  "additionalProperties": false
+}

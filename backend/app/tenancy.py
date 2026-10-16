@@ -23,8 +23,12 @@ def workspace_role(db: Session, user_id: uuid.UUID, ws: Workspace) -> str | None
         WorkspaceMember.user_id == user_id, WorkspaceMember.workspace_id == ws.id))
 
 
+def workspace_data(ws: Workspace) -> dict:
+    return {"id": ws.id, "name": ws.name, "org_id": ws.org_id, "brand_id": ws.brand_id}
+
+
 def workspace_json(ws: Workspace, role: str | None) -> dict:
-    return {"id": ws.id, "name": ws.name, "org_id": ws.org_id, "brand_id": ws.brand_id, "role": role}
+    return {**workspace_data(ws), "role": role}
 
 
 def my_workspaces(db: Session, user_id: uuid.UUID) -> list[dict]:
