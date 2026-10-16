@@ -13,6 +13,7 @@ services:
       retries: 20
 
   api:
+    image: ghcr.io/anshnt/go-high:${GOHIGH_VERSION:-latest}
     build: .
     depends_on:
       db:
@@ -22,10 +23,13 @@ services:
       # Local compose is plain http; set both for a real deployment (https origin, secure cookies).
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8000,http://127.0.0.1:8000}
       COOKIE_SECURE: ${COOKIE_SECURE:-0}
+      SECRET_KEY: ${SECRET_KEY:-change-me-locally}
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
     ports:
       - "8000:8000"
 
   worker:
+    image: ghcr.io/anshnt/go-high:${GOHIGH_VERSION:-latest}
     build: .
     command: ["python", "-m", "app.worker"]
     healthcheck:

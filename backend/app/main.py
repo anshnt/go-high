@@ -38,7 +38,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="go-high API", version="0.1.0", lifespan=lifespan, docs_url="/api/docs",
+app = FastAPI(title="go-high API", version=config.VERSION, lifespan=lifespan, docs_url="/api/docs",
               openapi_url="/api/openapi.json", redoc_url=None)
 api.install(app)
 

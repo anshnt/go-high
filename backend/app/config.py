@@ -8,6 +8,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://gohigh:gohigh@127
 FRONTEND_DIST = Path(os.getenv("FRONTEND_DIST", str(ROOT / "frontend" / "dist")))
 WORKER_POLL_SECONDS = float(os.getenv("WORKER_POLL_SECONDS", "1"))
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+VERSION = os.getenv("APP_VERSION", "0.0.0-dev")  # baked into release images
 
 # Comma separated browser origins allowed to send cookie-authenticated writes; the first one builds magic links.
 PUBLIC_URL = os.getenv(
