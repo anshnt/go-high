@@ -1,13 +1,16 @@
 """Background worker: `python -m app.worker`. Run as many copies as needed."""
 import logging
 import signal
+import tempfile
 import time
+from pathlib import Path
 
 from . import config, jobs
 from .db import SessionLocal
 from .logs import setup_logging
 
 log = logging.getLogger("worker")
+HEARTBEAT = Path(tempfile.gettempdir(), "worker-heartbeat")  # docker healthcheck: stale file = stuck worker
 
 
 def main() -> None:
@@ -22,6 +25,7 @@ def main() -> None:
     signal.signal(signal.SIGINT, stop)
     log.info("worker started, handlers: %s", ", ".join(sorted(jobs.HANDLERS)))
     while not stopping:
+        HEARTBEAT.touch()
         try:
             if jobs.run_one(SessionLocal):
                 continue
