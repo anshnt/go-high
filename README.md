@@ -99,3 +99,26 @@ def verify(secret: str, signature_header: str, body: bytes, tolerance: int = 300
 ```
 
 Webhook URLs must be `https` and resolve to public addresses only (no private, loopback, link-local, CGNAT, multicast or reserved space, IPv4-mapped forms included). The check runs when the URL is saved and again before every send; the request then connects to the address it just checked, with the original host in the `Host` header and the TLS handshake, so a DNS answer that changes in between cannot redirect it. For local development, `ALLOW_HTTP_WEBHOOKS=1` allows plain http and `WEBHOOK_ALLOW_IPS=127.0.0.1` (exact addresses, comma separated, only honoured with the first setting) lets a receiver on your machine through. Never set either on a reachable server.
+
+## Channel adapters
+
+`app/channels/` is the messaging provider layer of ADR 0005: library code with no tables and no routes, so the inbox webhook handler and the `message.send` job call it the same way. One module per provider (`twilio`, `telnyx`, `smtp`, `mailgun`, `meta_whatsapp`); Amazon SES is the SMTP adapter pointed at its SMTP endpoint. `channels.ADAPTERS` maps a `channels.provider` value to its module, and every module has the same three functions:
+
+```python
+from app.channels import ADAPTERS
+from app.channels.base import Channel, Outbound, Request
+
+adapter = ADAPTERS[row.provider]
+channel = Channel(address=row.address, config=row.config, secrets=decrypted_secret)  # secrets never live in config
+ok = adapter.verify(channel, Request(url, headers, raw_body))  # False when unsigned, wrongly signed or stale
+items = adapter.parse(Request(url, headers, raw_body))         # list[Inbound]; ValueError on a body the provider would not send
+result = adapter.send(channel, Outbound(to=..., from_=..., body=..., idempotency_key=str(message.id)))  # SendResult
+```
+
+- `Request` is the webhook as received: the full URL it was called on (behind a proxy, the public one; Twilio signs it, so `twilio.verify` also takes `public_url=`), the headers and the raw body bytes. Verify before parsing, on the raw bytes. Meta's GET handshake is `meta_whatsapp.challenge(channel, request)`: answer 200 with the returned text, or 403 on `None`.
+- `parse` returns `Inbound` items: kind `message` (status `received`) or `status` (`queued`, `sent`, `delivered`, `read`, `failed`; email adds `complained` and `unsubscribed`, which are opt-out signals, not message states). Reports can arrive out of order, so never move a message backwards. `thread_ref` is the provider id of the message being replied to; email ids are stored without angle brackets.
+- `send` raises `ChannelError`. `retryable` is true for timeouts, connection errors, 408, 429, 5xx, SMTP 4xx replies and Meta's throttling codes, false for everything a retry cannot fix (bad credentials, an invalid number, a refused address). `code` is the provider's own, for example Twilio 21610 for a recipient who replied STOP. A retried job must reuse the same `idempotency_key`: Twilio gets it as a header, SMTP and Mailgun derive the Message-ID from it; Telnyx and WhatsApp have no idempotency, so the job checks for an existing provider id first.
+- Provider hosts are fixed (stdlib `http.client`, 10 s timeouts). Hosts a user configures never are: the SMTP host goes through `app/ssrf.py` (public addresses only, connecting to the address that was checked while the name stays the TLS server name), as do the URLs of email attachments (10 MB in all). SMTP has no plaintext mode: `starttls` (587) or `tls` (465), and a server without STARTTLS is refused.
+- Settings per provider (`config` and `secrets` keys) are listed at the top of each module. `send` takes a keyword-only `base_url` for tests.
+
+`app/compliance.py` holds the pure rules the send path needs: `keyword(body)` (STOP, START, HELP lists, whole message only), `quiet_until(now, tz, start, end)` (next allowed time in the contact's zone, DST safe), `sms_segments(body)` (GSM-7 with the extension table, or UCS-2, as `(encoding, segments, chars)`) and `email_risk(subject, html, text, bulk)` (lint warnings). Their tests, with the adapter tests, are in `backend/tests/channels/` and need no database.
