@@ -1,0 +1,161 @@
+/* Design tokens. Light is the default; a saved choice sets data-theme on <html>.
+   White label = a different set of these variables. */
+:root {
+  /* neutral scale */
+  --n-0: #ffffff;
+  --n-50: #f8f8fa;
+  --n-100: #f1f1f4;
+  --n-200: #e4e4e9;
+  --n-300: #d0d0d8;
+  --n-400: #9b9ba7;
+  --n-500: #6e6e7a;
+  --n-600: #55555f;
+  --n-700: #3f3f48;
+  --n-800: #27272e;
+  --n-900: #18181c;
+  --n-950: #0e0e11;
+
+  /* semantic color (light) */
+  --bg: var(--n-0);
+  --sidebar-bg: var(--n-50);
+  --surface: var(--n-0);
+  --surface-2: var(--n-50);
+  --hover: var(--n-100);
+  --active: var(--n-200);
+  --border: var(--n-200);
+  --border-strong: var(--n-300);
+  --text: var(--n-900);
+  --text-2: var(--n-600);
+  --text-3: var(--n-500);
+  --overlay: rgba(14, 14, 17, 0.4);
+
+  /* one accent: indigo */
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-soft: #eef0ff;
+  --accent-text: #4338ca;
+  --on-accent: #ffffff;
+
+  --success: #16a34a;
+  --success-soft: #e7f6ec;
+  --success-text: #146c35;
+  --warning: #d97706;
+  --warning-soft: #fdf3e1;
+  --warning-text: #8a4b05;
+  --danger: #dc2626;
+  --danger-solid: #dc2626;
+  --danger-soft: #fdecec;
+  --danger-text: #b42318;
+  --info: #0284c7;
+  --info-soft: #e5f3fb;
+  --info-text: #04679c;
+
+  --focus: var(--accent);
+
+  /* radius */
+  --radius-sm: 4px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --radius-full: 999px;
+
+  /* spacing, 4px grid */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* shadow: borders do most of the work */
+  --shadow-sm: 0 1px 2px rgba(16, 16, 24, 0.05);
+  --shadow-md: 0 4px 16px rgba(16, 16, 24, 0.08), 0 1px 3px rgba(16, 16, 24, 0.06);
+  --shadow-lg: 0 16px 48px rgba(16, 16, 24, 0.16), 0 2px 8px rgba(16, 16, 24, 0.06);
+
+  /* type */
+  --font-sans: "Geist Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --fs-2xl: 24px;
+  --fs-ui: var(--fs-md);
+  --lh: 1.45;
+
+  /* density: comfortable (default). Hit targets are never below 32px on desktop. */
+  --control-h: 36px;
+  --control-h-sm: 32px;
+  --row-h: 44px;
+  --nav-h: 34px;
+
+  --sidebar-w: 232px;
+  --sidebar-w-collapsed: 56px;
+  --topbar-h: 52px;
+
+  color-scheme: light;
+}
+
+:root[data-density="compact"] {
+  --fs-ui: var(--fs-sm);
+  --control-h: 32px;
+  --row-h: 36px;
+  --nav-h: 32px;
+}
+
+:root[data-theme="dark"] {
+  --bg: #0e0e11;
+  --sidebar-bg: #131316;
+  --surface: #17171b;
+  --surface-2: #1d1d22;
+  --hover: #1f1f25;
+  --active: #2a2a31;
+  --border: #2a2a31;
+  --border-strong: #3a3a43;
+  --text: #ededf0;
+  --text-2: #a6a6b1;
+  --text-3: #85858f;
+  --overlay: rgba(0, 0, 0, 0.6);
+
+  --accent: #5457e8;
+  --accent-hover: #6366f1;
+  --accent-soft: rgba(99, 102, 241, 0.16);
+  --accent-text: #a5a8ff;
+  --on-accent: #ffffff;
+
+  --success: #34d399;
+  --success-soft: rgba(52, 211, 153, 0.14);
+  --success-text: #6ee7b7;
+  --warning: #fbbf24;
+  --warning-soft: rgba(251, 191, 36, 0.14);
+  --warning-text: #fcd34d;
+  --danger: #f87171;
+  --danger-solid: #dc2626;
+  --danger-soft: rgba(248, 113, 113, 0.14);
+  --danger-text: #fca5a5;
+  --info: #38bdf8;
+  --info-soft: rgba(56, 189, 248, 0.14);
+  --info-text: #7dd3fc;
+
+  --focus: #8b8ef5;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
+
+  color-scheme: dark;
+}
+
+/* Touch devices and phones: 40px targets, whatever the density. */
+@media (max-width: 767px), (pointer: coarse) {
+  :root,
+  :root[data-density="compact"] {
+    --control-h: 40px;
+    --control-h-sm: 40px;
+    --row-h: 48px;
+    --nav-h: 40px;
+  }
+}
