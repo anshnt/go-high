@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: gohigh
+      POSTGRES_USER: gohigh
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-locally}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gohigh -d gohigh"]
+      interval: 5s
+      retries: 20
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment: &env
+      DATABASE_URL: postgresql+psycopg://gohigh:${POSTGRES_PASSWORD:-change-me-locally}@db:5432/gohigh
+    ports:
+      - "8000:8000"
+
+  worker:
+    build: .
+    command: ["python", "-m", "app.worker"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/worker-heartbeat') > 60)"]
+      interval: 15s
+      start_period: 10s
+    depends_on:
+      api:
+        condition: service_healthy  # the API runs migrations on start
+    environment: *env
+
+volumes:
+  pgdata:
