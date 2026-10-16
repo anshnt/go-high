@@ -635,6 +635,141 @@
   color: var(--text);
 }
 
+.ui-table[data-fixed] {
+  table-layout: fixed;
+  width: 100%;
+}
+.ui-table[data-fixed] th,
+.ui-table[data-fixed] td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ui-table tbody tr[data-clickable] {
+  cursor: pointer;
+}
+.ui-table tbody tr[data-active] {
+  background: var(--hover);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.ui-table tbody tr[data-active][data-selected] {
+  background: var(--accent-soft);
+}
+.ui-table tbody tr.ui-spacer,
+.ui-table tbody tr.ui-spacer:hover {
+  background: none;
+}
+.ui-table tbody tr.ui-spacer td {
+  height: auto;
+  padding: 0;
+  border: 0;
+}
+
+/* ---- Popover panel, combobox ---- */
+.ui-popover-panel {
+  padding: var(--space-3);
+  max-width: calc(100vw - var(--space-4));
+  max-height: var(--radix-popover-content-available-height);
+  overflow: auto;
+}
+.ui-combo {
+  display: flex;
+  flex-direction: column;
+  width: max(var(--radix-popover-trigger-width), 260px);
+  max-width: calc(100vw - var(--space-4));
+  padding: 0;
+  overflow: hidden;
+}
+.ui-combo-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  height: var(--control-h);
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-3);
+}
+.ui-combo-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  color: var(--text);
+}
+.ui-combo-list {
+  max-height: min(320px, calc(var(--radix-popover-content-available-height, 320px) - var(--control-h)));
+  overflow: auto;
+  padding: var(--space-1);
+}
+.ui-combo-item[data-active="true"],
+.ui-combo-clear:hover {
+  background: var(--hover);
+}
+.ui-combo-clear {
+  width: 100%;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  text-align: left;
+}
+.ui-combo-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-combo-hint {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+.ui-combo-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-combo-value[data-placeholder] {
+  color: var(--text-3);
+}
+.ui-combo-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--on-accent);
+}
+.ui-combo-box[data-on] {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.ui-combo-empty {
+  padding: var(--space-4) var(--space-3);
+  color: var(--text-2);
+  text-align: center;
+}
+.ui-toast-action {
+  flex: none;
+  align-self: center;
+  height: var(--control-h-sm);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 500;
+  cursor: pointer;
+}
+.ui-toast-action:hover {
+  background: var(--hover);
+}
+
 @media (max-width: 767px) {
   .ui-input {
     font-size: 16px; /* stops iOS zooming into fields */

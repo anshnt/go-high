@@ -9,9 +9,11 @@ export type SelectProps = {
   options: { value: string; label: string }[];
   placeholder?: string;
   disabled?: boolean;
+  /** When there is no visible label. */
+  "aria-label"?: string;
 };
 
-export function Select({ label, value, onValueChange, options, placeholder = "Select", disabled }: SelectProps) {
+export function Select({ label, value, onValueChange, options, placeholder = "Select", disabled, ...rest }: SelectProps) {
   const id = useId();
   return (
     <div className="ui-field">
@@ -21,7 +23,7 @@ export function Select({ label, value, onValueChange, options, placeholder = "Se
         </label>
       )}
       <RSelect.Root value={value} onValueChange={onValueChange} disabled={disabled}>
-        <RSelect.Trigger id={id} className="ui-input ui-select-trigger">
+        <RSelect.Trigger id={id} className="ui-input ui-select-trigger" aria-label={rest["aria-label"]}>
           <RSelect.Value placeholder={placeholder} />
           <RSelect.Icon>
             <ChevronDown size={16} aria-hidden />
