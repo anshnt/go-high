@@ -202,7 +202,8 @@ def test_datetime_operators_and_the_columns_of_the_record(book):
 def test_boolean_select_multi_select_user_and_record_operators(book):
     client, ws, d = book
     assert find(client, ws, leaf("vip", "is", True)) == ["Ada Lovelace", "Margaret Hamilton"]
-    assert find(client, ws, leaf("vip", "is", False)) == ["Grace Hopper"]
+    assert len(find(client, ws, leaf("vip", "is", False))) == 6  # Grace Hopper plus the five never ticked
+    assert find(client, ws, leaf("vip", "is_not", False)) == ["Ada Lovelace", "Margaret Hamilton"]
     assert len(find(client, ws, leaf("vip", "is_not", True))) == 6
     assert len(find(client, ws, leaf("vip", "is_empty"))) == 5
 

@@ -201,7 +201,10 @@ class Compiler:
             return entity.values.contains({field.key: [value] if multi else value})
 
         if op in ("is", "is_not") or (op == "contains" and multi):
-            hit = one(self.coerce(field, raw, vpath))
+            value = self.coerce(field, raw, vpath)
+            hit = one(value)
+            if field.type == "boolean" and value is False:
+                hit = or_(hit, ~has)  # an unticked checkbox was never set: "is false" means "not true"
             return ~hit if op == "is_not" else hit
         if op in ("in", "not_in"):
             hit = or_(false(), *[one(v) for v in self.values(field, raw, vpath)])

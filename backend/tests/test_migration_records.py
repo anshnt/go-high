@@ -4,10 +4,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-from conftest import URL
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
 
+from app import config
 from app.records import seed
+
+URL = make_url(config.DATABASE_URL)  # conftest pointed DATABASE_URL at the test database
 
 BACKEND = Path(__file__).resolve().parents[1]
 NAME = f"{URL.database}_migrate"  # a database of its own: the test database stays at head

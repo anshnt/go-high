@@ -150,6 +150,12 @@ def test_a_phone_without_a_plus_uses_the_fields_region_then_the_default(monkeypa
     assert types.validate(field("phone"), "+1 415 555 2671") == "+14155552671"  # a + number needs no region
 
 
+def test_a_possible_number_in_a_range_the_metadata_may_not_know_yet_is_kept():
+    assert types.validate(field("phone"), "+1 415 555 0100") == "+14155550100"  # fictional range, still a number
+    with pytest.raises(ValueError, match="not a valid phone"):
+        types.validate(field("phone"), "+1 415 555")  # too short to be any number
+
+
 def test_every_type_declares_operators_and_the_registry_matches_the_database_check():
     assert set(types.TYPES) == {"text", "long_text", "number", "money", "date", "datetime", "boolean", "select",
                                 "multi_select", "email", "phone", "url", "user", "record", "stage", "formula",
