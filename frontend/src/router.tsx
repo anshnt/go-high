@@ -18,7 +18,12 @@ export const router = createBrowserRouter([
     HydrateFallback: () => null,
     children: [
       { index: true, loader: () => redirect("/inbox") },
-      ...CORE.map((item) => ({ path: item.path.slice(1), element: <ModulePage item={item} /> })),
+      // Contacts is the records area: /contacts, /companies, /deals and custom objects, all one screen (src/records).
+      ...CORE.filter((item) => item.id !== "contacts").map((item) => ({ path: item.path.slice(1), element: <ModulePage item={item} /> })),
+      { path: "contacts/:id?", lazy: async () => ({ Component: (await import("./pages/RecordPages")).ContactsPage }) },
+      { path: "companies/:id?", lazy: async () => ({ Component: (await import("./pages/RecordPages")).CompaniesPage }) },
+      { path: "deals/:id?", lazy: async () => ({ Component: (await import("./pages/RecordPages")).DealsPage }) },
+      { path: "objects/:object/:id?", lazy: async () => ({ Component: (await import("./pages/RecordPages")).ObjectPage }) },
       { path: "apps", element: <AppsPage /> },
       { path: "settings", element: <SettingsPage /> },
       { path: "settings/security", lazy: async () => ({ Component: (await import("./pages/SecuritySettings")).SecuritySettings }) },

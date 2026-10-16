@@ -5,6 +5,8 @@ import {
   formatDateTime,
   formatDay,
   formatMoney,
+  fromLocalInput,
+  toLocalInput,
   minorDigits,
   moneyToInput,
   parseDay,
@@ -144,4 +146,12 @@ test("typed text is tidied before it is saved", () => {
   assert.equal(normalizeText(company.website!, "http://alder.example"), "http://alder.example");
   assert.equal(normalizeText(contact.email!, " Ada@Alder.Example "), "ada@alder.example");
   assert.equal(normalizeText(contact.name!, "  Ada  "), "Ada");
+});
+
+test("datetime inputs round-trip through the viewer's zone", () => {
+  const iso = new Date(2026, 9, 17, 9, 5).toISOString();
+  assert.equal(toLocalInput(iso), "2026-10-17T09:05");
+  assert.equal(fromLocalInput("2026-10-17T09:05"), iso);
+  assert.equal(fromLocalInput(""), undefined);
+  assert.equal(toLocalInput("nope"), "");
 });

@@ -11,3 +11,14 @@ export class RecordsError extends Error {
     this.fields = fields;
   }
 }
+
+const FALLBACK = "Something went wrong. Try again.";
+
+/** Words for the user: our own errors and API errors (lib/api ApiError) carry a ready message, anything else does not. */
+export function errorMessage(e: unknown): string {
+  const named = e as { name?: unknown; message?: unknown } | null;
+  return (e instanceof RecordsError || named?.name === "ApiError") && typeof named?.message === "string" ? named.message : FALLBACK;
+}
+
+/** HTTP status of one of those errors, 0 if unknown. */
+export const errorStatus = (e: unknown): number => (typeof (e as { status?: unknown } | null)?.status === "number" ? (e as { status: number }).status : 0);

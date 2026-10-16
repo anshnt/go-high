@@ -7,6 +7,14 @@ const GENERAL: { keys: string[]; label: string }[] = [
   { keys: ["?"], label: "Show this list" },
   { keys: ["Esc"], label: "Close a dialog, sheet or menu" },
 ];
+const LISTS: { keys: string[]; label: string }[] = [
+  { keys: ["/"], label: "Search the list" },
+  { keys: ["J"], label: "Next row" },
+  { keys: ["K"], label: "Previous row" },
+  { keys: ["X"], label: "Select or unselect the row" },
+  { keys: ["Enter"], label: "Open the row" },
+  { keys: ["Esc"], label: "Close the open record, or clear the selection" },
+];
 const GO = CORE.filter((c) => c.gKey).map((c) => ({ keys: ["G", c.gKey!.toUpperCase()], label: `Go to ${c.label}` }));
 
 function Group({ title, rows }: { title: string; rows: typeof GENERAL }) {
@@ -37,6 +45,7 @@ export function ShortcutSheet({ open, onOpenChange }: { open: boolean; onOpenCha
     <Sheet open={open} onOpenChange={onOpenChange} title="Keyboard shortcuts" description="Single-key shortcuts pause while you type in a field.">
       <Group title="General" rows={GENERAL} />
       <Group title="Navigation" rows={GO} />
+      <Group title="Lists and records" rows={LISTS} />
     </Sheet>
   );
 }

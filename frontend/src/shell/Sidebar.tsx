@@ -1,14 +1,15 @@
-import { NavLink } from "react-router";
+import { NavLink, useLocation } from "react-router";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { APPS_NAV, SETTINGS_NAV, sidebarPrefs, visibleCore, type NavItem } from "../lib/nav";
+import { APPS_NAV, inArea, SETTINGS_NAV, sidebarPrefs, visibleCore, type NavItem } from "../lib/nav";
 import { sidebarCollapsed } from "../lib/prefs";
 import { useStore } from "../lib/store";
 import { Button, Tooltip } from "../ui";
 import { HealthDot } from "./HealthDot";
 
 function Item({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
+  const here = inArea(item, useLocation().pathname);
   const link = (
-    <NavLink to={item.path} className="sh-nav-link">
+    <NavLink to={item.path} className={`sh-nav-link${here ? " active" : ""}`} aria-current={here ? "page" : undefined}>
       <item.icon size={18} aria-hidden />
       <span className="sh-label">{item.label}</span>
     </NavLink>

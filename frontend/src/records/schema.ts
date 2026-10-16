@@ -30,4 +30,7 @@ export function readValue(rec: RecordRow, key: string): unknown {
   }
 }
 
+/** Fields to show: not archived, in the order the workspace set. */
+export const liveFields = (fields: FieldDef[]) => fields.filter((f) => !f.archived).sort((a, b) => a.position - b.position);
+
 export const needsValue = (op: Op) => op !== "is_empty" && op !== "is_not_empty";
