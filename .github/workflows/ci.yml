@@ -31,7 +31,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - run: uv sync --frozen
       - run: uv run ruff check .
-      - run: uv run pytest -q
+      - run: uv run pytest -q -m "not perf"  # timing tests run locally; shared runners would make them flaky
       - name: Migrations up, model drift check, down
         run: |
           uv run alembic upgrade head

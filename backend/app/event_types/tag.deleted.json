@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "tag.deleted",
+  "description": "A tag was deleted and taken off its records; `records` is how many live records had it. Subject: the tag.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"},
+    "color": {"type": ["string", "null"]},
+    "group": {"type": ["string", "null"]},
+    "description": {"type": ["string", "null"]},
+    "records": {"type": "integer"}
+  },
+  "required": ["id", "name", "color", "group", "description", "records"],
+  "additionalProperties": false
+}

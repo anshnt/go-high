@@ -10,6 +10,40 @@ PASSWORD = "correct horse battery"
 H = "X-Workspace-Id"
 
 
+def make_record(client, ws, object_key="contact", owner_id=None, **values) -> dict:
+    """Creates a record through the API (fields as keyword arguments) and returns it."""
+    r = client.post(f"/api/v1/objects/{object_key}/records", json={"values": values, "owner_id": owner_id},
+                    headers={H: ws})
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def listing(client, ws, object_key="contact", **params) -> dict:
+    r = client.get(f"/api/v1/objects/{object_key}/records", params=params, headers={H: ws})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def names(page: dict) -> list[str]:
+    return [r["display_name"] for r in page["data"]]
+
+
+def type_id(client, ws, from_object: str, to_object: str, label: str | None = None) -> str:
+    """The id of the association type between two objects (the built in ones, or a custom one by `label`)."""
+    types = client.get("/api/v1/association-types", headers={H: ws}).json()["data"]
+    found = [t["id"] for t in types if (t["from_object"], t["to_object"]) == (from_object, to_object)
+             and label in (None, t["label"])]
+    assert len(found) == 1, (from_object, to_object, label, types)
+    return found[0]
+
+
+def link(client, ws, record_id: str, other_id: str, association_type: str) -> dict:
+    r = client.post(f"/api/v1/records/{record_id}/associations", json={"type_id": association_type,
+                                                                        "other_id": other_id}, headers={H: ws})
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
 def add_member(db, org_id, email, org_role="member", workspace_id=None, workspace_role="member"):
     """Creates a user directly (as the owner role) and returns a signed-in client."""
     from fastapi.testclient import TestClient

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from . import config, events, security
 from .db import scoped
 from .models import AuthSession, Brand, MagicLink, Organization, OrgMember, User, Workspace
+from .records.seed import seed_workspace
 from .security import COOKIE, Ctx, system_db, token_hash, user
 from .tenancy import my_orgs, my_workspaces, workspace_data
 
@@ -71,6 +72,7 @@ def signup(body: SignUp, request: Request, response: Response, db: Session = Dep
     workspace = Workspace(org_id=org.id, brand_id=brand.id, name="Main")
     db.add(workspace)
     db.flush()
+    seed_workspace(db, workspace.id)
     actor = ("user", account.id)
     events.emit(db, "workspace.created", "workspace", workspace.id, workspace_data(workspace), actor=actor,
                 workspace_id=workspace.id)

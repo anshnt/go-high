@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "record.updated",
+  "description": "A record changed. `data` is its new state and `changes` maps each changed field key (or owner_id) to its old and new value. Subject: the record.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "object": {"type": "string"},
+    "display_name": {"type": "string"},
+    "values": {"type": "object"},
+    "owner_id": {"type": ["string", "null"], "format": "uuid"},
+    "changes": {"type": "object"}
+  },
+  "required": ["id", "object", "display_name", "values", "owner_id", "changes"],
+  "additionalProperties": false
+}
