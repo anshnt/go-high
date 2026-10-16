@@ -3,7 +3,7 @@ import { Keyboard, Moon, Rows3, Search, SlidersHorizontal, Sun, SquareDashed, ty
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { APPS_NAV, CORE, SETTINGS, SETTINGS_NAV } from "../lib/nav";
-import { fuzzy } from "../lib/fuzzy";
+import { fuzzy, rank } from "../lib/fuzzy";
 import { density, theme, toggleDensity, toggleTheme } from "../lib/prefs";
 import { useStore } from "../lib/store";
 import { Kbd } from "../ui";
@@ -37,15 +37,12 @@ export function CommandPalette({ open, onOpenChange, onCustomize, onShortcuts }:
   }, [navigate, dark, compact, onCustomize, onShortcuts]);
 
   const results = useMemo(() => {
-    const scored = commands
-      .map((c) => {
-        const a = fuzzy(query, c.label);
-        const b = c.keywords ? fuzzy(query, c.keywords) : null;
-        return { c, score: a === null ? (b === null ? null : b - 5) : a };
-      })
-      .filter((r): r is { c: Cmd; score: number } => r.score !== null)
-      .sort((x, y) => y.score - x.score);
-    return GROUPS.flatMap((g) => scored.filter((r) => r.c.group === g).map((r) => r.c));
+    const scored = rank(commands, (c) => {
+      const a = fuzzy(query, c.label);
+      const b = c.keywords ? fuzzy(query, c.keywords) : null;
+      return a ?? (b === null ? null : b - 5);
+    });
+    return GROUPS.flatMap((g) => scored.filter((c) => c.group === g));
   }, [commands, query]);
 
   useEffect(() => {

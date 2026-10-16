@@ -2,13 +2,13 @@ import { ChevronRight, SearchX } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { SETTINGS, SETTINGS_NAV } from "../lib/nav";
-import { fuzzy } from "../lib/fuzzy";
+import { fuzzy, rank } from "../lib/fuzzy";
 import { PageHeader } from "../shell/PageHeader";
 import { Button, EmptyState, Input } from "../ui";
 
 export function SettingsPage() {
   const [query, setQuery] = useState("");
-  const shown = SETTINGS.filter((s) => fuzzy(query, `${s.label} ${s.keywords}`) !== null);
+  const shown = rank(SETTINGS, (s) => fuzzy(query, `${s.label} ${s.keywords}`));
   return (
     <div className="sh-page">
       <PageHeader title="Settings" description="Every setting lives in exactly one place." />
