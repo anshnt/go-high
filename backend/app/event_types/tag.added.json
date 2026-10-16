@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "tag.added",
+  "description": "A tag was put on a record. Subject: the record.",
+  "type": "object",
+  "properties": {
+    "record_id": {"type": "string", "format": "uuid"},
+    "object": {"type": "string"},
+    "tag_id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"}
+  },
+  "required": ["record_id", "object", "tag_id", "name"],
+  "additionalProperties": false
+}

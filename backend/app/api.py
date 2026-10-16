@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import uuid
 from datetime import datetime, timedelta
 
@@ -14,7 +15,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, delete, func, select, tuple_
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -23,6 +24,7 @@ from .db import Base
 from .logs import trace_id
 from .security import Ctx, in_workspace
 
+log = logging.getLogger("api")
 V1 = "/api/v1"
 IDEMPOTENCY_TTL = timedelta(hours=24)
 CODES = {400: "bad_request", 401: "unauthenticated", 403: "forbidden", 404: "not_found", 405: "method_not_allowed",
@@ -71,6 +73,14 @@ def install(app: FastAPI) -> None:
                   for e in exc.errors()}
         return error_response(422, "validation_failed", "The request is not valid", fields)
 
+    @app.exception_handler(DataError)
+    async def unstorable(request: Request, exc: DataError):
+        """A value Postgres refuses (a NUL character, a number out of range) that validation did not catch."""
+        if not is_v1(request):
+            raise exc
+        log.warning("the database refused a value: %s", exc.orig)
+        return error_response(422, "validation_failed", "The request holds a value that cannot be stored")
+
     @app.exception_handler(Replay)
     async def replay(request: Request, exc: Replay):
         return JSONResponse(exc.content, status_code=exc.status, headers={"Idempotent-Replayed": "true"})
@@ -82,31 +92,48 @@ def sign(payload: str) -> str:
     return hmac.new(config.SECRET_KEY.encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
 
 
-def encode_cursor(created_at: datetime, id_: uuid.UUID) -> str:
-    payload = base64.urlsafe_b64encode(json.dumps([created_at.isoformat(), str(id_)]).encode()).decode().rstrip("=")
+def seal(parts: list) -> str:
+    """A signed, opaque token for a list of JSON values (a sort key and an id, or several sort keys)."""
+    payload = base64.urlsafe_b64encode(json.dumps(parts).encode()).decode().rstrip("=")
     return f"{payload}.{sign(payload)}"
 
 
-def decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
+def unseal(cursor: str) -> list:
     try:
         payload, signature = cursor.rsplit(".", 1)
         if not hmac.compare_digest(signature, sign(payload)):
             raise ValueError("bad signature")
-        created_at, id_ = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+        parts = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+        if not isinstance(parts, list):
+            raise ValueError("not a list")
+        return parts
+    except (ValueError, TypeError):
+        raise ApiError(400, "invalid_cursor", "The cursor is not valid") from None
+
+
+def encode_cursor(created_at: datetime, id_: uuid.UUID) -> str:
+    return seal([created_at.isoformat(), str(id_)])
+
+
+def decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
+    try:
+        created_at, id_ = unseal(cursor)
         return datetime.fromisoformat(created_at), uuid.UUID(id_)
     except (ValueError, TypeError):
         raise ApiError(400, "invalid_cursor", "The cursor is not valid") from None
 
 
-def paginate(db: Session, stmt, model, limit: int, cursor: str | None):
-    """Newest first by (created_at, id). `stmt` selects `model` as its first column. Returns the rows and the
-    cursor of the next page, or None on the last page. The cursor is signed, so it cannot be forged or edited.
-    ponytail: ids are uuids and the sort key is created_at; other sort orders need their own cursor payload."""
+def paginate(db: Session, stmt, model, limit: int, cursor: str | None, by: str = "created_at"):
+    """Newest first by (`by`, id), `by` being a timestamp column of `model` (default created_at). `stmt` selects
+    `model` as its first column. Returns the rows and the cursor of the next page, or None on the last page. The
+    cursor is signed, so it cannot be forged or edited.
+    ponytail: ids are uuids and the sort key is a timestamp; other sort orders need their own cursor payload."""
+    key = getattr(model, by)
     if cursor:
-        stmt = stmt.where(tuple_(model.created_at, model.id) < tuple_(*decode_cursor(cursor)))
-    rows = db.execute(stmt.order_by(model.created_at.desc(), model.id.desc()).limit(limit + 1)).all()
+        stmt = stmt.where(tuple_(key, model.id) < tuple_(*decode_cursor(cursor)))
+    rows = db.execute(stmt.order_by(key.desc(), model.id.desc()).limit(limit + 1)).all()
     page = rows[:limit]
-    return page, encode_cursor(page[-1][0].created_at, page[-1][0].id) if len(rows) > limit else None
+    return page, encode_cursor(getattr(page[-1][0], by), page[-1][0].id) if len(rows) > limit else None
 
 
 # --- idempotency keys -----------------------------------------------------------------------------------------

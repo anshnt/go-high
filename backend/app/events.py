@@ -92,10 +92,9 @@ class UnknownEventType(ValueError):
     pass
 
 
-def emit(db: Session, type: str, subject_type: str, subject_id: uuid.UUID, data: dict, *,
-         actor: tuple[str, uuid.UUID] | None = None, workspace_id: uuid.UUID | None = None) -> Event:
-    """Adds the event in the caller's transaction (it exists only if the caller commits) and schedules the
-    dispatcher. The workspace is the request's, unless given. `actor` is ("user", id); the default is the system."""
+def build(db: Session, type: str, subject_type: str, subject_id: uuid.UUID, data: dict, *,
+          actor: tuple[str, uuid.UUID] | None = None, workspace_id: uuid.UUID | None = None) -> Event:
+    """The checked event row, not yet added to the session."""
     schema = TYPES.get(type)
     if schema is None:
         raise UnknownEventType(f"{type!r} has no schema in app/event_types")
@@ -111,12 +110,30 @@ def emit(db: Session, type: str, subject_type: str, subject_id: uuid.UUID, data:
         raise ValueError(f"{type} data does not match its schema (missing {sorted(missing)}, "
                          f"unexpected {sorted(unexpected)})")
     actor_type, actor_id = actor or ("system", None)
-    event = Event(workspace_id=workspace_id, type=type, subject_type=subject_type, subject_id=subject_id,
-                  actor_type=actor_type, actor_id=actor_id, data=data)
+    return Event(workspace_id=workspace_id, type=type, subject_type=subject_type, subject_id=subject_id,
+                 actor_type=actor_type, actor_id=actor_id, data=data)
+
+
+def emit(db: Session, type: str, subject_type: str, subject_id: uuid.UUID, data: dict, *,
+         actor: tuple[str, uuid.UUID] | None = None, workspace_id: uuid.UUID | None = None) -> Event:
+    """Adds the event in the caller's transaction (it exists only if the caller commits) and schedules the
+    dispatcher. The workspace is the request's, unless given. `actor` is ("user", id); the default is the system."""
+    event = build(db, type, subject_type, subject_id, data, actor=actor, workspace_id=workspace_id)
     db.add(event)
     db.flush()
     jobs.enqueue(db, "events.dispatch")
     return event
+
+
+def emit_many(db: Session, type: str, subject_type: str, items: list[tuple[uuid.UUID, dict]], *,
+              actor: tuple[str, uuid.UUID] | None = None) -> list[Event]:
+    """`emit` for a batch of subjects of one type (a bulk change): one insert and one dispatcher job."""
+    batch = [build(db, type, subject_type, subject_id, data, actor=actor) for subject_id, data in items]
+    if batch:
+        db.add_all(batch)
+        db.flush()
+        jobs.enqueue(db, "events.dispatch")
+    return batch
 
 
 def read_batch(db: Session, consumer: str, limit: int = BATCH) -> list[Event]:
