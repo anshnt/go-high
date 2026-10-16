@@ -6,6 +6,8 @@ import {
   Select, Sheet, Skeleton, Switch, Table, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, Tooltip, useToast,
   type Column, type Sort,
 } from "../ui";
+import { Popover } from "../ui/Popover";
+import { Combobox } from "../ui/Combobox";
 
 type Row = { id: string; name: string; stage: string; value: number };
 const ROWS: Row[] = [
@@ -38,6 +40,8 @@ export function DevUi() {
   const [on, setOn] = useState(true);
   const [fruit, setFruit] = useState("");
   const [view, setView] = useState("all");
+  const [owner, setOwner] = useState<string | null>(null);
+  const [tags, setTags] = useState<string[]>(["vip"]);
 
   const sorted = [...ROWS].sort((a, b) => {
     const x = a[sort.key as keyof Row];
@@ -127,8 +131,38 @@ export function DevUi() {
         </Tooltip>
       </Section>
 
+      <Section title="Popover and Combobox">
+        <Popover label="Example panel" trigger={<Button>Open a panel</Button>}>
+          <p>A panel for forms and lists. It does not dim the page, and Esc closes it.</p>
+        </Popover>
+        <Combobox
+          label="Owner"
+          placeholder="Choose an owner"
+          value={owner}
+          onChange={setOwner}
+          onClear={() => setOwner(null)}
+          items={[
+            { value: "maya", label: "Maya Okafor", hint: "Admin" },
+            { value: "theo", label: "Theo Lindqvist" },
+            { value: "priya", label: "Priya Raman" },
+          ]}
+        />
+        <Combobox
+          multiple
+          label="Tags"
+          value={tags}
+          onChange={setTags}
+          items={[
+            { value: "vip", label: "VIP", group: "People" },
+            { value: "partner", label: "Partner", group: "People" },
+            { value: "risk", label: "At risk", group: "Health" },
+          ]}
+        />
+      </Section>
+
       <Section title="Toast">
         <Button onClick={() => toast({ title: "Saved", description: "Your changes are live.", tone: "success" })}>Success</Button>
+        <Button onClick={() => toast({ title: "3 contacts deleted", description: "They are in the trash for 30 days.", action: { label: "Undo", onClick: () => toast({ title: "Restored", tone: "success" }) } })}>With undo</Button>
         <Button onClick={() => toast({ title: "Heads up", description: "This sends 120 SMS (about $0.95)." })}>Info</Button>
         <Button onClick={() => toast({ title: "Could not save", description: "Try again in a moment.", tone: "danger" })}>Error</Button>
       </Section>
