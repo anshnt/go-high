@@ -46,11 +46,13 @@ Milestones: **M0 Foundations**, **M1 Core CRM** (first sellable product), **M2 G
 - Admin and user roles with per-module checkboxes; "only assigned data" toggle; audit logs kept about 60 days.
 
 **Better**
-- [ ] Named, reusable roles at org and workspace level (agency-level granular roles are the top request)
-- [ ] Policies on module, record (owner, team, assigned + unassigned) and field (hide PII per role)
-- [ ] Teams and sub-teams
-- [ ] "What can this user see?" simulator
-- [ ] Append-only audit log for every write, 12+ months retention, filter by record, user and action, CSV export
+- [x] Named, reusable roles at org and workspace level (agency-level granular roles are the top request)
+- [x] Policies on module, record (owner, team, assigned + unassigned) and field (hide PII per role)
+- [x] Teams and sub-teams
+- [x] "What can this user see?" simulator
+- [x] Append-only audit log for every write, 12+ months retention, filter by record, user and action, CSV export
+  (saved views are not audited; nothing deletes or archives events yet, so retention is unlimited until the
+  partitions of ADR 0003 arrive)
 - [ ] Login-as (impersonation) is always audited and visible to the workspace
 
 **Done when** a role can be limited to its own team's deals with a hidden field, the simulator agrees, and every change shows in the audit log.
