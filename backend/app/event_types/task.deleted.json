@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "task.deleted",
+  "description": "A task was deleted. Subject: the task.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "title": {"type": "string"}
+  },
+  "required": ["id", "title"],
+  "additionalProperties": false
+}

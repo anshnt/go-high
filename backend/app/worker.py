@@ -8,6 +8,7 @@ from pathlib import Path
 from . import config, jobs, webhooks  # noqa: F401  (webhooks registers the delivery handlers)
 from .db import SessionLocal
 from .logs import setup_logging
+from .notifications import consumer  # noqa: F401  (the notifications consumer and the task.due job)
 
 log = logging.getLogger("worker")
 HEARTBEAT = Path(tempfile.gettempdir(), "worker-heartbeat")  # docker healthcheck: stale file = stuck worker

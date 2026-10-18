@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "task.completed",
+  "description": "A task was finished. `data` is its new state, and `next_task_id` is the next occurrence when it was a recurring task (that one has its own task.created). Subject: the task.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "title": {"type": "string"},
+    "notes": {"type": "string"},
+    "due_at": {"type": ["string", "null"], "format": "date-time"},
+    "all_day": {"type": "boolean"},
+    "assignee_id": {"type": ["string", "null"], "format": "uuid"},
+    "created_by": {"type": ["string", "null"], "format": "uuid"},
+    "priority": {"type": "string", "enum": ["none", "low", "medium", "high"]},
+    "status": {"type": "string", "enum": ["open", "done"]},
+    "completed_at": {"type": ["string", "null"], "format": "date-time"},
+    "record_id": {"type": ["string", "null"], "format": "uuid"},
+    "recurrence": {"type": ["string", "null"]},
+    "parent_task_id": {"type": ["string", "null"], "format": "uuid"},
+    "depends_on_task_id": {"type": ["string", "null"], "format": "uuid"},
+    "position": {"type": "number"},
+    "next_task_id": {"type": ["string", "null"], "format": "uuid"}
+  },
+  "required": ["id", "title", "notes", "due_at", "all_day", "assignee_id", "created_by", "priority", "status", "completed_at", "record_id", "recurrence", "parent_task_id", "depends_on_task_id", "position", "next_task_id"],
+  "additionalProperties": false
+}

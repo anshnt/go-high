@@ -13,9 +13,12 @@ from sqlalchemy.orm import Session
 from . import api, audit, auth, config, roles, simulator, teams, webhooks, workspaces
 from .db import get_db
 from .logs import setup_logging, trace_id
+from .notifications import routes as notifications
 from .records import associations, board, forecast, objects, pipelines, tags, timeline, views
 from .records import routes as records
 from .security import COOKIE, UNSAFE
+from .tasks import day
+from .tasks import routes as tasks
 
 BACKEND = Path(__file__).resolve().parents[1]
 log = logging.getLogger("api")
@@ -87,7 +90,7 @@ app.include_router(auth.router)
 app.include_router(workspaces.router)
 app.include_router(webhooks.router)
 for module in (objects, records, associations, tags, views, timeline, pipelines, board, forecast, roles, teams,
-               simulator, audit):
+               simulator, audit, tasks, day, notifications):
     app.include_router(module.router)
 
 
