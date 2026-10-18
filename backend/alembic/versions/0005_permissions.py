@@ -1,7 +1,7 @@
 """roles, object rules, teams; org and workspace members get a role_id instead of the fixed role strings
 
 Revision ID: 0005
-Revises: 0004
+Revises: 0007
 Create Date: 2026-10-17
 """
 import sqlalchemy as sa
