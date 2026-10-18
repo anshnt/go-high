@@ -260,6 +260,8 @@ def get_version(form_id: uuid.UUID, version_id: uuid.UUID, c: Ctx = Depends(in_w
     return version_json(version, form, definition=True)
 
 
+# ponytail: every changed save is a new row, never pruned; drop old versions that were never published and have no
+# responses when a form's history gets long.
 @router.post("/{form_id}/versions")
 def save_version(form_id: uuid.UUID, body: SaveVersion, c: Ctx = Depends(in_workspace)):
     """Saving a draft is a new version; the published one is not touched until `publish`. Saving what the newest

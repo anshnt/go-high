@@ -286,11 +286,11 @@ Milestones: **M0 Foundations**, **M1 Core CRM** (first sellable product), **M2 G
 - Form builder, surveys, quizzes with scoring, conditional logic v2, embeds by iframe or script, payment and calendar fields.
 
 **Better**
-- [ ] One engine for forms, surveys and quizzes: multi-step, scoring, payments, file upload, e-signature
-- [ ] Visual logic map (branching diagram), including calendar and payment fields
-- [ ] Shadow DOM embed (no iframe) that keeps host analytics working; embeds update live
-- [ ] Partial submissions, drop-off per field, save and resume links
-- [ ] Spam protection on by default (honeypot, rate limit, invisible challenge)
+- [ ] One engine for forms, surveys and quizzes: multi-step, scoring, payments, file upload, e-signature (forms, surveys and quizzes are one engine with steps, branching, scoring, versions, contact mapping and events; payments, file upload and e-signature are not)
+- [ ] Visual logic map (branching diagram), including calendar and payment fields (the map of steps, jumps and early ends is done, with a rules editor; calendar and payment fields do not exist yet)
+- [x] Shadow DOM embed (no iframe) that keeps host analytics working; embeds update live
+- [x] Partial submissions, drop-off per field, save and resume links
+- [ ] Spam protection on by default (honeypot, rate limit, invisible challenge) (honeypot, minimum fill time, rate limit per form and visitor and a size limit are done and on by default; an invisible challenge is not)
 - [ ] Results pages built in the page builder (module 19) when available
 
 **Done when** an embedded multi-step form with branching creates a contact, attributes the source and triggers a workflow.

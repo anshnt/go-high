@@ -1,5 +1,5 @@
-import { ChevronLeft, CircleAlert, Copy, EllipsisVertical, Eye, Share2, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { ChevronLeft, CircleAlert, Copy, EllipsisVertical, Eye, Share2, Trash2, Undo2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Link, useBlocker, useNavigate, useParams, useSearchParams } from "react-router";
 import { ApiError, errorText } from "../lib/api";
 import { PageHeader } from "../shell/PageHeader";
@@ -57,6 +57,8 @@ export function FormBuilder() {
   const [form, setForm] = useState<FormDetail | null>(null);
   const [loadError, setLoadError] = useState<string>();
   const [def, setDef] = useState<Definition | null>(null);
+  const [past, setPast] = useState<Definition[]>([]); // what undo goes back to
+  const lastEdit = useRef(0);
   const [savedDef, setSavedDef] = useState("");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [savedDraft, setSavedDraft] = useState("");
@@ -78,6 +80,7 @@ export function FormBuilder() {
       .then(([f, fields]) => {
         setForm(f);
         setDef(f.definition);
+        setPast([]);
         setSavedDef(JSON.stringify(f.definition));
         const d = { name: f.name, slug: f.slug, settings: f.settings };
         setDraft(d);
@@ -96,6 +99,36 @@ export function FormBuilder() {
     window.addEventListener("beforeunload", stop);
     return () => window.removeEventListener("beforeunload", stop);
   }, [dirty]);
+
+  // An edit keeps the definition it replaces, so a deleted question or step can be brought back. A burst of typing counts
+  // as one step: the old definition is only kept when the last edit was more than a moment ago.
+  const edit = useCallback(
+    (next: Definition) => {
+      const now = Date.now();
+      if (def && now - lastEdit.current > 800) setPast((p) => [...p.slice(-49), def]);
+      lastEdit.current = now;
+      setDef(next);
+    },
+    [def],
+  );
+  const undo = useCallback(() => {
+    setPast((p) => {
+      if (p.length) setDef(p[p.length - 1]!);
+      lastEdit.current = 0;
+      return p.slice(0, -1);
+    });
+  }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const typing = (e.target as HTMLElement).closest("input, textarea, select, [contenteditable]");
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z" && !typing) {
+        e.preventDefault();
+        undo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo]);
 
   const clear = () => {
     setProblems([]);
@@ -212,11 +245,11 @@ export function FormBuilder() {
   const addAtEnd = (type: Parameters<typeof newField>[1]) => {
     const home = def.steps.find((s) => s.fields.some((f) => f.key === selected)) ?? def.steps[def.steps.length - 1]!;
     const f = newField(def, type);
-    setDef(addField(def, home.key, f));
+    edit(addField(def, home.key, f));
     pick(f.key);
   };
   const panel = field ? (
-    <FieldPanel field={field} kind={form.kind} contact={contact} error={questionIssues[field.key]} onChange={(patch) => setDef(updateField(def, field.key, patch))} />
+    <FieldPanel field={field} kind={form.kind} contact={contact} error={questionIssues[field.key]} onChange={(patch) => edit(updateField(def, field.key, patch))} />
   ) : (
     <p className="fm-hint">Select a question to change its settings, or add one from the list.</p>
   );
@@ -240,6 +273,9 @@ export function FormBuilder() {
               <span className="fm-saved" role="status">
                 {busy === "save" ? "Saving" : dirty ? "Unsaved changes" : "Saved"}
               </span>
+              <Button variant="ghost" size="icon" aria-label="Undo the last change" disabled={past.length === 0} onClick={undo}>
+                <Undo2 size={16} aria-hidden />
+              </Button>
               <Button onClick={() => void save()} disabled={!dirty || !!busy} loading={busy === "save"}>
                 Save draft
               </Button>
@@ -293,7 +329,7 @@ export function FormBuilder() {
         <TabsContent value="build">
           <div className="fm-build">
             <Palette onAdd={addAtEnd} />
-            <Canvas def={def} onChange={setDef} selected={selected} onSelect={pick} issues={questionIssues} />
+            <Canvas def={def} onChange={edit} selected={selected} onSelect={pick} issues={questionIssues} />
             {wide && (
               <aside className="fm-side" aria-label="Question and preview">
                 <div className="fm-seg" role="group" aria-label="Side panel">
@@ -316,10 +352,10 @@ export function FormBuilder() {
         </TabsContent>
         <TabsContent value="preview">{preview}</TabsContent>
         <TabsContent value="logic">
-          <Logic def={def} onChange={setDef} serverProblems={ruleIssues} />
+          <Logic def={def} onChange={edit} serverProblems={ruleIssues} />
         </TabsContent>
         <TabsContent value="settings">
-          <SettingsTab kind={form.kind} draft={draft} onDraft={setDraft} def={def} onDef={setDef} contact={contact} errors={settingsErrors} />
+          <SettingsTab kind={form.kind} draft={draft} onDraft={setDraft} def={def} onDef={edit} contact={contact} errors={settingsErrors} />
         </TabsContent>
         <TabsContent value="responses">
           <Responses form={form} def={def} />

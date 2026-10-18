@@ -58,6 +58,8 @@ def opened(token: str | None, form: Form, s: Settings, *, waited: bool = False) 
     return issued
 
 
+# ponytail: one counter row per form, visitor, kind and minute in Postgres (ADR 0003 puts rate buckets there for now);
+# move to Redis when one form is hit hard enough for the upserts to show.
 def hit(db: Session, form: Form, who: str, kind: str, limit: int) -> bool:
     """Counts one request of `who` this minute and says whether it is within `limit`. Commits, so a refused request
     still counts (an error response would roll the counter back)."""

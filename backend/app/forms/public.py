@@ -205,7 +205,9 @@ async def complete(public_key: PublicKey, submission_id: uuid.UUID, request: Req
     body = await spam.read(request, Body, s.max_body_kb)
     who = spam.visitor(request)
     spam.throttle(db, form, who, s)
-    db.execute(select(Form.id).where(Form.id == form.id).with_for_update())  # completions of one form take turns
+    # ponytail: completions of one form take turns on its row (the response limit and "answer once" need that); fine
+    # until a single form takes hundreds of completions a second.
+    db.execute(select(Form.id).where(Form.id == form.id).with_for_update())
     sub = by_token(db, form, body.resume_token, submission_id)
     version = db.get(FormVersion, sub.version_id)
     defn = version.definition

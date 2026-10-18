@@ -24,6 +24,7 @@ def find(cat: Catalog, obj: ObjectDef, values: dict) -> Record | None:
     return None
 
 
+# ponytail: forms write to the contact object only; deals and custom objects follow when a form needs them.
 def upsert(cat: Catalog, values: dict, existing: str) -> tuple[uuid.UUID, bool]:
     """(contact id, whether it was created). `existing`: `update` writes every answer, `fill_empty` only fills fields
     the contact has no value for, which keeps a stranger's answer from rewriting what the business already knows."""

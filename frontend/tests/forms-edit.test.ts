@@ -85,11 +85,11 @@ test("steps are added after another and moved", () => {
 
 test("rules that the server would refuse are flagged", () => {
   assert.deepEqual(problems(def()), {});
-  const moved = moveStep(def(), "s3", -1); // now the jump goes to s3, which comes before s2: still after s1. fine
+  const moved = moveStep(def(), "s3", -1); // order s1, s3, s2: the jump from s1 to s3 still goes forward
   assert.deepEqual(problems(moved), {});
-  const back = moveStep(def(), "s1", 1); // s2, s1, s3: the jump leaves s1 (second) for s3: fine; the hide rule uses a later answer
+  const back = moveStep(def(), "s1", 1); // order s2, s1, s3: the hide rule on a question of s2 now uses answers from a later step
   assert.match(problems(back)[1]!, /comes after/);
-  const field = moveField(def(), "size", "s3", 1); // the answer moves after the rules that depend on it
+  const field = moveField(def(), "size", "s3", 1); // the question the jump tests moves behind the step it leaves
   assert.match(problems(field)[0]!, /comes after/);
   const broken: Definition = { ...def(), logic: [{ id: "x", do: "jump", from: "s2", target: "s1", when: { field: "size", op: "is", value: "big" } }] };
   assert.match(problems(broken)[0]!, /after the one it leaves/);
