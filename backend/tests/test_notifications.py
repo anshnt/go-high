@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
-from helpers import H, add_member, drain, due_now, make_record
+from helpers import H, add_member, drain, due_now, make_record, make_role, rule
 from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError
 
@@ -168,6 +168,22 @@ def test_a_scope_all_person_who_is_also_the_assignee_gets_one_notification(team)
     make(clients["ann"], ws, "Both", assignee_id=who["ben"])
     drain()
     assert [n["title"] for n in inbox(clients["ben"], ws)] == ["a assigned you a task"]
+
+
+def test_scope_all_hears_only_about_what_the_watchers_role_lets_them_see(team):
+    clients, who, ws = team
+    ann = clients["ann"]
+    narrow = make_role(ann, ws, "Own contacts, no tasks", capabilities=["contacts.read", "schema.read"],
+                       rules=[rule("contact", "own")])
+    assert ann.put(f"/api/v1/members/{who['cara']}", json={"role_id": narrow["id"]}, headers={H: ws}).status_code == 200
+    save_prefs(clients["cara"], ws, task_assigned={"scope": "all"}, record_assigned={"scope": "all"})
+    make(ann, ws, "For Ben", assignee_id=who["ben"])
+    make_record(ann, ws, first_name="Ada", owner_id=who["ben"])
+    drain()
+    assert inbox(clients["cara"], ws) == []  # no tasks.read, and Ada is outside her scope
+    make_record(ann, ws, first_name="Grace", owner_id=who["cara"])
+    drain()
+    assert [n["title"] for n in inbox(clients["cara"], ws)] == ["a assigned you Grace"]
 
 
 def test_switching_off_the_in_app_channel_stops_that_kind_only(team):
