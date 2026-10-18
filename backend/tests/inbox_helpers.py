@@ -66,9 +66,9 @@ def twilio_hook(client, channel: dict, token: str = TWILIO_TOKEN, **fields):
     return client.post(path_of(channel), content=urlencode(pairs), headers=headers)
 
 
-def sms_in(client, channel: dict, sender: str, body: str, sid: str | None = None, **more):
-    return twilio_hook(client, channel, MessageSid=sid or f"SM{uuid.uuid4().hex}", From=sender, To=channel["address"],
-                       Body=body, NumMedia="0", **more)
+def sms_in(client, channel: dict, sender: str, body: str, sid: str | None = None, token: str = TWILIO_TOKEN, **more):
+    return twilio_hook(client, channel, token, MessageSid=sid or f"SM{uuid.uuid4().hex}", From=sender,
+                       To=channel["address"], Body=body, NumMedia="0", **more)
 
 
 def sms_status(client, channel: dict, sid: str, status: str, **more):
