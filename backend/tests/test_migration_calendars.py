@@ -27,7 +27,7 @@ def old_database():
         conn.execute(text(f'CREATE DATABASE "{NAME}"'))
     engine = None
     try:
-        alembic(url, "upgrade", "0005")
+        alembic(url, "upgrade", "0010")
         engine = create_engine(url)
         with engine.begin() as conn:
             org = conn.scalar(text("INSERT INTO organizations (name) VALUES ('Old') RETURNING id"))
@@ -73,7 +73,7 @@ def test_workspaces_get_handles_roles_get_capabilities_and_it_reverses(old_datab
     with engine.begin() as conn:
         assert conn.scalar(text("SELECT max(cardinality(capabilities)) FROM roles WHERE key = 'owner'")) == len(
             set(roles_seed.SYSTEM_ROLES["owner"][2]))
-    alembic(url, "downgrade", "0005")
+    alembic(url, "downgrade", "0010")
     with engine.begin() as conn:
         assert all(not v for v in capabilities(conn).values())
         assert conn.scalar(text("SELECT count(*) FROM information_schema.tables WHERE table_name IN "
