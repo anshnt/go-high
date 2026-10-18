@@ -7,7 +7,7 @@ from pathlib import Path
 
 from . import config, jobs, webhooks  # noqa: F401  (webhooks registers the delivery handlers)
 from .db import SessionLocal
-from .inbox import conversations, outbound  # noqa: F401  (the message.send and conversation.wake handlers)
+from .inbox import conversations, outbound, stream  # noqa: F401  (message.send, conversation.wake, realtime)
 from .logs import setup_logging
 from .notifications import consumer  # noqa: F401  (the notifications consumer and the task.due job)
 

@@ -126,11 +126,11 @@ def user(request: Request):
         yield Ctx(db, row.user_id, row.id, token_hash(token))
 
 
-def in_workspace(c: Ctx = Depends(user), x_workspace_id: str | None = Header(default=None)) -> Ctx:
-    """The workspace convention: send `X-Workspace-Id`. Anything the user cannot access is a 404 and the
-    request then runs with app.workspace_id and app.org_id set, so row level security confines it to that workspace."""
+def enter_workspace(c: Ctx, raw_id: str | None) -> Ctx:
+    """Anything the user cannot access is a 404 and the request then runs with app.workspace_id and app.org_id set,
+    so row level security confines it to that workspace."""
     try:
-        wid = uuid.UUID(x_workspace_id or "")
+        wid = uuid.UUID(raw_id or "")
     except ValueError:
         raise HTTPException(400, "X-Workspace-Id header required") from None
     ws = c.db.get(Workspace, wid)  # row level security: only workspaces this user can access are visible
@@ -141,6 +141,11 @@ def in_workspace(c: Ctx = Depends(user), x_workspace_id: str | None = Header(def
     c.workspace_role = None if found is None else "admin" if found[1] else found[0].key
     rescope(c.db, user_id=c.user_id, org_id=ws.org_id, workspace_id=ws.id)
     return c
+
+
+def in_workspace(c: Ctx = Depends(user), x_workspace_id: str | None = Header(default=None)) -> Ctx:
+    """The workspace convention: send `X-Workspace-Id`."""
+    return enter_workspace(c, x_workspace_id)
 
 
 def workspace_admin(c: Ctx = Depends(in_workspace)) -> Ctx:
