@@ -78,3 +78,10 @@ def make_user():
         assert r.status_code == 201, r.text
         return client, r.json()
     return make
+
+
+@pytest.fixture
+def crm(make_user):
+    """A signed-in admin of a fresh workspace: (client, workspace id, signup ids)."""
+    client, ids = make_user("a@example.com")
+    return client, ids["workspace_id"], ids

@@ -1,11 +1,12 @@
 """Tenant isolation, checked at the API (every /api route) and in SQL (as the gohigh_app role)."""
+import itertools
 import json
 import re
 
 import pytest
 from fastapi.routing import iter_route_contexts
 from fastapi.testclient import TestClient
-from helpers import PASSWORD
+from helpers import PASSWORD, link, type_id
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
@@ -17,14 +18,56 @@ from app.security import UNSAFE
 
 TENANT_TABLES = ["organizations", "brands", "workspaces", "users", "org_members", "workspace_members",
                  "auth_sessions", "magic_links", "login_attempts", "events", "webhook_endpoints", "webhook_deliveries",
-                 "idempotency_keys"]
+                 "idempotency_keys", "objects", "fields", "records", "tags", "record_tags", "association_types",
+                 "associations", "saved_views", "event_records"]
 NOT_TENANT_DATA = {"jobs", "event_cursors"}  # the queue and the consumer cursors: no tenant rows, no app role access
+
+
+def fill_crm(client, ids: dict, name: str) -> None:
+    """A custom object with a field, contacts (one in the trash), a company, a tag, two links and two saved views;
+    their ids, keys and names go into `ids`, where they count as secrets when they belong to org B."""
+    ws = {"X-Workspace-Id": ids["workspace_id"]}
+    title = name.title()
+
+    def post(path, **body):
+        r = client.post(path, json=body, headers=ws)
+        assert r.status_code == 201, r.text
+        return r.json()
+
+    ids["object_key"], ids["field_key"] = f"{name}_vault", f"{name}_secret_field"
+    post("/api/v1/objects", key=ids["object_key"], singular=f"{title} Vault", plural=f"{title} Vaults")
+    post(f"/api/v1/objects/{ids['object_key']}/fields", key=ids["field_key"], label=f"{title} Secret Label",
+         type="text")
+    ids["record_name"], ids["company_name"] = f"{title} Secret Person", f"{title} Secret Holdings"
+    person = post("/api/v1/objects/contact/records", values={
+        "first_name": f"{title} Secret", "last_name": "Person", "email": f"{name}.person@secret.example"})
+    company = post("/api/v1/objects/company/records", values={"name": ids["company_name"]})
+    vault = post(f"/api/v1/objects/{ids['object_key']}/records", values={
+        "name": f"{title} Vault Item", ids["field_key"]: f"{name} secret value"})
+    trashed = post("/api/v1/objects/contact/records", values={"first_name": f"{title} Trashed Person"})
+    assert client.delete(f"/api/v1/objects/contact/records/{trashed['id']}", headers=ws).status_code == 204
+    ids.update(record_id=person["id"], company_id=company["id"], vault_id=vault["id"], trashed_id=trashed["id"],
+               trashed_name=f"{title} Trashed Person")
+    ids["tag_name"] = f"{name}-secret-tag"
+    ids["tag_id"] = post("/api/v1/tags", name=ids["tag_name"])["id"]
+    assert client.post(f"/api/v1/records/{person['id']}/tags", json={"add": [ids["tag_id"]]},
+                       headers=ws).status_code == 200
+    ids["type_label"] = f"{name} owns"
+    ids["type_id"] = post("/api/v1/association-types", from_object="contact", to_object=ids["object_key"],
+                          label=ids["type_label"], inverse_label=f"{name} owned by")["id"]
+    ids["association_id"] = link(client, ids["workspace_id"], person["id"], company["id"],
+                                 type_id(client, ids["workspace_id"], "contact", "company"))["id"]
+    ids["vault_association_id"] = link(client, ids["workspace_id"], person["id"], vault["id"], ids["type_id"])["id"]
+    ids["view_name"], ids["shared_view_name"] = f"{title} private view", f"{title} shared view"
+    ids["view_id"] = post("/api/v1/views", object="contact", name=ids["view_name"],
+                          filter={"tag": ids["tag_name"]})["id"]
+    ids["shared_view_id"] = post("/api/v1/views", object="contact", name=ids["shared_view_name"], shared=True)["id"]
 
 
 @pytest.fixture
 def two_orgs(make_user, db):
-    """Org A and org B, each with a user, a second workspace, a live session, a webhook and one delivery in its log;
-    B's identifiers (and its webhook's secret and url) are the secrets."""
+    """Org A and org B, each with a user, a second workspace, a live session, a webhook and one delivery in its log,
+    and a small CRM (see fill_crm); B's identifiers, names and secrets are what A must never see."""
     a, a_ids = make_user("alice@example.com", "Alpha Org")
     b, b_ids = make_user("bob@example.com", "Bravo Org")
     for client, ids, name in ((a, a_ids, "alpha"), (b, b_ids, "bravo")):
@@ -38,6 +81,7 @@ def two_orgs(make_user, db):
             "SELECT workspace_id, :e, id FROM events WHERE workspace_id = :w AND type = 'user.signed_up' "
             "RETURNING id"), {"e": ids["webhook_id"], "w": ids["workspace_id"]}))
         db.commit()
+        fill_crm(client, ids, name)
     b_ids["session_id"] = b.get("/api/auth/sessions").json()[0]["id"]
     b_ids["user_id"] = b.get("/api/me").json()["user"]["id"]
     return a, a_ids, b, b_ids
@@ -58,31 +102,63 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
     monkeypatch.setattr(config, "DEV_EXPOSE_MAGIC_LINKS", False)  # that switch deliberately hands links to anyone
     leaks = secrets_of(b_ids)
     by_name = {"workspace_id": b_ids["workspace_id"], "session_id": b_ids["session_id"],
-               "endpoint_id": b_ids["webhook_id"], "delivery_id": b_ids["delivery_id"]}
+               "endpoint_id": b_ids["webhook_id"], "delivery_id": b_ids["delivery_id"],
+               "record_id": b_ids["record_id"], "tag_id": b_ids["tag_id"], "view_id": b_ids["view_id"],
+               "association_id": b_ids["association_id"], "type_id": b_ids["type_id"]}
+    others = {"key": [b_ids["object_key"], "contact"], "field_key": [b_ids["field_key"], "email"]}  # B's, and A's own
     body = {"name": "x", "brand_id": b_ids["brand_id"], "org_id": b_ids["org_id"], "email": "bob@example.com",
             "workspace_id": b_ids["workspace_id"], "password": "not the password", "token": "bogus",
-            "url": "https://hooks.example.com/sweep", "event_types": ["*"], "active": False}
+            "url": "https://hooks.example.com/sweep", "event_types": ["*"], "active": False,
+            # the record engine: B's ids in every place a body takes one
+            "key": "swept", "singular": "Swept", "plural": "Sweeps", "label": "Swept", "type": "text",
+            "values": {"first_name": "Swept"}, "owner_id": b_ids["user_id"], "record_ids": [b_ids["record_id"]],
+            "add": [b_ids["tag_id"]], "remove": [], "other_id": b_ids["record_id"], "type_id": b_ids["type_id"],
+            "from_object": "contact", "to_object": "company", "inverse_label": "swept by", "into": b_ids["tag_id"],
+            "object": "contact", "shared": True, "filter": {}, "view": b_ids["view_id"]}
+    tables_of_b = ("objects", "fields", "records", "tags", "record_tags", "association_types", "associations",
+                   "saved_views", "event_records", "events")
+    snapshot = "SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t::text), '')) FROM {} t WHERE workspace_id = :w"
+
+    def rows_of_b():
+        db.expire_all()
+        return [db.scalar(text(snapshot.format(t)), {"w": b_ids["workspace_id"]}) for t in tables_of_b]
+
     events_of_b = db.scalar(text("SELECT count(*) FROM events WHERE workspace_id = :w"), {"w": b_ids["workspace_id"]})
+    before_b = rows_of_b()
     routes = [(r, m) for r in iter_route_contexts(app.routes) if (r.path or "").startswith("/api")
               for m in sorted(r.methods - {"HEAD", "OPTIONS"})]
-    assert len(routes) >= 23  # every auth, me, workspace and webhook route plus health, openapi and docs
-    assert {r.path for r, _ in routes} >= {"/api/v1/webhooks/{endpoint_id}/deliveries",
-                                           "/api/v1/webhooks/deliveries/{delivery_id}/replay"}
+    assert len(routes) >= 60  # every auth, me, workspace, webhook and record route plus health, openapi and docs
+    assert {r.path for r, _ in routes} >= {
+        "/api/v1/webhooks/{endpoint_id}/deliveries", "/api/v1/webhooks/deliveries/{delivery_id}/replay",
+        "/api/v1/objects", "/api/v1/objects/{key}", "/api/v1/objects/{key}/fields",
+        "/api/v1/objects/{key}/fields/{field_key}", "/api/v1/objects/{key}/records",
+        "/api/v1/objects/{key}/records/query", "/api/v1/objects/{key}/records/{record_id}",
+        "/api/v1/objects/{key}/records/{record_id}/restore", "/api/v1/trash", "/api/v1/records/{record_id}/timeline",
+        "/api/v1/records/{record_id}/associations", "/api/v1/associations/{association_id}",
+        "/api/v1/association-types", "/api/v1/association-types/{type_id}", "/api/v1/tags",
+        "/api/v1/tags/{tag_id}", "/api/v1/tags/{tag_id}/merge", "/api/v1/records/{record_id}/tags",
+        "/api/v1/records/tags", "/api/v1/views", "/api/v1/views/{view_id}"}
 
     seen_own_data = False
     alice = signin_alice()
     for route, method in routes:
-        path = re.sub(r"\{(\w+)[^}]*\}", lambda m: by_name.get(m.group(1), b_ids["workspace_id"]), route.path)
-        for headers in ({}, {"X-Workspace-Id": b_ids["workspace_id"]}, {"X-Workspace-Id": a_ids["workspace_id"]}):
-            r = alice.request(method, path, headers=headers, json=body if method in UNSAFE else None)
-            label = f"{method} {route.path} {headers}"
-            assert r.status_code < 500, label
-            assert not any(leak in r.text for leak in leaks), f"{label} leaked: {r.text[:300]}"
-            seen_own_data |= a_ids["workspace_id"] in r.text
-            if alice.get("/api/me").status_code != 200:  # that route ended A's session (sign out)
-                alice = signin_alice()
-            if headers.get("X-Workspace-Id") == b_ids["workspace_id"] and route.path.endswith("/current"):
-                assert r.status_code == 404, label
+        params = re.findall(r"\{(\w+)[^}]*\}", route.path)
+        for values in itertools.product(*[others.get(p, [by_name.get(p, b_ids["workspace_id"])]) for p in params]):
+            chosen = dict(zip(params, values, strict=True))
+            path = re.sub(r"\{(\w+)[^}]*\}", lambda m, chosen=chosen: chosen[m.group(1)], route.path)
+            for headers in ({}, {"X-Workspace-Id": b_ids["workspace_id"]}, {"X-Workspace-Id": a_ids["workspace_id"]}):
+                query = {"object": b_ids["object_key"]} if route.path == "/api/v1/trash" else None
+                r = alice.request(method, path, params=query, headers=headers, json=body if method in UNSAFE else None)
+                label = f"{method} {route.path} {values} {headers}"
+                assert r.status_code < 500, label
+                assert not any(leak in r.text for leak in leaks), f"{label} leaked: {r.text[:300]}"
+                seen_own_data |= a_ids["workspace_id"] in r.text
+                if alice.get("/api/me").status_code != 200:  # that route ended A's session (sign out)
+                    alice = signin_alice()
+                if headers.get("X-Workspace-Id") == b_ids["workspace_id"] and route.path.endswith("/current"):
+                    assert r.status_code == 404, label
+                if headers.get("X-Workspace-Id") == a_ids["workspace_id"] and r.status_code == 200:
+                    assert b_ids["record_id"] not in r.text, label
     assert seen_own_data  # the sweep is not vacuous: A does get A's data
     mine = {"X-Workspace-Id": a_ids["workspace_id"]}  # A's own webhook routes work, so the 404s for B mean something
     assert alice.get(f"/api/v1/webhooks/{a_ids['webhook_id']}", headers=mine).json()["url"] == a_ids["webhook_url"]
@@ -102,6 +178,15 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
     assert len(b.get("/api/v1/webhooks", headers=theirs).json()["data"]) == 1
     assert db.scalar(text("SELECT count(*) FROM events WHERE workspace_id = :w"),
                      {"w": b_ids["workspace_id"]}) == events_of_b
+    assert rows_of_b() == before_b  # every table of the record engine: B's rows are byte for byte as they were
+    # and A, with the same calls on its own ids, does reach its own records, so the 404s above mean something
+    own = {"X-Workspace-Id": a_ids["workspace_id"]}
+    assert alice.get(f"/api/v1/objects/contact/records/{a_ids['record_id']}", headers=own).json()[
+        "display_name"] == a_ids["record_name"]
+    assert alice.get(f"/api/v1/records/{a_ids['record_id']}/timeline", headers=own).json()["data"]
+    assert {a_ids["shared_view_id"], a_ids["view_id"]} <= {
+        v["id"] for v in alice.get("/api/v1/views", headers=own, params={"limit": 200}).json()["data"]}
+    assert a_ids["tag_name"] in {t["name"] for t in alice.get("/api/v1/tags", headers=own).json()["data"]}
 
 
 def test_a_user_of_a_cannot_target_b_with_a_valid_looking_request(two_orgs):
@@ -214,7 +299,13 @@ def test_the_documented_pattern_isolates_a_new_workspace_table(two_orgs):
 def test_the_app_role_holds_only_the_grants_its_handlers_need():
     wanted = {"events": {"SELECT", "INSERT"}, "webhook_endpoints": {"SELECT", "INSERT", "UPDATE", "DELETE"},
               "webhook_deliveries": {"SELECT", "INSERT"}, "idempotency_keys": {"SELECT", "INSERT", "DELETE"},
-              "event_cursors": set(), "jobs": {"INSERT"}}  # jobs: add a row and read its id, nothing else
+              "event_cursors": set(), "jobs": {"INSERT"},  # jobs: add a row and read its id, nothing else
+              # the record engine: objects, fields and records are archived or trashed, never deleted by a request
+              "objects": {"SELECT", "INSERT", "UPDATE"}, "fields": {"SELECT", "INSERT", "UPDATE"},
+              "records": {"SELECT", "INSERT", "UPDATE"}, "tags": {"SELECT", "INSERT", "UPDATE", "DELETE"},
+              "record_tags": {"SELECT", "INSERT", "DELETE"}, "association_types": {"SELECT", "INSERT", "DELETE"},
+              "associations": {"SELECT", "INSERT", "DELETE"}, "saved_views": {"SELECT", "INSERT", "UPDATE", "DELETE"},
+              "event_records": {"SELECT", "INSERT"}}
     every = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
     with engine.connect() as conn:
         for table, expected in wanted.items():
@@ -268,3 +359,141 @@ def test_the_app_role_cannot_link_a_delivery_across_workspaces_or_touch_foreign_
         with conn.begin():
             assert conn.scalar(text("SELECT count(*) FROM webhook_endpoints WHERE id = :i AND active"),
                                {"i": b_ids["webhook_id"]}) == 1
+
+
+def test_a_user_of_a_gets_404s_for_bs_objects_fields_records_tags_views_and_links(two_orgs):
+    a, a_ids, b, b_ids = two_orgs
+    mine = {"X-Workspace-Id": a_ids["workspace_id"]}
+    key, record, tag, view = b_ids["object_key"], b_ids["record_id"], b_ids["tag_id"], b_ids["view_id"]
+    contact = "/api/v1/objects/contact/records"
+    theirs = f"/api/v1/objects/{key}"
+    attempts = [
+        ("GET", theirs, None), ("PATCH", theirs, {"singular": "x"}), ("DELETE", theirs, None),
+        ("GET", f"{theirs}/fields", None),
+        ("POST", f"{theirs}/fields", {"key": "x", "label": "X", "type": "text"}),
+        ("PATCH", f"{theirs}/fields/{b_ids['field_key']}", {"label": "x"}),
+        ("DELETE", f"{theirs}/fields/{b_ids['field_key']}", None),
+        ("GET", f"{theirs}/records", None), ("POST", f"{theirs}/records", {"values": {"name": "x"}}),
+        ("POST", f"{theirs}/records/query", {}), ("GET", f"{theirs}/records/{b_ids['vault_id']}", None),
+        ("GET", f"{contact}/{record}", None), ("PATCH", f"{contact}/{record}", {"values": {"first_name": "x"}}),
+        ("DELETE", f"{contact}/{record}", None), ("POST", f"{contact}/{b_ids['trashed_id']}/restore", None),
+        ("GET", f"/api/v1/trash?object={key}", None), ("GET", f"/api/v1/records/{record}/timeline", None),
+        ("GET", f"/api/v1/records/{record}/associations", None),
+        ("POST", f"/api/v1/records/{record}/associations", {"type_id": b_ids["type_id"], "other_id": record}),
+        ("DELETE", f"/api/v1/associations/{b_ids['association_id']}", None),
+        ("DELETE", f"/api/v1/associations/{b_ids['vault_association_id']}", None),
+        ("DELETE", f"/api/v1/association-types/{b_ids['type_id']}", None),
+        ("PATCH", f"/api/v1/tags/{tag}", {"name": "stolen"}), ("DELETE", f"/api/v1/tags/{tag}", None),
+        ("POST", f"/api/v1/tags/{tag}/merge", {"into": tag}),
+        ("POST", f"/api/v1/records/{record}/tags", {"add": [tag]}),
+        ("POST", "/api/v1/records/tags", {"record_ids": [record], "remove": [tag]}),
+        ("GET", f"/api/v1/views/{view}", None), ("PATCH", f"/api/v1/views/{view}", {"name": "stolen"}),
+        ("DELETE", f"/api/v1/views/{view}", None), ("GET", f"/api/v1/views/{b_ids['shared_view_id']}", None),
+        ("DELETE", f"/api/v1/views/{b_ids['shared_view_id']}", None),
+        ("GET", f"{contact}?view={view}", None), ("GET", f"{contact}?view={b_ids['shared_view_id']}", None),
+    ]
+    for method, path, body in attempts:
+        r = a.request(method, path, json=body, headers=mine)
+        assert r.status_code == 404, (method, path, r.status_code, r.text[:200])
+    # A's own records, tags and links against B's: refused without a word about B
+    a_tag = a.post("/api/v1/tags", json={"name": "mine"}, headers=mine).json()["id"]
+    for method, path, body, status in [
+            ("POST", f"/api/v1/records/{a_ids['record_id']}/tags", {"add": [tag]}, 404),
+            ("POST", f"/api/v1/records/{record}/tags", {"add": [a_tag]}, 404),
+            ("POST", f"/api/v1/tags/{a_tag}/merge", {"into": tag}, 404),
+            ("POST", f"/api/v1/tags/{tag}/merge", {"into": a_tag}, 404),
+            ("POST", f"/api/v1/records/{a_ids['record_id']}/associations",
+             {"type_id": b_ids["type_id"], "other_id": a_ids["company_id"]}, 404),
+            ("POST", f"/api/v1/records/{a_ids['record_id']}/associations",
+             {"type_id": a_ids["type_id"], "other_id": b_ids["vault_id"]}, 404),
+            ("POST", contact, {"values": {"first_name": "x", "company": b_ids["company_id"]}}, 422),
+            ("POST", contact, {"values": {"first_name": "x"}, "owner_id": b_ids["user_id"]}, 422),
+            ("PATCH", f"{contact}/{a_ids['record_id']}", {"owner_id": b_ids["user_id"]}, 422),
+            ("POST", "/api/v1/views", {"object": b_ids["object_key"], "name": "x"}, 404)]:
+        r = a.request(method, path, json=body, headers=mine)
+        assert r.status_code == status, (method, path, r.status_code, r.text[:200])
+        assert not any(leak in r.text for leak in secrets_of(b_ids)), (method, path)
+    # what A can list and search is A's: not B's names, not B's tag, not B's count
+    page = a.get(contact, params={"count": "true", "include": "tags,company", "limit": 200}, headers=mine).json()
+    assert {r["display_name"] for r in page["data"]} == {a_ids["record_name"]} and page["total"] == 1
+    assert not any(leak in json.dumps(page) for leak in secrets_of(b_ids))
+    for query in ({"q": "bravo"}, {"q": "secret"}, {"q": b_ids["record_name"]}, {"filter": json.dumps({"tag": tag})},
+                  {"filter": json.dumps({"tag": b_ids["tag_name"]})},
+                  {"filter": json.dumps({"field": "company.name", "op": "is", "value": b_ids["company_name"]})}):
+        found = a.get(contact, params=query, headers=mine).json()["data"]
+        assert not [r for r in found if "Bravo" in r["display_name"]], query
+    assert a.get(contact, params={"q": "bravo"}, headers=mine).json()["data"] == []
+    trash = a.get("/api/v1/trash", params={"object": "contact"}, headers=mine).json()["data"]
+    assert [r["display_name"] for r in trash] == [a_ids["trashed_name"]]
+    assert [t["name"] for t in a.get("/api/v1/tags", headers=mine).json()["data"] if "bravo" in t["name"]] == []
+    # and B still has all of it
+    theirs_h = {"X-Workspace-Id": b_ids["workspace_id"]}
+    assert b.get(f"{contact}/{record}", headers=theirs_h).json()["display_name"] == b_ids["record_name"]
+    assert [t["name"] for t in b.get("/api/v1/tags", headers=theirs_h).json()["data"]] == [b_ids["tag_name"]]
+
+
+def test_the_app_role_cannot_move_a_row_to_another_workspace_or_point_one_across(two_orgs, db):
+    _, a_ids, _, b_ids = two_orgs
+    a_ws, b_ws = a_ids["workspace_id"], b_ids["workspace_id"]
+    b_object = db.scalar(text("SELECT id FROM objects WHERE workspace_id = :w AND key = 'contact'"), {"w": b_ws})
+    a_object = db.scalar(text("SELECT id FROM objects WHERE workspace_id = :w AND key = 'contact'"), {"w": a_ws})
+    alice = signin_alice().get("/api/me").json()["user"]["id"]
+    with engine.connect() as conn:
+        # a row cannot change its workspace: the policy checks the new row as well as the old
+        for table in ("objects", "fields", "records", "tags", "saved_views"):
+            with pytest.raises(DBAPIError, match="row-level security"), conn.begin():
+                context(conn, workspace_id=a_ws, user_id=alice)
+                conn.execute(text(f"UPDATE {table} SET workspace_id = :b"), {"b": b_ws})
+        # and cannot be inserted into another one
+        for statement in ("INSERT INTO objects (workspace_id, key, singular, plural, primary_fields) "
+                          "VALUES (:b, 'x', 'X', 'Xs', '{}')",
+                          "INSERT INTO tags (workspace_id, name) VALUES (:b, 'x')",
+                          "INSERT INTO records (workspace_id, object_id) VALUES (:b, :bo)",
+                          "INSERT INTO fields (workspace_id, object_id, key, label, type) "
+                          "VALUES (:b, :bo, 'x', 'X', 'text')"):
+            with pytest.raises(DBAPIError, match="row-level security"), conn.begin():
+                context(conn, workspace_id=a_ws)
+                conn.execute(text(statement), {"b": b_ws, "bo": b_object})
+        # a row of A cannot reference a row of B: the foreign keys carry the workspace
+        a_record = db.scalar(text("SELECT id FROM records WHERE workspace_id = :w LIMIT 1"), {"w": a_ws})
+        ids = {"a": a_ws, "bo": b_object, "ao": a_object, "bt": b_ids["tag_id"], "ar": a_record,
+               "br": b_ids["record_id"], "bty": b_ids["type_id"]}
+        for statement in ("INSERT INTO records (workspace_id, object_id) VALUES (:a, :bo)",
+                          "INSERT INTO fields (workspace_id, object_id, key, label, type) "
+                          "VALUES (:a, :bo, 'x', 'X', 'text')",
+                          "INSERT INTO record_tags (workspace_id, record_id, tag_id) VALUES (:a, :ar, :bt)",
+                          "INSERT INTO associations (workspace_id, type_id, from_record_id, to_record_id) "
+                          "SELECT :a, id, :ar, :br FROM association_types WHERE workspace_id = :a LIMIT 1",
+                          "INSERT INTO associations (workspace_id, type_id, from_record_id, to_record_id) "
+                          "SELECT :a, :bty, :ar, id FROM records WHERE workspace_id = :a AND id <> :ar LIMIT 1",
+                          "INSERT INTO association_types (workspace_id, from_object_id, to_object_id, label, "
+                          "inverse_label) VALUES (:a, :ao, :bo, 'x', 'y')",
+                          "INSERT INTO saved_views (workspace_id, object_id, name, shared) VALUES (:a, :bo, 'x', true)",
+                          "INSERT INTO event_records (workspace_id, event_id, record_id) VALUES (:a, 1, :br)"):
+            with pytest.raises(DBAPIError, match="foreign key"), conn.begin():
+                context(conn, workspace_id=a_ws)
+                conn.execute(text(statement), ids)
+        for statement in ("DELETE FROM records", "DELETE FROM objects", "DELETE FROM fields"):
+            with pytest.raises(DBAPIError, match="permission denied"), conn.begin():
+                context(conn, workspace_id=a_ws)
+                conn.execute(text(statement))
+    assert db.scalar(text("SELECT count(*) FROM records WHERE workspace_id = :w"), {"w": b_ws}) == 4  # as filled
+
+
+def test_a_private_view_is_hidden_from_other_users_in_sql_too(two_orgs):
+    _, a_ids, _, b_ids = two_orgs
+    alice = signin_alice().get("/api/me").json()["user"]["id"]
+    nobody = "00000000-0000-0000-0000-000000000001"
+    names = text("SELECT name FROM saved_views")
+    with engine.connect() as conn, conn.begin():
+        context(conn, workspace_id=a_ids["workspace_id"], user_id=alice)
+        assert {n for n in conn.execute(names).scalars()} == {a_ids["view_name"], a_ids["shared_view_name"]}
+        context(conn, workspace_id=a_ids["workspace_id"], user_id=nobody)
+        assert conn.execute(names).scalars().all() == [a_ids["shared_view_name"]]
+        context(conn, workspace_id=a_ids["workspace_id"])
+        assert conn.execute(names).scalars().all() == [a_ids["shared_view_name"]]
+        assert conn.execute(text("UPDATE saved_views SET name = 'x' WHERE shared = false")).rowcount == 0
+        with pytest.raises(DBAPIError, match="row-level security"):  # nor can a user plant a private view of another
+            conn.execute(text("INSERT INTO saved_views (workspace_id, object_id, name, shared, owner_id) "
+                              "SELECT workspace_id, object_id, 'x', false, :o FROM saved_views LIMIT 1"),
+                         {"o": nobody})

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "tag.created",
+  "description": "A tag was created. Subject: the tag.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"},
+    "color": {"type": ["string", "null"]},
+    "group": {"type": ["string", "null"]},
+    "description": {"type": ["string", "null"]}
+  },
+  "required": ["id", "name", "color", "group", "description"],
+  "additionalProperties": false
+}

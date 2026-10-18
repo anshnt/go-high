@@ -8,6 +8,7 @@ from pydantic import BaseModel, StringConstraints
 from . import events
 from .db import rescope
 from .models import Brand, Workspace
+from .records.seed import seed_workspace
 from .security import Ctx, in_workspace, user
 from .tenancy import ADMIN_ORG_ROLES, my_workspaces, org_role, workspace_data, workspace_json, workspace_role
 
@@ -40,6 +41,7 @@ def create_workspace(body: NewWorkspace, c: Ctx = Depends(user)):
     c.db.add(ws)
     c.db.flush()
     rescope(c.db, user_id=c.user_id, org_id=ws.org_id, workspace_id=ws.id)  # the event belongs to the new workspace
+    seed_workspace(c.db, ws.id)
     events.emit(c.db, "workspace.created", "workspace", ws.id, workspace_data(ws), actor=("user", c.user_id))
     c.db.commit()
     return workspace_json(ws, "admin")

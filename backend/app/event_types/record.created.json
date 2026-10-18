@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "record.created",
+  "description": "A record was created. `data` is its full state. Subject: the record.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "object": {"type": "string"},
+    "display_name": {"type": "string"},
+    "values": {"type": "object"},
+    "owner_id": {"type": ["string", "null"], "format": "uuid"}
+  },
+  "required": ["id", "object", "display_name", "values", "owner_id"],
+  "additionalProperties": false
+}

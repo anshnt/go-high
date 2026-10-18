@@ -59,8 +59,8 @@ def test_every_registered_type_has_a_valid_schema():
 
 
 def test_every_type_the_code_emits_is_registered():
-    pattern = re.compile(r"emit\(\s*[\w.]+\s*,\s*\"([\w.]+)\"")
-    emitted = {m for path in APP.glob("*.py") for m in pattern.findall(path.read_text(encoding="utf-8"))}
+    pattern = re.compile(r"emit(?:_many)?\(\s*[\w.]+\s*,\s*\"([\w.]+)\"")
+    emitted = {m for path in APP.rglob("*.py") for m in pattern.findall(path.read_text(encoding="utf-8"))}
     assert emitted and emitted <= set(events.TYPES), emitted - set(events.TYPES)
     assert emitted == set(events.TYPES)  # and no schema is left without an emitter
 
