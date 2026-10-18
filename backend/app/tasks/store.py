@@ -1,18 +1,17 @@
 """The write path of tasks: validate, save, emit the event in the same transaction. Routes, bulk changes and the
 recurrence of a completed task all go through here. Tasks are visible to the whole workspace.
-ponytail: ADR 0004 will hide tasks of a record outside the caller's scope (and the record's name in `decorate`)."""
+ponytail: a task is the workspace's whatever record it links to; only that record's name follows ADR 0004 (`named`)."""
 import uuid
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 from sqlalchemy import func, select, update
-from sqlalchemy.orm import Session
 
-from .. import events, jobs
+from .. import events, jobs, permissions
 from ..api import ApiError
 from ..records import store as records
-from ..records.models import ObjectDef, Record
+from ..records.models import Record
 from ..records.schema import Catalog
 from ..security import Ctx
 from . import recurrence
@@ -43,12 +42,29 @@ def state(t: Task) -> dict:
     return {k: getattr(t, k) for k in STATE}
 
 
-def decorate(db: Session, tasks: list[Task]) -> list[dict]:
-    """The API shape of tasks, with the linked record's name and the task they wait for, in two queries."""
-    record_ids = {t.record_id for t in tasks if t.record_id}
-    found = db.execute(select(Record.id, Record.display_name, ObjectDef.key).join(
-        ObjectDef, ObjectDef.id == Record.object_id).where(Record.id.in_(record_ids))).all() if record_ids else []
-    linked = {r.id: {"id": r.id, "object": r.key, "display_name": r.display_name} for r in found}
+def named(c: Ctx, record_ids: set[uuid.UUID]) -> dict[uuid.UUID, dict]:
+    """The linked records the caller may see by name: in their scope, and named by fields they may read. A task on any
+    other record shows none (`record` is null), as a list of that kind of record would not show it either."""
+    if not record_ids:
+        return {}
+    cat, shown = Catalog(c), {}
+    found = c.db.execute(select(Record.id, Record.object_id, Record.display_name).where(
+        Record.workspace_id == c.workspace.id, Record.id.in_(record_ids))).all()
+    for object_id in {r.object_id for r in found}:
+        obj = cat.by_id(object_id)
+        if obj is None or "display_name" in permissions.hidden(c, obj):
+            continue
+        mine = [r.id for r in found if r.object_id == object_id]
+        seen = set(c.db.scalars(select(Record.id).where(Record.id.in_(mine), records.scope(cat, obj))))
+        shown |= {r.id: {"id": r.id, "object": obj.key, "display_name": r.display_name}
+                  for r in found if r.id in seen}
+    return shown
+
+
+def decorate(c: Ctx, tasks: list[Task]) -> list[dict]:
+    """The API shape of tasks, with the linked record's name and the task they wait for."""
+    db = c.db
+    linked = named(c, {t.record_id for t in tasks if t.record_id})
     dep_ids = {t.depends_on_task_id for t in tasks if t.depends_on_task_id}
     waits = db.execute(select(Task.id, Task.title, Task.status).where(Task.id.in_(dep_ids))).all() if dep_ids else []
     deps = {d.id: {"id": d.id, "title": d.title, "status": d.status} for d in waits}

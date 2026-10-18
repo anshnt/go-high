@@ -1,5 +1,5 @@
-"""Migration 0009 on a database that has an event log already: notifications start from the end of it, the tables match
-the models, and it goes both ways."""
+"""Migration 0009 on a database that has an event log and organizations already: notifications start from the end of
+the log, the system roles get the tasks capabilities, the tables match the models, and it goes both ways."""
 import os
 import subprocess
 import sys
@@ -50,12 +50,17 @@ def test_old_events_never_become_notifications_and_the_migration_reverses():
             flags = conn.execute(text("SELECT relname, relrowsecurity, relforcerowsecurity FROM pg_class "
                                       "WHERE relname = ANY(:t)"), {"t": list(TABLES)}).all()
             assert len(flags) == 3 and all(f[1] and f[2] for f in flags)
-            assert conn.scalar(text("SELECT count(*) FROM pg_proc WHERE proname = 'workspace_people'")) == 1
-        alembic(url, "downgrade", "0004")
+            roles = dict(conn.execute(text("SELECT key, capabilities FROM roles WHERE org_id = :o"), {"o": org}).all())
+            tasks = {key: sorted(c for c in caps if c.startswith("tasks.")) for key, caps in roles.items()}
+            everything = ["tasks.delete", "tasks.read", "tasks.write"]
+            assert tasks == {"owner": everything, "admin": everything, "manager": everything, "member": everything,
+                             "viewer": ["tasks.read"], "automation": ["tasks.read", "tasks.write"]}
+        alembic(url, "downgrade", "0005")
         with engine.begin() as conn:
             assert conn.scalar(text("SELECT count(*) FROM pg_tables WHERE tablename = ANY(:t)"),
                                {"t": list(TABLES)}) == 0
-            assert conn.scalar(text("SELECT count(*) FROM pg_proc WHERE proname = 'workspace_people'")) == 0
+            left = text("SELECT count(*) FROM roles WHERE array_to_string(capabilities, ',') LIKE '%tasks.%'")
+            assert conn.scalar(left) == 0  # taken away again
             assert conn.scalar(cursor) is None
             assert conn.scalar(text("SELECT count(*) FROM events")) == 3  # the rest is untouched
         alembic(url, "upgrade", "head")

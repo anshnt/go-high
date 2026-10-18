@@ -1,7 +1,7 @@
-"""tasks, notifications, notification preferences, the people-of-a-workspace function
+"""tasks, notifications, notification preferences, the tasks capabilities of the system roles
 
 Revision ID: 0009
-Revises: 0004
+Revises: 0005
 Create Date: 2026-10-18
 """
 import sqlalchemy as sa
@@ -9,7 +9,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "0009"
-down_revision = "0004"
+down_revision = "0005"
 branch_labels = None
 depends_on = None
 
@@ -106,23 +106,11 @@ RLS = {
     "notification_prefs": ("SELECT, INSERT, UPDATE", OWN),
 }
 
-# The people of the current workspace (its members and the admins of its organization) with their names, for
-# assignment pickers. `users` is readable by its owner only, and giving every colleague that table would expose
-# password hashes, so this runs as the owner and answers only to someone who belongs to the workspace.
-PEOPLE = """
-CREATE FUNCTION workspace_people() RETURNS TABLE (user_id uuid, name varchar, email varchar, role varchar)
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
-  WITH ws AS (SELECT id, org_id FROM workspaces WHERE id = app_workspace_id()),
-  people AS (
-    SELECT m.user_id, m.role::varchar AS role FROM workspace_members m JOIN ws ON m.workspace_id = ws.id
-    UNION ALL
-    SELECT o.user_id, 'admin'::varchar FROM org_members o JOIN ws ON o.org_id = ws.org_id
-    WHERE o.role IN ('owner', 'admin'))
-  SELECT DISTINCT ON (u.id) u.id, u.name, u.email, p.role
-  FROM people p JOIN users u ON u.id = p.user_id
-  WHERE EXISTS (SELECT 1 FROM people WHERE people.user_id = app_user_id())
-  ORDER BY u.id, p.role
-$$"""
+# frozen: what each system role gets (the capabilities are in permissions.CATALOG, and in roles_seed for new
+# organizations). A custom role keeps what it has: an admin adds tasks to it from the role editor.
+READ, WRITE, DELETE = "tasks.read", "tasks.write", "tasks.delete"
+GRANTS = {("owner", "admin", "manager", "member"): (READ, WRITE, DELETE), ("viewer",): (READ,),
+          ("automation",): (READ, WRITE)}
 
 # Notifications start from the end of the log: events from before this migration never become notifications.
 START_CURSOR = """
@@ -138,14 +126,15 @@ def upgrade() -> None:
         op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")
         op.execute(f"GRANT {privileges} ON {table} TO gohigh_app")
         op.execute(f"CREATE POLICY workspace ON {table} {policy}")
-    op.execute(PEOPLE)
-    op.execute("REVOKE ALL ON FUNCTION workspace_people() FROM PUBLIC")
-    op.execute("GRANT EXECUTE ON FUNCTION workspace_people() TO gohigh_app")
+    for keys, capabilities in GRANTS.items():
+        wanted = "ARRAY[" + ", ".join(f"'{c}'" for c in capabilities) + "]::text[]"
+        op.execute(f"UPDATE roles SET capabilities = capabilities || ARRAY(SELECT c FROM unnest({wanted}) c "
+                   f"WHERE c <> ALL (capabilities)) WHERE is_system AND key IN ({', '.join(repr(k) for k in keys)})")
     op.execute(START_CURSOR)
 
 
 def downgrade() -> None:
-    op.execute("DROP FUNCTION workspace_people()")
+    op.execute("UPDATE roles SET capabilities = ARRAY(SELECT c FROM unnest(capabilities) c WHERE c NOT LIKE 'tasks.%')")
     for table in reversed(RLS):
         op.execute(f"DROP TABLE {table} CASCADE")
     op.execute("DELETE FROM event_cursors WHERE consumer = 'notifications'")

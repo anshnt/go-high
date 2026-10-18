@@ -1,14 +1,16 @@
 """My Day (module 11): what one person has to do today, from every module that has something to say. Each module adds a
 section with `@section("name")`; a section is a function of the request and the reader's time zone that returns JSON,
 and the response holds one key per section. Tasks are the first; appointments (module 16) and assigned conversations
-(module 12) add theirs when they exist."""
+(module 12) add theirs when they exist. The route needs `tasks.read` today; once there are several sections, each
+asks for its own capability and a person gets the sections their role allows."""
 from collections.abc import Callable
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 
-from ..security import Ctx, in_workspace
+from ..permissions import requires
+from ..security import Ctx
 from . import due, store
 from .models import Task
 from .routes import tz_param
@@ -38,11 +40,11 @@ def my_tasks(c: Ctx, zone: ZoneInfo) -> dict:
     late, soon = open_tasks(due.overdue), open_tasks(due.due_today)
     finished = c.db.scalar(select(func.count()).select_from(Task).where(
         *mine, Task.status == "done", Task.completed_at >= day.start, Task.completed_at < day.end))
-    shown = store.decorate(c.db, late + soon)
+    shown = store.decorate(c, late + soon)
     return {"overdue": shown[:len(late)], "today": shown[len(late):],
             "counts": {"overdue": len(late), "today": len(soon), "done_today": finished}}
 
 
 @router.get("/my-day")
-def my_day(c: Ctx = Depends(in_workspace), zone: ZoneInfo = Depends(tz_param)):
+def my_day(c: Ctx = Depends(requires("tasks.read")), zone: ZoneInfo = Depends(tz_param)):
     return {"date": due.today(zone).date, "timezone": zone.key, **{name: fn(c, zone) for name, fn in SECTIONS.items()}}

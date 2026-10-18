@@ -535,21 +535,3 @@ def test_my_day_leaves_out_finished_unassigned_and_other_peoples_tasks(crm, db):
     complete(client, ws, done["id"])
     overdue = client.get("/api/v1/my-day", headers={H: ws}).json()["tasks"]["overdue"]
     assert [t["title"] for t in overdue] == ["older", "newer"]
-
-
-def test_members_lists_the_people_of_this_workspace_only(crm, db, make_user):
-    client, ws, ids = crm
-    ben = add_member(db, ids["org_id"], "ben@example.com", workspace_id=ws)
-    add_member(db, ids["org_id"], "outsider@example.com")  # in the organization, not in this workspace
-    admin = add_member(db, ids["org_id"], "root@example.com", org_role="admin")
-    stranger, stranger_ids = make_user("stranger@example.com")
-    people = client.get("/api/v1/members", headers={H: ws}).json()["data"]
-    assert [(p["email"], p["role"]) for p in people] == [
-        ("a@example.com", "admin"), ("ben@example.com", "member"), ("root@example.com", "admin")]
-    assert set(people[0]) == {"id", "name", "email", "role"}
-    assert ben.get("/api/v1/members", headers={H: ws}).json()["data"] == people
-    assert admin.get("/api/v1/members", headers={H: ws}).status_code == 200
-    assert stranger.get("/api/v1/members", headers={H: ws}).status_code == 404  # not their workspace
-    own = stranger.get("/api/v1/members", headers={H: stranger_ids["workspace_id"]}).json()["data"]
-    assert [p["email"] for p in own] == ["stranger@example.com"]
-    assert client.get("/api/v1/members").status_code == 400  # needs the workspace header

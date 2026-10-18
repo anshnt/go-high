@@ -26,7 +26,7 @@ export type Task = {
   updated_at: string;
 };
 export type TaskInput = Partial<Pick<Task, "title" | "notes" | "due_at" | "all_day" | "assignee_id" | "priority" | "record_id" | "recurrence" | "depends_on_task_id">>;
-export type Member = { id: string; name: string; email: string; role: "admin" | "member" };
+export type Member = { id: string; name: string; email: string };
 export type MyDay = {
   date: string;
   timezone: string;
@@ -81,7 +81,8 @@ export const assigneeParam = (show: Show) => (show === "mine" ? "me" : show === 
 const people = new Map<string, Member[]>();
 const peopleVersion = memory(0);
 
-/** The people of the current workspace, for assignee pickers and names. Empty until loaded. */
+/** The people of the current workspace (GET /members, which needs `members.read`), for assignee pickers and names.
+ * Empty until loaded, and for a role that may not read them: a name then reads "Someone". */
 export function useMembers(): Member[] {
   const ws = useStore(workspaceId);
   useStore(peopleVersion);
@@ -90,9 +91,9 @@ export function useMembers(): Member[] {
     if (!ws || people.has(ws)) return;
     let alive = true;
     api
-      .get<{ data: Member[] }>("/api/v1/members")
+      .get<{ data: { user_id: string; name: string; email: string }[] }>("/api/v1/members")
       .then((r) => {
-        people.set(ws, r.data);
+        people.set(ws, r.data.map((m) => ({ id: m.user_id, name: m.name, email: m.email })));
         peopleVersion.set(peopleVersion.get() + 1);
       })
       .catch(() => alive && setTimeout(() => retry((n) => n + 1), 10_000));
