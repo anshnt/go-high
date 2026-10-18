@@ -4,6 +4,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from fastapi.routing import iter_route_contexts
 from sqlalchemy import text
 
 PASSWORD = "correct horse battery"
@@ -73,7 +74,7 @@ def role_id(db, org_id, key: str):
     role's)."""
     found = db.scalar(text("SELECT id FROM roles WHERE org_id = :o AND key = :k"), {"o": org_id, "k": key})
     assert found, key
-    return found
+    return str(found)
 
 
 def add_member(db, org_id, email, org_role="member", workspace_id=None, workspace_role="member"):
@@ -92,6 +93,66 @@ def add_member(db, org_id, email, org_role="member", workspace_id=None, workspac
     link = client.post("/api/auth/magic-link", json={"email": email}).json()["link"]
     assert client.post("/api/auth/magic-link/consume", json={"token": link.split("token=")[1]}).status_code == 200
     return client
+
+
+def context(conn, **ctx) -> None:
+    """Runs the rest of the connection's transaction as the app role, with the request context given (user_id, org_id,
+    workspace_id, system), the way a request handler would."""
+    conn.execute(text("SET LOCAL ROLE gohigh_app"))
+    for key in ("user_id", "org_id", "workspace_id", "system"):
+        conn.execute(text("SELECT set_config(:k, :v, true)"), {"k": f"app.{key}", "v": str(ctx.get(key, ""))})
+
+
+def v1_routes() -> list[tuple[str, str, object]]:
+    """(method, path, route) of every /api/v1 route of the app."""
+    from app.main import app
+    return [(m, r.path, r) for r in iter_route_contexts(app.routes) if (r.path or "").startswith("/api/v1")
+            for m in sorted(r.methods - {"HEAD", "OPTIONS"})]
+
+
+def declared(dependant) -> list[str]:
+    """The capabilities a route's dependencies declare (see permissions.requires)."""
+    found = []
+    for dep in dependant.dependencies:
+        if capability := getattr(dep.call, "capability", None):
+            found.append(capability)
+        found += declared(dep)
+    return found
+
+
+def user_id_of(client) -> str:
+    return client.get("/api/me").json()["user"]["id"]
+
+
+def rule(object_key: str = "*", scope: str = "all", hidden=(), readonly=()) -> dict:
+    """An object rule of a role, as the API takes it."""
+    return {"object_key": object_key, "scope": scope, "hidden_fields": list(hidden), "readonly_fields": list(readonly)}
+
+
+def make_role(client, ws, name: str, copy_from: str = "member", capabilities=None, rules=None) -> dict:
+    """A custom role through the API: a copy of `copy_from`, then `capabilities` and `rules` if given."""
+    r = client.post("/api/v1/roles", json={"name": name, "copy_from": copy_from}, headers={H: ws})
+    assert r.status_code == 201, r.text
+    role = r.json()
+    patch = {k: v for k, v in (("capabilities", capabilities), ("object_rules", rules)) if v is not None}
+    if patch:
+        r = client.patch(f"/api/v1/roles/{role['id']}", json=patch, headers={H: ws})
+        assert r.status_code == 200, r.text
+        role = r.json()
+    return role
+
+
+def audit(client, ws, **params) -> list[dict]:
+    """The events of the audit log, newest first (all of them, whatever their number)."""
+    out, cursor = [], None
+    while True:
+        r = client.get("/api/v1/audit", params={**params, "limit": 200, **({"cursor": cursor} if cursor else {})},
+                       headers={H: ws})
+        assert r.status_code == 200, r.text
+        out += r.json()["data"]
+        cursor = r.json()["next_cursor"]
+        if not cursor:
+            return out
 
 
 def wait_for_quiet(timeout: float = 60) -> None:

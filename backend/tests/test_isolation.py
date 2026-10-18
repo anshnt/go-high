@@ -6,7 +6,7 @@ import re
 import pytest
 from fastapi.routing import iter_route_contexts
 from fastapi.testclient import TestClient
-from helpers import PASSWORD, link, type_id
+from helpers import PASSWORD, context, link, type_id
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
@@ -226,12 +226,6 @@ def test_a_user_of_a_cannot_target_b_with_a_valid_looking_request(two_orgs):
     assert a.delete(f"/api/auth/sessions/{b_ids['session_id']}").status_code == 404
     assert a.get("/api/workspaces/current", headers={"X-Workspace-Id": b_ids["second_workspace_id"]}).status_code == 404
     assert [w["id"] for w in a.get("/api/workspaces").json()] == [a_ids["workspace_id"], a_ids["second_workspace_id"]]
-
-
-def context(conn, **ctx):
-    conn.execute(text("SET LOCAL ROLE gohigh_app"))
-    for key in ("user_id", "org_id", "workspace_id", "system"):
-        conn.execute(text("SELECT set_config(:k, :v, true)"), {"k": f"app.{key}", "v": str(ctx.get(key, ""))})
 
 
 def rows(conn, table: str) -> list[str]:

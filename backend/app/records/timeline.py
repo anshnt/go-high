@@ -12,7 +12,7 @@ from ..events import Event, newest_first
 from ..permissions import requires_records
 from ..security import Ctx
 from . import store
-from .models import EventRecord
+from .models import EventRecord, Record
 from .schema import Catalog
 
 router = APIRouter(prefix="/api/v1")
@@ -40,5 +40,17 @@ def timeline(record_id: uuid.UUID, limit: int = Query(50, ge=1, le=200), cursor:
         select(EventRecord.event_id).where(EventRecord.record_id == record_id))
     stmt = select(Event).where(Event.workspace_id == c.workspace.id, Event.id.in_(mine))
     page, next_cursor = newest_first(c.db, stmt, limit, cursor)
+    whole = whole_links(cat, page)
+    page = [e for e in page if e.id in whole]
     return {"data": [event_json(e, permissions.redact_event(c, obj, e.data)) for e in page],
             "next_cursor": next_cursor}
+
+
+def whole_links(cat: Catalog, page: list[Event]) -> set[int]:
+    """The events of the page that may be shown: all but a link to a record the caller may not see, which would give
+    that record's id away. A page can come out shorter than its limit; the cursor goes on."""
+    links = [e for e in page if e.type.startswith("association.")]
+    ends = {uuid.UUID(e.data[end]) for e in links for end in ("from_record_id", "to_record_id")}
+    seen = set(cat.db.scalars(select(Record.id).where(Record.id.in_(ends), store.anywhere(cat)))) if ends else set()
+    return {e.id for e in page if e not in links or {uuid.UUID(e.data["from_record_id"]),
+                                                      uuid.UUID(e.data["to_record_id"])} <= seen}

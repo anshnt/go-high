@@ -358,7 +358,7 @@ def test_a_mistake_in_a_filter_is_a_400_that_points_at_it(book):
     bad({"and": ["x"]}, "filter.and.0", "must be an object")
     bad({"not": []}, "filter.not", "must be an object")
     bad({"not": leaf("score", "is", 1), "x": 1}, "filter", "not takes one condition")
-    bad({"nonsense": 1}, "filter", "expected one of and, or, not, tag or field")
+    bad({"nonsense": 1}, "filter", "expected one of and, or, not, tag, team or field")
     bad({"and": [leaf("score", "gt", n) for n in range(101)]}, "filter.and.99", "too large")
     deep = leaf("score", "gt", 1)
     for _ in range(10):

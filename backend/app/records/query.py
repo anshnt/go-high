@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import NamedTuple
 
-from sqlalchemy import ARRAY, Double, Text, and_, cast, false, func, literal, or_, select
+from sqlalchemy import ARRAY, Double, Text, and_, cast, false, func, literal, literal_column, or_, select
 from sqlalchemy.dialects.postgresql import REGCONFIG, TSQUERY, array
 
 from .. import permissions
@@ -112,8 +112,8 @@ def search_vector(cat: Catalog, obj: ObjectDef):
     values = Record.values.op("-")(cast(array(sorted(hidden - {"display_name"}), type_=Text), ARRAY(Text)))
     name = literal("") if "display_name" in hidden else func.coalesce(Record.display_name, "")
     simple = cast(literal("simple"), REGCONFIG)
-    return func.setweight(func.to_tsvector(simple, name), "A").op("||")(
-        func.setweight(func.to_tsvector(simple, values), "B"))
+    return func.setweight(func.to_tsvector(simple, name), literal_column("'A'")).op("||")(
+        func.setweight(func.to_tsvector(simple, values), literal_column("'B'")))
 
 
 def include_names(cat: Catalog, obj: ObjectDef, names: list[str]) -> list[tuple[str, ObjectDef | None]]:
