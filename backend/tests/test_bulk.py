@@ -1,4 +1,4 @@
-"""Bulk delete and restore (up to 1000 records in one call) and asking for tags back on a write."""
+"""Bulk delete, restore and update (up to 1000 records in one call) and asking for tags back on a write."""
 import uuid
 
 from helpers import H, listing, make_record, names
@@ -89,3 +89,33 @@ def test_a_write_can_ask_for_the_tags_back_like_a_read(crm):
     assert bad.status_code == 400 and "include" in bad.json()["error"]["fields"]
     # a refused include changes nothing: the name is what the last good patch left
     assert client.get(path, headers={H: ws}).json()["display_name"] == "Ada L"
+
+
+def test_a_bulk_update_changes_many_records_all_or_nothing_and_emits_only_for_real_changes(crm, db):
+    client, ws, _ = crm
+    me = client.get("/api/me").json()["user"]["id"]
+    ids = [make_record(client, ws, first_name=n)["id"] for n in ("Ada", "Grace", "Alan")]
+    mine = client.post(f"{R}/update", json={"ids": ids, "owner_id": me}, headers={H: ws})
+    assert mine.status_code == 200 and mine.json() == {"updated": 3}
+    assert {r["owner_id"] for r in listing(client, ws)["data"]} == {me}
+    back = client.post(f"{R}/update", json={"ids": ids[1:], "owner_id": None, "values": {"last_name": "Austin"}},
+                       headers={H: ws})
+    assert back.status_code == 200 and back.json() == {"updated": 2}
+    rows = {r["id"]: r for r in listing(client, ws)["data"]}
+    assert [rows[i]["owner_id"] for i in ids] == [me, None, None]
+    assert [rows[i]["values"].get("last_name") for i in ids] == [None, "Austin", "Austin"]
+    # the same change again changes nothing and emits nothing
+    events = db.scalar(text("SELECT count(*) FROM events WHERE type = 'record.updated'"))
+    same = client.post(f"{R}/update", json={"ids": ids[1:], "owner_id": None, "values": {"last_name": "Austin"}},
+                       headers={H: ws})
+    assert same.json() == {"updated": 0}
+    assert db.scalar(text("SELECT count(*) FROM events WHERE type = 'record.updated'")) == events
+    # one bad value or one unknown id refuses the whole batch
+    bad = client.post(f"{R}/update", json={"ids": ids, "values": {"email": "not an email"}}, headers={H: ws})
+    assert bad.status_code == 422
+    unknown = client.post(f"{R}/update", json={"ids": [ids[0], str(uuid.uuid4())], "values": {"last_name": "Oslo"}},
+                          headers={H: ws})
+    assert unknown.status_code == 404
+    assert {r["values"].get("last_name") for r in listing(client, ws)["data"]} == {"Austin", None}
+    empty = client.post(f"{R}/update", json={"ids": ids}, headers={H: ws})
+    assert empty.status_code == 422 and empty.json()["error"]["code"] == "validation_failed"

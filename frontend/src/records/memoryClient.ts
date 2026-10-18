@@ -272,7 +272,7 @@ export function createMemoryClient(opts: MemoryOptions = {}): RecordsClient {
     }
   };
 
-  return {
+  const client: RecordsClient = {
     async listObjects() {
       await wait();
       return ds.objects;
@@ -387,6 +387,11 @@ export function createMemoryClient(opts: MemoryOptions = {}): RecordsClient {
       return toRow(rec);
     },
 
+    async updateMany(object, ids, changes) {
+      for (const id of ids) rowOf(object, id); // all or nothing, like the API
+      for (const id of ids) await client.update(object, id, changes);
+    },
+
     async remove(object, ids) {
       await wait();
       for (const id of ids) rowOf(object, id);
@@ -472,4 +477,5 @@ export function createMemoryClient(opts: MemoryOptions = {}): RecordsClient {
       return m && !users.some((u) => u.id === m.id) ? [m, ...users] : users;
     },
   };
+  return client;
 }

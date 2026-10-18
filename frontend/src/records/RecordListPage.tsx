@@ -1,4 +1,4 @@
-import { Filter as FilterIcon, LockKeyhole, MoreHorizontal, Plus, Search, SearchX, Tag as TagIcon, Trash2, TriangleAlert, X } from "lucide-react";
+import { Filter as FilterIcon, LockKeyhole, UserRound, MoreHorizontal, Plus, Search, SearchX, Tag as TagIcon, Trash2, TriangleAlert, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, useNavigate, useParams, useSearchParams } from "react-router";
 import { cn } from "../lib/cn";
@@ -373,6 +373,20 @@ function Loaded({ client, def }: { client: RecordsClient; def: ObjectDef }) {
     }
   };
 
+  const reassignSelected = async (owner: string | null) => {
+    const before = selectedRows;
+    const ids = before.map((r) => r.id);
+    const who = owner ? (meta.users.find((u) => u.id === owner)?.name ?? "them") : "nobody";
+    for (const r of before) list.patchRow({ ...r, owner_id: owner });
+    try {
+      await client.updateMany(def.key, ids, { owner_id: owner });
+      toast({ title: `Assigned ${ids.length} ${ids.length === 1 ? lower(def.singular) : noun} to ${who}`, tone: "success" });
+    } catch (e) {
+      before.forEach((r) => list.patchRow(r));
+      toast({ title: "Could not change the owner", description: errorMessage(e), tone: "danger" });
+    }
+  };
+
   const onChanged = useCallback(
     (row: RecordRow) => {
       list.patchRow(row);
@@ -544,6 +558,18 @@ function Loaded({ client, def }: { client: RecordsClient; def: ObjectDef }) {
             trigger={
               <Button size="sm">
                 <TagIcon size={14} aria-hidden /> Tag
+              </Button>
+            }
+          />
+          <Combobox
+            label="Owner for selected"
+            items={[{ value: "", label: "Nobody", hint: "Unassign" }, ...meta.users.map((u) => ({ value: u.id, label: u.name, hint: u.email }))]}
+            value={null}
+            onChange={(id) => void reassignSelected(id || null)}
+            searchPlaceholder="Search people"
+            trigger={
+              <Button size="sm">
+                <UserRound size={14} aria-hidden /> Owner
               </Button>
             }
           />
