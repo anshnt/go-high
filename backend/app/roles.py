@@ -106,7 +106,7 @@ def create_role(body: NewRole, c: Ctx = Depends(requires("roles.manage", org=Tru
     source = c.db.scalar(select(Role).where(Role.key == body.copy_from))
     if source is None:
         raise ApiError(422, "validation_failed", "The request is not valid",
-                       {"copy_from": f"there is no role {body.copy_from!r}"})
+                       {"copy_from": "is not a role of this organization"})
     role = Role(org_id=c.workspace.org_id, key=slug(body.name), name=body.name, description=body.description,
                 capabilities=list(source.capabilities))
     try:

@@ -118,9 +118,10 @@ SEES_ROLES = f"org_id = app_org_id() OR org_id IN ({MY_ORGS})"
 # Owner and Admin define what an organization owner or admin is; no request may edit them or their rules.
 LOCKED = "(is_system AND key IN ('owner', 'admin'))"
 LOCKED_RULES = f"role_id IN (SELECT id FROM roles WHERE {LOCKED})"
-# A workspace member must be a member of the workspace's organization.
+# A workspace member must be a member of the workspace's organization, and hold a role of that organization.
 IN_ORG = ("EXISTS (SELECT 1 FROM workspaces w JOIN org_members om ON om.org_id = w.org_id "
           "WHERE w.id = workspace_members.workspace_id AND om.user_id = workspace_members.user_id)")
+ORGS_ROLE = "workspace_members.role_id IN (SELECT id FROM roles WHERE org_id = app_org_id())"
 # People of the current workspace: its members and the owners and admins of its organization.
 PEERS = ("id IN (SELECT user_id FROM workspace_members WHERE workspace_id = app_workspace_id()) OR id IN ("
          "SELECT om.user_id FROM org_members om JOIN roles r ON r.id = om.role_id "
@@ -155,9 +156,9 @@ def policies() -> None:
     op.execute("GRANT UPDATE (name, description, capabilities) ON roles TO gohigh_app")  # never key or is_system
     op.execute("GRANT INSERT, UPDATE (role_id) ON workspace_members TO gohigh_app")
     op.execute(f"CREATE POLICY assign ON workspace_members FOR INSERT WITH CHECK "
-               f"(workspace_id = app_workspace_id() AND {IN_ORG})")
-    op.execute("CREATE POLICY reassign ON workspace_members FOR UPDATE USING (workspace_id = app_workspace_id()) "
-               "WITH CHECK (workspace_id = app_workspace_id())")
+               f"(workspace_id = app_workspace_id() AND {IN_ORG} AND {ORGS_ROLE})")
+    op.execute(f"CREATE POLICY reassign ON workspace_members FOR UPDATE USING (workspace_id = app_workspace_id()) "
+               f"WITH CHECK (workspace_id = app_workspace_id() AND {ORGS_ROLE})")
     op.execute(f"CREATE POLICY peer_read ON users FOR SELECT USING ({PEERS})")
     # The event log is append only for request handlers: they have INSERT and SELECT on it and nothing else.
     op.execute("REVOKE UPDATE, DELETE, TRUNCATE ON events FROM gohigh_app")

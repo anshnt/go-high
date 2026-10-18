@@ -6,7 +6,7 @@ import re
 import pytest
 from fastapi.routing import iter_route_contexts
 from fastapi.testclient import TestClient
-from helpers import PASSWORD, context, link, type_id
+from helpers import PASSWORD, add_member, context, link, type_id
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
@@ -19,14 +19,15 @@ from app.security import UNSAFE
 TENANT_TABLES = ["organizations", "brands", "workspaces", "users", "org_members", "workspace_members",
                  "auth_sessions", "magic_links", "login_attempts", "events", "webhook_endpoints", "webhook_deliveries",
                  "idempotency_keys", "objects", "fields", "records", "tags", "record_tags", "association_types",
-                 "associations", "saved_views", "event_records", "pipelines", "stages", "board_layouts"]
+                 "associations", "saved_views", "event_records", "pipelines", "stages", "board_layouts", "roles",
+                 "role_object_rules", "teams", "team_members"]
 NOT_TENANT_DATA = {"jobs", "event_cursors"}  # the queue and the consumer cursors: no tenant rows, no app role access
 
 
 def fill_crm(client, ids: dict, name: str) -> None:
-    """A custom object with a field, contacts (one in the trash), a company, a tag, two links, two saved views, and a
-    pipeline with a stage, a deal and a saved board layout; their ids, keys and names go into `ids`, where they count
-    as secrets when they belong to org B."""
+    """A custom object with a field, contacts (one in the trash), a company, a tag, two links, two saved views, a
+    pipeline with a stage, a deal and a saved board layout, a custom role and a team; their ids, keys and names go
+    into `ids`, where they count as secrets when they belong to org B."""
     ws = {"X-Workspace-Id": ids["workspace_id"]}
     title = name.title()
 
@@ -76,6 +77,11 @@ def fill_crm(client, ids: dict, name: str) -> None:
     r = client.put(f"/api/v1/pipelines/{pipeline['id']}/layout", json={"collapsed": [ids["won_stage_id"]],
                                                                        "card_fields": ["amount"]}, headers=ws)
     assert r.status_code == 200, r.text
+    ids["role_name"] = f"{title} Secret Role"
+    role = post("/api/v1/roles", name=ids["role_name"], copy_from="viewer")
+    ids.update(role_id=role["id"], role_key=role["key"])
+    ids["team_name"] = f"{title} Secret Team"
+    ids["team_id"] = post("/api/v1/teams", name=ids["team_name"])["id"]
 
 
 @pytest.fixture
@@ -98,6 +104,7 @@ def two_orgs(make_user, db):
         fill_crm(client, ids, name)
     b_ids["session_id"] = b.get("/api/auth/sessions").json()[0]["id"]
     b_ids["user_id"] = b.get("/api/me").json()["user"]["id"]
+    a_ids["user_id"] = a.get("/api/me").json()["user"]["id"]
     return a, a_ids, b, b_ids
 
 
@@ -118,8 +125,9 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
     by_name = {"workspace_id": b_ids["workspace_id"], "session_id": b_ids["session_id"],
                "endpoint_id": b_ids["webhook_id"], "delivery_id": b_ids["delivery_id"],
                "record_id": b_ids["record_id"], "tag_id": b_ids["tag_id"], "view_id": b_ids["view_id"],
-               "association_id": b_ids["association_id"], "type_id": b_ids["type_id"],
-               "pipeline_id": b_ids["pipeline_id"], "stage_id": b_ids["stage_id"], "deal_id": b_ids["deal_id"]}
+               "association_id": b_ids["association_id"], "type_id": b_ids["type_id"], "role_id": b_ids["role_id"],
+               "team_id": b_ids["team_id"], "user_id": b_ids["user_id"], "pipeline_id": b_ids["pipeline_id"],
+               "stage_id": b_ids["stage_id"], "deal_id": b_ids["deal_id"]}
     others = {"key": [b_ids["object_key"], "contact"], "field_key": [b_ids["field_key"], "email"]}  # B's, and A's own
     body = {"name": "x", "brand_id": b_ids["brand_id"], "org_id": b_ids["org_id"], "email": "bob@example.com",
             "workspace_id": b_ids["workspace_id"], "password": "not the password", "token": "bogus",
@@ -133,14 +141,21 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
             # pipelines: B's pipeline, stage and deal wherever a body names one
             "stage_id": b_ids["stage_id"], "stage_ids": [b_ids["stage_id"], b_ids["won_stage_id"]],
             "kind": "open", "probability": 50, "after_id": b_ids["deal_id"], "before_id": b_ids["deal_id"],
-            "lost_reason": "price", "collapsed": [b_ids["stage_id"]], "card_fields": ["amount"]}
+            "lost_reason": "price", "collapsed": [b_ids["stage_id"]], "card_fields": ["amount"],
+            # permissions: B's role and team in every place a body takes one
+            "copy_from": b_ids["role_key"], "role_id": b_ids["role_id"], "capabilities": ["contacts.read"],
+            "object_rules": [], "parent_team_id": b_ids["team_id"], "description": "x"}
     tables_of_b = ("objects", "fields", "records", "tags", "record_tags", "association_types", "associations",
-                   "saved_views", "event_records", "events", "pipelines", "stages", "board_layouts")
-    snapshot = "SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t::text), '')) FROM {} t WHERE workspace_id = :w"
+                   "saved_views", "event_records", "events", "pipelines", "stages", "board_layouts", "teams",
+                   "team_members")
+    snapshot = "SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t::text), '')) FROM {} t WHERE {} = :w"
 
     def rows_of_b():
         db.expire_all()
-        return [db.scalar(text(snapshot.format(t)), {"w": b_ids["workspace_id"]}) for t in tables_of_b]
+        return ([db.scalar(text(snapshot.format(t, "workspace_id")), {"w": b_ids["workspace_id"]}) for t in tables_of_b]
+                + [db.scalar(text(snapshot.format(t, "org_id")), {"w": b_ids["org_id"]})
+                   for t in ("roles", "role_object_rules")]
+                + [db.scalar(text(snapshot.format("workspace_members", "workspace_id")), {"w": b_ids["workspace_id"]})])
 
     events_of_b = db.scalar(text("SELECT count(*) FROM events WHERE workspace_id = :w"), {"w": b_ids["workspace_id"]})
     before_b = rows_of_b()
@@ -160,7 +175,10 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
         "/api/v1/pipelines/{pipeline_id}", "/api/v1/pipelines/{pipeline_id}/stages",
         "/api/v1/pipelines/{pipeline_id}/stages/{stage_id}", "/api/v1/pipelines/{pipeline_id}/stages/reorder",
         "/api/v1/pipelines/{pipeline_id}/board", "/api/v1/pipelines/{pipeline_id}/forecast",
-        "/api/v1/pipelines/{pipeline_id}/layout", "/api/v1/deals/{deal_id}/move"}
+        "/api/v1/pipelines/{pipeline_id}/layout", "/api/v1/deals/{deal_id}/move", "/api/v1/roles",
+        "/api/v1/roles/{role_id}", "/api/v1/teams", "/api/v1/teams/{team_id}",
+        "/api/v1/teams/{team_id}/members/{user_id}", "/api/v1/members", "/api/v1/members/{user_id}",
+        "/api/v1/permissions/explain", "/api/v1/audit", "/api/v1/audit/export"}
 
     seen_own_data = False
     alice = signin_alice()
@@ -332,7 +350,11 @@ def test_the_app_role_holds_only_the_grants_its_handlers_need():
               "event_records": {"SELECT", "INSERT"},
               # pipelines and stages with no deals are deleted by request; a layout is only saved over
               "pipelines": {"SELECT", "INSERT", "UPDATE", "DELETE"}, "stages": {"SELECT", "INSERT", "UPDATE", "DELETE"},
-              "board_layouts": {"SELECT", "INSERT", "UPDATE"}}
+              "board_layouts": {"SELECT", "INSERT", "UPDATE"},
+              # roles: UPDATE only on name, description and capabilities (below); a request may not make a system role
+              "roles": {"SELECT", "INSERT", "DELETE"}, "role_object_rules": {"SELECT", "INSERT", "UPDATE", "DELETE"},
+              "teams": {"SELECT", "INSERT", "UPDATE", "DELETE"}, "team_members": {"SELECT", "INSERT", "DELETE"},
+              "workspace_members": {"SELECT", "INSERT"}}  # and UPDATE of role_id alone
     every = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
     with engine.connect() as conn:
         for table, expected in wanted.items():
@@ -342,6 +364,13 @@ def test_the_app_role_holds_only_the_grants_its_handlers_need():
         columns = {c: conn.scalar(text("SELECT has_column_privilege('gohigh_app', 'jobs', :c, 'SELECT')"), {"c": c})
                    for c in ("id", "kind", "payload", "status")}
         assert columns == {"id": True, "kind": False, "payload": False, "status": False}
+        updatable = {(table, c): conn.scalar(text("SELECT has_column_privilege('gohigh_app', :t, :c, 'UPDATE')"),
+                                             {"t": table, "c": c})
+                     for table, cs in (("roles", ("name", "description", "capabilities", "key", "is_system", "org_id")),
+                                       ("workspace_members", ("role_id", "user_id", "workspace_id")))
+                     for c in cs}
+        assert [k for k, v in updatable.items() if v] == [("roles", "name"), ("roles", "description"),
+                                                          ("roles", "capabilities"), ("workspace_members", "role_id")]
         for sequence in ("jobs_id_seq", "events_id_seq"):
             assert conn.scalar(text("SELECT has_sequence_privilege('gohigh_app', :s, 'USAGE')"), {"s": sequence})
 
@@ -437,6 +466,20 @@ def test_a_user_of_a_gets_404s_for_bs_objects_fields_records_tags_views_and_link
         ("DELETE", f"/api/v1/pipelines/{a_ids['pipeline_id']}/stages/{stage}", None),
         ("GET", f"{deals}/{b_ids['deal_id']}", None),
         ("PATCH", f"{deals}/{b_ids['deal_id']}", {"values": {"name": "x"}}),
+        # roles, teams, people and the simulator
+        ("GET", f"/api/v1/roles/{b_ids['role_id']}", None),
+        ("PATCH", f"/api/v1/roles/{b_ids['role_id']}", {"name": "x"}),
+        ("DELETE", f"/api/v1/roles/{b_ids['role_id']}", None), ("GET", f"/api/v1/teams/{b_ids['team_id']}", None),
+        ("PATCH", f"/api/v1/teams/{b_ids['team_id']}", {"name": "x"}),
+        ("DELETE", f"/api/v1/teams/{b_ids['team_id']}", None),
+        ("PUT", f"/api/v1/teams/{b_ids['team_id']}/members/{b_ids['user_id']}", None),
+        ("PUT", f"/api/v1/teams/{b_ids['team_id']}/members/{a_ids['user_id']}", None),
+        ("DELETE", f"/api/v1/teams/{b_ids['team_id']}/members/{b_ids['user_id']}", None),
+        ("PUT", f"/api/v1/members/{b_ids['user_id']}", {"role_id": b_ids["role_id"]}),
+        ("PUT", f"/api/v1/members/{b_ids['user_id']}", {"role_id": a_ids["role_id"]}),
+        ("PUT", f"/api/v1/members/{a_ids['user_id']}", {"role_id": b_ids["role_id"]}),
+        ("GET", f"/api/v1/permissions/explain?user_id={b_ids['user_id']}", None),
+        ("GET", f"/api/v1/permissions/explain?record_id={record}", None),
     ]
     for method, path, body in attempts:
         r = a.request(method, path, json=body, headers=mine)
@@ -465,7 +508,9 @@ def test_a_user_of_a_gets_404s_for_bs_objects_fields_records_tags_views_and_link
              {"stage_id": a_ids["stage_id"], "before_id": b_ids["deal_id"]}, 422),
             ("PUT", f"/api/v1/pipelines/{a_ids['pipeline_id']}/layout", {"collapsed": [stage]}, 422),
             ("POST", f"/api/v1/pipelines/{a_ids['pipeline_id']}/stages/reorder",
-             {"stage_ids": [stage, a_ids["stage_id"], a_ids["won_stage_id"]]}, 422)]:
+             {"stage_ids": [stage, a_ids["stage_id"], a_ids["won_stage_id"]]}, 422),
+            ("POST", "/api/v1/teams", {"name": "x", "parent_team_id": b_ids["team_id"]}, 422),
+            ("POST", "/api/v1/roles", {"name": "x", "copy_from": b_ids["role_key"]}, 422)]:
         r = a.request(method, path, json=body, headers=mine)
         assert r.status_code == status, (method, path, r.status_code, r.text[:200])
         assert not any(leak in r.text for leak in secrets_of(b_ids)), (method, path)
@@ -610,3 +655,48 @@ def test_a_board_layout_is_hidden_from_other_users_in_sql_too(two_orgs):
         with pytest.raises(DBAPIError, match="row-level security"):  # nor can a user save a layout for another
             conn.execute(text("INSERT INTO board_layouts (workspace_id, pipeline_id, user_id) VALUES (:w, :p, :u)"),
                          {"w": a_ids["workspace_id"], "p": a_ids["pipeline_id"], "u": alice})
+
+
+def test_the_app_role_cannot_reach_other_tenants_roles_teams_or_memberships(two_orgs, db):
+    _, a_ids, _, b_ids = two_orgs
+    a_ws, a_org, b_ws, b_org = a_ids["workspace_id"], a_ids["org_id"], b_ids["workspace_id"], b_ids["org_id"]
+    alice = signin_alice().get("/api/me").json()["user"]["id"]
+    ctx = {"workspace_id": a_ws, "org_id": a_org, "user_id": alice}
+    add_member(db, a_org, "carol@example.com", workspace_id=a_ws)  # a member row of A's workspace to try to move
+    a_role = db.scalar(text("SELECT id FROM roles WHERE org_id = :o AND key = 'viewer'"), {"o": a_org})
+    b_role = db.scalar(text("SELECT id FROM roles WHERE org_id = :o AND key = 'viewer'"), {"o": b_org})
+    with engine.connect() as conn:
+        with conn.begin():  # reading: only the roles, teams and rules of A
+            context(conn, **ctx)
+            assert {json.loads(r)["org_id"] for r in rows(conn, "roles")} == {a_org}
+            assert {json.loads(r)["org_id"] for r in rows(conn, "role_object_rules")} == {a_org}
+            assert {json.loads(r)["workspace_id"] for r in rows(conn, "teams")} == {a_ws}
+            assert b_ids["role_name"] not in " ".join(rows(conn, "roles"))
+            assert conn.execute(text("UPDATE roles SET name = 'x' WHERE org_id = :b"), {"b": b_org}).rowcount == 0
+            assert conn.execute(text("DELETE FROM roles WHERE org_id = :b"), {"b": b_org}).rowcount == 0
+            assert conn.execute(text("UPDATE role_object_rules SET scope = 'none' WHERE org_id = :b"),
+                                {"b": b_org}).rowcount == 0
+            assert conn.execute(text("DELETE FROM teams WHERE workspace_id = :b"), {"b": b_ws}).rowcount == 0
+            conn.rollback()
+        for statement, match in [
+                ("INSERT INTO roles (org_id, key, name) VALUES (:b_org, 'k', 'K')", "row-level security"),
+                ("INSERT INTO role_object_rules (org_id, role_id, object_key, scope) "
+                 "VALUES (:b_org, :b_role, '*', 'all')", "row-level security"),
+                ("INSERT INTO teams (workspace_id, name) VALUES (:b_ws, 'x')", "row-level security"),
+                # a member of A in a team of B: the foreign key carries the workspace
+                ("INSERT INTO team_members (team_id, user_id, workspace_id) VALUES (:b_team, :alice, :a_ws)",
+                 "foreign key"),
+                # a member of A's workspace who is not in A's organization, or holds a role of another organization
+                ("INSERT INTO workspace_members (user_id, workspace_id, role_id) VALUES (:b_user, :a_ws, :a_role)",
+                 "row-level security"),
+                ("INSERT INTO workspace_members (user_id, workspace_id, role_id) VALUES (:alice, :a_ws, :b_role)",
+                 "row-level security"),
+                ("UPDATE workspace_members SET role_id = :b_role WHERE workspace_id = :a_ws", "row-level security"),
+                ("UPDATE workspace_members SET workspace_id = :b_ws", "permission denied")]:
+            ids = {"b_org": b_org, "b_role": b_role, "b_ws": b_ws, "a_ws": a_ws, "alice": alice,
+                   "b_user": b_ids["user_id"], "a_role": a_role, "b_team": b_ids["team_id"]}
+            with pytest.raises(DBAPIError, match=match), conn.begin():
+                context(conn, **ctx)
+                conn.execute(text(statement), ids)
+    assert db.scalar(text("SELECT count(*) FROM roles WHERE org_id = :o"), {"o": b_org}) == 7  # six system, one custom
+    assert db.scalar(text("SELECT count(*) FROM teams WHERE workspace_id = :w"), {"w": b_ws}) == 1
