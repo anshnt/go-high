@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "form.published",
+  "description": "A version of a form was published and is now what visitors see. Subject: the form.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"},
+    "version": {"type": "integer"},
+    "version_id": {"type": "string", "format": "uuid"}
+  },
+  "required": ["id", "name", "version", "version_id"],
+  "additionalProperties": false
+}

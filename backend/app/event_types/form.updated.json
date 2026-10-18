@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "form.updated",
+  "description": "A form's name, link name, settings or status changed. `changes` maps each setting to its old and new value. Subject: the form.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"},
+    "kind": {"type": "string"},
+    "slug": {"type": "string"},
+    "status": {"type": "string"},
+    "changes": {"type": "object"}
+  },
+  "required": ["id", "name", "kind", "slug", "status", "changes"],
+  "additionalProperties": false
+}

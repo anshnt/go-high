@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "form.submitted",
+  "description": "A visitor completed a form, survey or quiz. `answers` is keyed by question key; `score`, `max_score` and `passed` are set for quizzes; `contact_id` is the contact the answers created or updated, if any. Subject: the submission.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "form_id": {"type": "string", "format": "uuid"},
+    "form_name": {"type": "string"},
+    "kind": {"type": "string"},
+    "version": {"type": "integer"},
+    "answers": {"type": "object"},
+    "score": {"type": ["integer", "null"]},
+    "max_score": {"type": ["integer", "null"]},
+    "passed": {"type": ["boolean", "null"]},
+    "contact_id": {"type": ["string", "null"], "format": "uuid"},
+    "contact_created": {"type": "boolean"},
+    "source_url": {"type": ["string", "null"]},
+    "referrer": {"type": ["string", "null"]},
+    "utm": {"type": "object"},
+    "consent": {"type": "object"}
+  },
+  "required": ["id", "form_id", "form_name", "kind", "version", "answers", "score", "max_score", "passed", "contact_id", "contact_created", "source_url", "referrer", "utm", "consent"],
+  "additionalProperties": false
+}
