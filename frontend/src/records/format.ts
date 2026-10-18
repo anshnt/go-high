@@ -184,6 +184,13 @@ export type Lookup = {
 };
 
 /** The value in words, for summaries and the timeline. "" when empty. */
+/** E.164 to something a person can read back: North American numbers as +1 214 555 0192.
+ * ponytail: other countries keep the plain E.164 form; add per-country grouping when users ask. */
+export function formatPhone(e164: string): string {
+  const m = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(e164);
+  return m ? `+1 ${m[1]} ${m[2]} ${m[3]}` : e164;
+}
+
 export function valueText(field: Pick<FieldDef, "type" | "options">, value: unknown, lookup: Lookup = {}): string {
   if (value === null || value === undefined || value === "") return "";
   const choice = (id: unknown) => field.options.choices?.find((c) => c.id === id)?.label ?? String(id);
@@ -198,6 +205,8 @@ export function valueText(field: Pick<FieldDef, "type" | "options">, value: unkn
       return formatDateTime(String(value));
     case "boolean":
       return value ? "Yes" : "No";
+    case "phone":
+      return formatPhone(String(value));
     case "select":
     case "stage":
       return choice(value);

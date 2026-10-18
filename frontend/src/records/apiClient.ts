@@ -37,6 +37,13 @@ type ApiPage<T> = { data: T[]; next_cursor: string | null; total?: number };
 type ApiObject = Omit<ObjectDef, "icon"> & { icon: string; archived_at: string | null };
 type ApiField = Omit<FieldDef, "archived"> & { archived_at: string | null };
 type ApiView = Omit<SavedView, "filter" | "sort"> & { filter: Record<string, unknown>; sort: string[] };
+// Contacts, companies and deals always come first, in that order; custom objects follow by name.
+const SYSTEM_ORDER = ["contact", "company", "deal"];
+const objectOrder = (a: ObjectDef, b: ObjectDef) => {
+  const rank = (o: ObjectDef) => (SYSTEM_ORDER.includes(o.key) ? SYSTEM_ORDER.indexOf(o.key) : SYSTEM_ORDER.length);
+  return rank(a) - rank(b) || a.plural.localeCompare(b.plural);
+};
+
 export type ApiEvent = {
   id: number | string;
   type: string;
@@ -278,7 +285,7 @@ export function createApiClient(http: Http, opts: ApiClientOptions = {}): Record
   };
 
   return {
-    listObjects: () => objects().then((list) => list.map((o) => ({ ...o }))),
+    listObjects: () => objects().then((list) => [...list].sort(objectOrder).map((o) => ({ ...o }))),
     listFields: (object) => fieldsOf(object).then((list) => list.map((f) => ({ ...f }))),
 
     async query(object, p: QueryParams = {}): Promise<Page<RecordRow>> {

@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { Avatar, Badge } from "../../ui";
 import { useRecordsClient } from "../client.ts";
-import { formatDateTime, formatDay, formatMoney, formatNumber, isMoney, relativeDay, relativeTime } from "../format.ts";
+import { formatDateTime, formatDay, formatMoney, formatNumber, formatPhone, isMoney, relativeDay, relativeTime } from "../format.ts";
 import { useMeta, useRecordRef } from "../meta.tsx";
 import { recordPath } from "../paths.ts";
 import { valueType } from "../schema.ts";
@@ -95,7 +95,7 @@ export function FieldValue({ field, value, wrap }: { field: FieldDef; value: unk
     case "phone":
       return (
         <a href={`tel:${String(value).replace(/[^\d+]/g, "")}`} className="rec-link">
-          {String(value)}
+          {formatPhone(String(value))}
         </a>
       );
     case "url":

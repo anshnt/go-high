@@ -5,6 +5,7 @@ import {
   formatDateTime,
   formatDay,
   formatMoney,
+  formatPhone,
   fromLocalInput,
   toLocalInput,
   minorDigits,
@@ -173,4 +174,9 @@ test("datetime inputs round-trip through the viewer's zone", () => {
   assert.equal(fromLocalInput("2026-10-17T09:05"), iso);
   assert.equal(fromLocalInput(""), undefined);
   assert.equal(toLocalInput("nope"), "");
+});
+
+test("phone numbers read back in groups where the country is known", () => {
+  assert.equal(formatPhone("+12145550192"), "+1 214 555 0192");
+  assert.equal(formatPhone("+442079460958"), "+442079460958");
 });
