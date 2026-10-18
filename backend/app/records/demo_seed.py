@@ -21,10 +21,11 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from ..db import SessionLocal, scoped
-from ..models import OrgMember, User, Workspace, WorkspaceMember
+from ..models import OrgMember, Role, User, Workspace, WorkspaceMember
 from ..security import Ctx
+from ..tenancy import ADMIN_ORG_ROLES, effective_role
 from . import associations, store, tags
-from .models import AssociationType, Record
+from .models import AssociationType, Pipeline, Record, Stage
 from .schema import Catalog
 
 SEED = 20261017
@@ -55,7 +56,9 @@ PLANS = ["Growth plan", "Pro plan renewal", "Website rebuild", "Onboarding packa
 AREAS = [212, 303, 312, 415, 512, 617, 702, 713, 206, 404, 503, 602, 615, 919, 305, 214]
 SIZES = [("1-10", 30), ("11-50", 35), ("51-200", 20), ("201-1000", 10), ("1000_plus", 5)]
 LIFECYCLES = [("lead", 40), ("qualified", 20), ("customer", 28), ("churned", 7), ("other", 5)]
-STAGES = [("new", 25), ("qualified", 25), ("proposal", 20), ("negotiation", 12), ("won", 12), ("lost", 6)]
+# the stages of the Sales pipeline every workspace starts with (records.seed.DEFAULT_STAGES), by name
+STAGES = [("Lead", 25), ("Qualified", 25), ("Proposal", 20), ("Negotiation", 12), ("Won", 12), ("Lost", 6)]
+LOST_REASONS = ["price", "timing", "competitor", "no_decision", "other"]
 
 
 def slug(text_: str) -> str:
@@ -67,16 +70,27 @@ def phone(r: random.Random) -> str:
 
 
 def teammates(db: Session, ws: Workspace) -> None:
-    """The fictional team, as members of this workspace (people are global, memberships are not)."""
+    """The fictional team, as members of this workspace with the organization's Member role (people are global,
+    memberships are not)."""
+    member = db.scalar(select(Role.id).where(Role.org_id == ws.org_id, Role.key == "member"))
     for name, handle in TEAM:
         email = f"{handle}@gohigh.example"
         user_id = db.scalar(select(User.id).where(User.email == email))
         if user_id is None:
             user_id = db.scalar(pg_insert(User).values(email=email, name=name).returning(User.id))
-        db.execute(pg_insert(OrgMember).values(user_id=user_id, org_id=ws.org_id, role="member")
+        db.execute(pg_insert(OrgMember).values(user_id=user_id, org_id=ws.org_id, role_id=member)
                    .on_conflict_do_nothing())
-        db.execute(pg_insert(WorkspaceMember).values(user_id=user_id, workspace_id=ws.id, role="member")
+        db.execute(pg_insert(WorkspaceMember).values(user_id=user_id, workspace_id=ws.id, role_id=member)
                    .on_conflict_do_nothing())
+
+
+def people_of(db: Session, ws: Workspace) -> list[uuid.UUID]:
+    """Who can act in the workspace, oldest account first: its members and the owners and admins of its organization."""
+    admins = select(OrgMember.user_id).join(Role, Role.id == OrgMember.role_id).where(
+        OrgMember.org_id == ws.org_id, Role.key.in_(ADMIN_ORG_ROLES))
+    members = select(WorkspaceMember.user_id).where(WorkspaceMember.workspace_id == ws.id)
+    everyone = members.union(admins)
+    return list(db.scalars(select(User.id).where(User.id.in_(everyone)).order_by(User.created_at, User.id)))
 
 
 def seed(db: Session, workspace_id: uuid.UUID, *, contacts: int = 1000, companies: int = 150, deals: int = 80) -> dict:
@@ -87,10 +101,9 @@ def seed(db: Session, workspace_id: uuid.UUID, *, contacts: int = 1000, companie
     if db.scalar(select(func.count()).select_from(Record).where(Record.workspace_id == ws.id)):
         raise SystemExit("This workspace has records already; seed an empty one")
     teammates(db, ws)
-    people = list(db.scalars(select(User.id).where(User.id.in_(store.people(Ctx(db, None, None, "", ws))))
-                             .order_by(User.created_at, User.id)))
-    admin = db.scalar(select(OrgMember.user_id).where(
-        OrgMember.org_id == ws.org_id, OrgMember.role.in_(("owner", "admin")))
+    people = people_of(db, ws)
+    admin = db.scalar(select(OrgMember.user_id).join(Role, Role.id == OrgMember.role_id).where(
+        OrgMember.org_id == ws.org_id, Role.key.in_(ADMIN_ORG_ROLES))
         .order_by(OrgMember.created_at, OrgMember.user_id).limit(1)) or people[0]
     db.commit()  # the writes below use another connection, which must see the teammates
     with scoped(user_id=admin, org_id=ws.org_id, workspace_id=ws.id) as app:
@@ -111,7 +124,9 @@ def seed(db: Session, workspace_id: uuid.UUID, *, contacts: int = 1000, companie
 def fill(app: Session, people: list[uuid.UUID], actor: uuid.UUID, contacts: int, companies: int, deals: int):
     """The writes, through a session scoped like a request's. Returns the counts and each record's dates."""
     r, now = random.Random(SEED), datetime.now(UTC)
-    c = Ctx(app, actor, uuid.uuid4(), "", app.get(Workspace, app.info["scope"]["workspace_id"]), "admin")
+    ws = app.get(Workspace, app.info["scope"]["workspace_id"])
+    role, implicit = effective_role(app, actor, ws)  # the seeding person acts with their own role, like a request
+    c = Ctx(app, actor, uuid.uuid4(), "", ws, "admin" if implicit else role.key, role, implicit)
     cat = Catalog(c)
     contact, company, deal = (cat.need(k) for k in ("contact", "company", "deal"))
 
@@ -154,6 +169,10 @@ def fill(app: Session, people: list[uuid.UUID], actor: uuid.UUID, contacts: int,
             values["company"] = str(firm.id)  # the write also links the contact to the company ("works at")
         people_made.append(make(contact, values))
 
+    pipeline = app.scalar(select(Pipeline).where(Pipeline.object_key == "deal", Pipeline.archived_at.is_(None))
+                          .order_by(Pipeline.position, Pipeline.created_at, Pipeline.id))
+    stage_ids = {st.name: str(st.id) for st in app.scalars(select(Stage).where(Stage.pipeline_id == pipeline.id))}
+
     def deal_link(other) -> AssociationType:
         return cat.db.scalars(select(AssociationType).where(
             AssociationType.from_object_id == deal.id, AssociationType.to_object_id == other.id)).first()
@@ -166,12 +185,14 @@ def fill(app: Session, people: list[uuid.UUID], actor: uuid.UUID, contacts: int,
         firm = firm_by_id.get(uuid.UUID(buyer.values["company"])) if buyer and "company" in buyer.values else None
         firm = firm or (r.choice(firms) if firms and r.random() < 0.6 else None)
         stage = weighted(STAGES)
-        values = {"name": f"{firm.display_name if firm else 'Walk-in'} {r.choice(PLANS)}", "stage": stage,
+        values = {"name": f"{firm.display_name if firm else 'Walk-in'} {r.choice(PLANS)}", "stage": stage_ids[stage],
                   "amount": {"amount": round(math.exp(7 + r.random() * 4.2)) * 100,
                              "currency": r.choices(["USD", "EUR", "GBP"], [80, 12, 8])[0]}}
-        if stage in ("won", "lost"):
+        if stage in ("Won", "Lost"):
             values["close_date"] = (now - DAY * r.randint(1, 120)).date().isoformat()
-        elif stage != "new" or r.random() < 0.7:
+        if stage == "Lost":
+            values["lost_reason"] = r.choice(LOST_REASONS)  # a lost stage asks why
+        elif stage not in ("Won", "Lead") or (stage == "Lead" and r.random() < 0.7):
             values["close_date"] = (now + DAY * r.randint(3, 90)).date().isoformat()
         rec = make(deal, values)
         made_deals.append(rec)

@@ -13,11 +13,12 @@ SMALL = {"contacts": 60, "companies": 12, "deals": 10}
 
 
 def shape(db, workspace_id) -> list[str]:
-    """The records as content, without ids: the company a contact links to is told by its name."""
+    """The records as content, without ids: the company a contact links to and a deal's stage are told by name."""
     rows = db.execute(text(
         "SELECT o.key, r.display_name, r.email_norm, r.phone_e164, r.owner_id IS NOT NULL AS owned, "
-        "r.values - 'company' AS rest, "
-        "(SELECT c.display_name FROM records c WHERE c.id::text = r.values ->> 'company') AS company "
+        "r.values - 'company' - 'stage' AS rest, "
+        "(SELECT c.display_name FROM records c WHERE c.id::text = r.values ->> 'company') AS company, "
+        "(SELECT s.name FROM stages s WHERE s.id::text = r.values ->> 'stage') AS stage "
         "FROM records r JOIN objects o ON o.id = r.object_id WHERE r.workspace_id = :w"),
         {"w": workspace_id}).all()
     return sorted(json.dumps([*r], default=str, sort_keys=True) for r in rows)
@@ -32,8 +33,8 @@ def test_the_seed_fills_a_workspace_through_the_real_write_path(crm, db):
     assert (contacts["total"], companies["total"], deals["total"]) == (60, 12, 10)
     ada = contacts["data"][0]
     assert ada["values"]["first_name"] and ada["display_name"].startswith(ada["values"]["first_name"])
-    stages = {"lead", "qualified", "customer", "churned", "other"}
-    assert all(r["values"]["lifecycle"] in stages for r in contacts["data"])
+    lifecycles = {"lead", "qualified", "customer", "churned", "other"}
+    assert all(r["values"]["lifecycle"] in lifecycles for r in contacts["data"])
     # a contact with a company works at it: the field and the association agree, and the company lists it
     linked = [r for r in contacts["data"] if "company" in r["values"]]
     assert 20 < len(linked) < 60
@@ -43,7 +44,11 @@ def test_the_seed_fills_a_workspace_through_the_real_write_path(crm, db):
     one = client.get(f"/api/v1/records/{linked[0]['id']}/associations", headers={H: ws}).json()["data"]
     assert [m["label"] for m in one if m["record"]["object"] == "company"] == ["works at"]
     # deals are linked to a contact and a company through associations, and carry money and a stage
-    assert all(d["values"]["amount"]["amount"] > 0 and d["values"]["stage"] for d in deals["data"])
+    stages = {s["id"]: s for s in client.get("/api/v1/pipelines", headers={H: ws}).json()["data"][0]["stages"]}
+    assert all(d["values"]["amount"]["amount"] > 0 and d["values"]["stage"] in stages for d in deals["data"])
+    kinds = {stages[d["values"]["stage"]]["kind"] for d in deals["data"]}
+    assert kinds == {"open", "won", "lost"} or len(kinds) >= 2  # a spread of stages, as the board will show
+    assert all(d["values"].get("lost_reason") for d in deals["data"] if stages[d["values"]["stage"]]["kind"] == "lost")
     with_links = client.get("/api/v1/objects/deal/records", params={"include": "contact,company", "limit": 200},
                             headers={H: ws}).json()["data"]
     assert sum(1 for d in with_links if d["associations"]["contact"]) >= 5 and any(
@@ -55,7 +60,7 @@ def test_the_seed_fills_a_workspace_through_the_real_write_path(crm, db):
     members = client.get("/api/v1/members", headers={H: ws}).json()["data"]
     assert sorted(m["name"] for m in members) == ["Diego Salazar", "Maya Okafor", "Priya Raman", "Theo Lindqvist", "a"]
     owners = {r["owner_id"] for r in contacts["data"]} - {None}
-    assert owners <= {m["id"] for m in members} and len(owners) > 2
+    assert owners <= {m["user_id"] for m in members} and len(owners) > 2
     # records are dated back, and the events of their creation with them, but some are recent
     ages = [datetime.fromisoformat(r["created_at"]) for r in contacts["data"]]
     now = datetime.now(UTC)
