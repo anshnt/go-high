@@ -288,6 +288,15 @@ def test_changing_a_password_needs_the_current_one_and_signs_out_other_sessions(
     assert signin("a@example.com", new)[1].status_code == 200
 
 
+def test_repeated_wrong_current_passwords_are_throttled(make_user):
+    client, _ = make_user("a@example.com")
+    change = {"password": "another long password", "current_password": "nope"}
+    for _ in range(config.LOGIN_MAX_FAILURES):
+        assert client.post("/api/auth/password", json=change).status_code == 403
+    blocked = client.post("/api/auth/password", json={**change, "current_password": PASSWORD})
+    assert blocked.status_code == 429 and "retry-after" in blocked.headers
+
+
 def test_a_first_password_needs_a_fresh_session(db):
     client = TestClient(app)
     assert client.post("/api/auth/signup", json={"email": "m@example.com", "name": "M"}).status_code == 201

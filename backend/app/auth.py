@@ -251,7 +251,9 @@ def set_password(body: PasswordChange, request: Request, c: Ctx = Depends(user))
     ip = security.client_ip(request)
     current = password_of(c.db, c.user_id)
     if current:
-        if wait := security.retry_after(c.db, account.email, ip):
+        with scoped(system="on") as sdb:  # login_attempts is read in the pre-auth scope only
+            wait = security.retry_after(sdb, account.email, ip)
+        if wait:
             raise HTTPException(429, "Too many failed attempts, try again later", headers={"Retry-After": str(wait)})
         if not security.verify_password(body.current_password or "", current):
             with scoped(system="on") as sdb:
