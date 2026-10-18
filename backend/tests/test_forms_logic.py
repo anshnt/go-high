@@ -192,9 +192,59 @@ def test_rules_are_limited_in_size_and_depth():
     ({"steps": [step("s1", q("a", "select", options=[{"id": "x", "label": "X"}], quiz={"correct": "x", "points": 1}))]},
      "steps.0.fields.0.quiz", "only questions of a quiz"),
     ("not an object", "definition", "object"),
+    ({"steps": ["a step"]}, "steps.0", "object"),
+    ({"steps": [step("s1", "a field")]}, "steps.0.fields.0", "object"),
+    ({"steps": [step("s1", q("a", label="x" * 301))]}, "steps.0.fields.0.label", "at most 300"),
+    ({"steps": [step("s1", q("a", "heading", label="x" * 201))]}, "steps.0.fields.0.label", "at most 200"),
+    ({"steps": [step("s1", q("a", help="x\x00y"))]}, "steps.0.fields.0.help", "text"),
+    ({"steps": [step("s1", q("a"))], "submit_label": "x" * 41}, "submit_label", "at most 40"),
+    ({"steps": [step("s1", q("a", validation=["max_length", 3]))]}, "steps.0.fields.0.validation", "object"),
+    ({"steps": [step("s1", *[q(f"f{n}") for n in range(120)]), step("s2", *[q(f"g{n}") for n in range(81)])]},
+     "steps.1.fields", "more than 200"),
 ])
 def test_bad_definitions_are_refused_with_a_path(defn, path, fragment):
     assert fragment in rejected(defn)[path]
+
+
+def test_a_definition_of_the_largest_size_is_accepted():
+    fields = [q(f"f{n}") for n in range(200)]
+    out = validate_definition(form(step("s1", *fields[:100]), step("s2", *fields[100:])), "form")
+    assert sum(len(s["fields"]) for s in out["steps"]) == 200
+
+
+@pytest.mark.parametrize("rule, path, fragment", [
+    ("hide detail", "logic.0", "object"),
+    ({"when": {"not": {"field": "size", "op": "is", "value": "big"}, "field": "size"}, "do": "hide",
+      "target": "detail"}, "logic.0.when", "not takes one condition"),
+])
+def test_malformed_rules_are_refused(rule, path, fragment):
+    assert fragment in rejected(two_steps(rule))[path]
+
+
+def test_rule_ids_are_kept_when_given_and_made_unique():
+    big = {"field": "size", "op": "is", "value": "big"}
+    out = validate_definition(two_steps(
+        {"id": "keep", "when": big, "do": "hide", "target": "detail"},
+        {"id": "keep", "when": big, "do": "show", "target": "detail"},
+        {"id": "x" * 41, "when": big, "do": "hide", "target": "s3"},
+        {"id": "r3", "when": big, "do": "hide", "target": "s2"}), "form")
+    ids = [r["id"] for r in out["logic"]]
+    assert ids == ["keep", "keep_", "r3", "r3_"]  # a duplicate gets a suffix, an id too long is numbered
+    assert len(set(ids)) == len(ids)
+
+
+@pytest.mark.parametrize("settings, path, fragment", [
+    ("pass at 50", "quiz", "pass_mark and bands"),
+    ({"pass_mark": 50, "colour": "red"}, "quiz", "pass_mark and bands"),
+    ({"bands": "A to F"}, "quiz.bands", "at most 10"),
+    ({"bands": [{"min": n * 5, "title": str(n)} for n in range(11)]}, "quiz.bands", "at most 10"),
+    ({"bands": ["A"]}, "quiz.bands.0", "needs min"),
+    ({"bands": [{"min": 10, "title": "A", "emoji": "x"}]}, "quiz.bands.0", "needs min"),
+    ({"bands": [{"min": True, "title": "A"}]}, "quiz.bands.0", "needs min"),
+])
+def test_quiz_settings_of_the_wrong_shape_are_refused(settings, path, fragment):
+    scored = q("a", "select", options=[{"id": "x", "label": "X"}], quiz={"correct": "x", "points": 1})
+    assert fragment in rejected(form(step("s1", scored), quiz=settings), "quiz")[path]
 
 
 def test_quiz_questions_and_settings_are_checked():

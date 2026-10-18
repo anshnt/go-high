@@ -98,7 +98,7 @@ def list_tasks(assignee: Annotated[str, Query(description="me, anyone, unassigne
         try:
             position, last = unseal(cursor)
             stmt = stmt.where(tuple_(Task.position, Task.id) > tuple_(float(position), uuid.UUID(last)))
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, AttributeError):
             raise ApiError(400, "invalid_cursor", "The cursor is not valid") from None
     rows = c.db.scalars(stmt.order_by(Task.position, Task.id).limit(limit + 1)).all()
     page = rows[:limit]
