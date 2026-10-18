@@ -219,6 +219,16 @@ test("bulk update sends the values and the owner, null to unassign, and leaves t
   assert.deepEqual([calls.at(-1)!.path, calls.at(-1)!.body], ["/api/v1/objects/contact/records/update", { ids: ["a", "b"], values: {}, owner_id: null }]);
   await client.updateMany("contact", ["a"], { city: "Austin" });
   assert.deepEqual(calls.at(-1)!.body, { ids: ["a"], values: { city: "Austin" } });
+  await client.updateMany("contact", ["a", "b"], { city: null });
+  assert.deepEqual(calls.at(-1)!.body, { ids: ["a", "b"], values: { city: null } }, "null clears the field on every record");
+});
+
+test("a refused bulk update says which field and why", async () => {
+  const { client } = fake({
+    "POST /api/v1/objects/contact/records/update": () => json({ error: { code: "validation_failed", message: "Some values are not valid", fields: { "values.email": "Enter a valid email address" } } }, 422),
+  });
+  const e = await fails(() => client.updateMany("contact", ["a", "b"], { email: "nope" }));
+  assert.deepEqual([e.status, e.fields, e.message], [422, { email: "Enter a valid email address" }, "Enter a valid email address"]);
 });
 
 test("saved views map the filter, the sort and the owner both ways", async () => {
