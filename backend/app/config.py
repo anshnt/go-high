@@ -43,3 +43,7 @@ CHAT_SEND_PER_IP = int(os.getenv("CHAT_SEND_PER_IP", "10"))
 CHAT_SEND_PER_KEY = int(os.getenv("CHAT_SEND_PER_KEY", "300"))
 CHAT_POLL_PER_IP = int(os.getenv("CHAT_POLL_PER_IP", "120"))
 CHAT_POLL_PER_KEY = int(os.getenv("CHAT_POLL_PER_KEY", "6000"))
+
+# Public forms: a form completed sooner than this after its page was opened came from a script, not a person.
+# 0 switches the check off (tests).
+FORM_MIN_FILL_SECONDS = int(os.getenv("FORM_MIN_FILL_SECONDS", "3"))

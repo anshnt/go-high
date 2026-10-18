@@ -36,6 +36,12 @@ CATALOG = [
     ("Tasks", "tasks.read", "See tasks and My Day"),
     ("Tasks", "tasks.write", "Create, change, finish and assign tasks"),
     ("Tasks", "tasks.delete", "Delete tasks"),
+    ("Forms", "forms.read", "See forms, their versions and how they perform"),
+    ("Forms", "forms.write", "Create and edit forms and save drafts"),
+    ("Forms", "forms.publish", "Publish, close and reopen forms, and change the settings of a live one"),
+    ("Forms", "forms.delete", "Move forms to the trash and restore them"),
+    ("Forms", "responses.read", "See the responses to forms"),
+    ("Forms", "responses.export", "Export responses as CSV"),
     ("Workflows", "workflows.publish", "Publish and turn off workflows"),
     ("Messaging", "messages.send", "Send messages to contacts"),
     ("Messaging", "conversations.read", "See conversations and their messages, and the channels to send on"),
@@ -263,6 +269,8 @@ def redact_event(ctx: Ctx, obj, data: dict, type_: str = "") -> dict | None:
     if type_ in STAGE_EVENTS and "stage" in hide:
         return None
     out = {k: v for k, v in data.items() if k not in hide}
+    if type_ == "form.submitted":  # its answers are keyed by question, not by field: a role that hides fields gets none
+        out["answers"] = {}
     for key in ("values", "changes"):
         if isinstance(out.get(key), dict):
             out[key] = {k: v for k, v in out[key].items() if k not in hide}

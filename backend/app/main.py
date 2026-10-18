@@ -14,6 +14,10 @@ from sqlalchemy.orm import Session
 
 from . import api, audit, auth, config, roles, simulator, teams, webhooks, workspaces
 from .db import get_db
+from .forms import admin as forms
+from .forms import analytics as form_analytics
+from .forms import public as form_public
+from .forms import responses as form_responses
 from .inbox import channels, chat, consent, conversations, inbound, outbound, stream
 from .logs import setup_logging, trace_id
 from .notifications import routes as notifications
@@ -72,6 +76,7 @@ async def csrf(request: Request, call_next):
 
 
 app.middleware("http")(chat.cors)
+app.middleware("http")(form_public.cors)
 
 
 @app.middleware("http")
@@ -104,8 +109,10 @@ app.include_router(workspaces.router)
 app.include_router(webhooks.router)
 for module in (objects, records, associations, tags, views, timeline, pipelines, board, forecast, roles, teams,
                simulator, audit, tasks, day, notifications, channels, conversations, outbound,
-               consent, inbound, stream, chat):
+               consent, inbound, stream, chat,
+               forms, form_responses, form_analytics, form_public):
     app.include_router(module.router)
+app.include_router(form_public.pages)  # /f/{key} and /embed.js, before the catch-all below
 
 
 @app.get("/{path:path}", include_in_schema=False)

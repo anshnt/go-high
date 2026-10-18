@@ -219,7 +219,9 @@ def state(cat: Catalog, obj: ObjectDef, rec: Record) -> dict:
 
 
 def actor(c: Ctx) -> tuple[str, uuid.UUID] | None:
-    return ("user", c.user_id) if c.user_id else None  # no user: the platform itself (an inbound message)
+    """Who caused the change: the user, or the system (None) for work no signed-in user is behind, like a form or an
+    inbound message."""
+    return ("user", c.user_id) if c.user_id else None
 
 
 def create(cat: Catalog, obj: ObjectDef, values: dict, owner_id=UNSET) -> Record:

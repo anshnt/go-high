@@ -1,8 +1,12 @@
-import { APPS } from "../lib/nav";
+import { Link } from "react-router";
+import { APPS, appsOn } from "../lib/nav";
+import { useStore } from "../lib/store";
 import { PageHeader } from "../shell/PageHeader";
-import { Badge } from "../ui";
+import { Badge, Switch } from "../ui";
 
 export function AppsPage() {
+  const on = useStore(appsOn);
+  const toggle = (id: string, show: boolean) => appsOn.set(show ? [...on, id] : on.filter((x) => x !== id));
   return (
     <div className="sh-page">
       <PageHeader title="Apps" description="Switch on only what you need. Each app appears in the sidebar once it is on." />
@@ -15,9 +19,14 @@ export function AppsPage() {
             <div className="sh-card-body">
               <div className="sh-card-top">
                 <h2>{a.label}</h2>
-                <Badge>Coming soon</Badge>
+                {a.path ? <Switch aria-label={`Show ${a.label} in the sidebar`} checked={on.includes(a.id)} onCheckedChange={(show) => toggle(a.id, show)} /> : <Badge>Coming soon</Badge>}
               </div>
               <p>{a.blurb}</p>
+              {a.path && on.includes(a.id) && (
+                <Link to={a.path} className="sh-card-link">
+                  Open {a.label}
+                </Link>
+              )}
             </div>
           </li>
         ))}

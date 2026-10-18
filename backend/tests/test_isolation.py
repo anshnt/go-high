@@ -28,7 +28,8 @@ TENANT_TABLES = ["organizations", "brands", "workspaces", "users", "org_members"
                  "role_object_rules", "teams", "team_members", "user_credentials", "tasks", "notifications",
                  "notification_prefs",
                  "secrets", "channels", "conversations", "conversation_reads", "messages", "consents",
-                 "chat_limits"]
+                 "chat_limits",
+                 "forms", "form_versions", "form_submissions", "form_views", "form_rate"]
 NOT_TENANT_DATA = {"jobs", "event_cursors"}  # the queue and the consumer cursors: no tenant rows, no app role access
 
 
@@ -151,10 +152,46 @@ def fill_inbox(client, ids: dict, name: str, person_id: str) -> None:
     assert sent.status_code == 200, sent.text
 
 
+def fill_forms(client, ids: dict, name: str) -> None:
+    """A published form with a completed response (which made a contact), a response still in progress, and a
+    draft form; their ids, public key, tokens and words go into `ids`."""
+    ws, title = {"X-Workspace-Id": ids["workspace_id"]}, name.title()
+    definition = {"steps": [{"key": "s1", "title": "", "fields": [
+        {"key": "first_name", "type": "short_text", "label": f"{title} secret question", "maps_to": "first_name"},
+        {"key": "email", "type": "email", "label": "Email", "maps_to": "email"}]}]}
+    r = client.post("/api/v1/forms", json={"name": f"{title} secret intake", "definition": definition}, headers=ws)
+    assert r.status_code == 201, r.text
+    made = r.json()
+    assert client.post(f"/api/v1/forms/{made['id']}/publish", headers=ws).status_code == 200
+    visitor, key = TestClient(app), made["public_key"]
+    assert client.post("/api/v1/forms", json={"name": f"{title} secret draft"}, headers=ws).status_code == 201
+
+    def start(answers, **extra):
+        token = visitor.post(f"/api/public/forms/{key}/views").json()["view_token"]
+        body = {"answers": answers, "view_token": token, **extra}
+        r = visitor.post(f"/api/public/forms/{key}/submissions", json=body)
+        assert r.status_code in (200, 201), r.text
+        return r.json(), token
+
+    done, token = start({})
+    r = visitor.post(f"/api/public/forms/{key}/submissions/{done['id']}/complete", json={
+        "answers": {"first_name": f"{name} secret answer", "email": f"{name}.lead@secret.example"},
+        "resume_token": done["resume_token"], "view_token": token})
+    assert r.status_code == 200, r.text
+    waiting, _ = start({"first_name": f"{name} half typed"})
+    ids.update(form_id=made["id"], form_public_key=key, form_name=f"{title} secret intake",
+               form_version_id=client.get(f"/api/v1/forms/{made['id']}/versions", headers=ws).json()["data"][0]["id"],
+               submission_id=done["id"], waiting_id=waiting["id"], resume_token=done["resume_token"],
+               waiting_token=waiting["resume_token"], form_answer=f"{name} secret answer",
+               form_contact_email=f"{name}.lead@secret.example")
+
+
 @pytest.fixture
-def two_orgs(make_user, db):
+def two_orgs(make_user, db, monkeypatch):
     """Org A and org B, each with a user, a second workspace, a live session, a webhook and one delivery in its log,
-    and a small CRM (see fill_crm); B's identifiers, names and secrets are what A must never see."""
+    a small CRM (see fill_crm) and forms (see fill_forms); B's identifiers, names and secrets are what A must never
+    see."""
+    monkeypatch.setattr(config, "FORM_MIN_FILL_SECONDS", 0)
     a, a_ids = make_user("alice@example.com", "Alpha Org")
     b, b_ids = make_user("bob@example.com", "Bravo Org")
     for client, ids, name in ((a, a_ids, "alpha"), (b, b_ids, "bravo")):
@@ -170,6 +207,7 @@ def two_orgs(make_user, db):
         db.commit()
         fill_crm(client, ids, name)
         fill_tasks(client, ids, name, db)
+        fill_forms(client, ids, name)
     b_ids["session_id"] = b.get("/api/auth/sessions").json()[0]["id"]
     b_ids["user_id"] = b.get("/api/me").json()["user"]["id"]
     a_ids["user_id"] = a.get("/api/me").json()["user"]["id"]
@@ -198,7 +236,10 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
                "stage_id": b_ids["stage_id"], "deal_id": b_ids["deal_id"], "task_id": b_ids["task_id"],
                "channel_id": b_ids["channel_id"], "conversation_id": b_ids["conversation_id"],
                "message_id": b_ids["message_id"], "contact_id": b_ids["record_id"],
-               "provider": "twilio"}
+               "provider": "twilio",
+               # forms: the public routes are found by key, so B's internal id must find nothing there
+               "form_id": b_ids["form_id"], "version_id": b_ids["form_version_id"],
+               "submission_id": b_ids["submission_id"], "public_key": b_ids["form_id"]}
     others = {"key": [b_ids["object_key"], "contact"], "field_key": [b_ids["field_key"], "email"],  # B's, and A's own
               "kind": ["sms"]}
     body = {"name": "x", "brand_id": b_ids["brand_id"], "org_id": b_ids["org_id"], "email": "bob@example.com",
@@ -229,12 +270,17 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
             "channel_id": b_ids["channel_id"], "contact_id": b_ids["record_id"], "user_id": b_ids["user_id"],
             "team_id": b_ids["team_id"], "provider": "twilio", "address": "+15550009999",
             "config": {"account_sid": "AC1"}, "secrets": {"auth_token": "test-swept-token-not-real"},
-            "until": SOON, "seq": 1, "dnd": True}
+            "until": SOON, "seq": 1, "dnd": True,
+            # forms: B's version, response and resume token in every place a body takes one
+            "definition": {"steps": []}, "settings": {"max_responses": 1}, "status": "closed",
+            "answers": {"first_name": "Swept"}, "view_token": "swept", "resume_token": b_ids["resume_token"],
+            "step": "s1", "hp": ""}
     tables_of_b = ("objects", "fields", "records", "tags", "record_tags", "association_types", "associations",
                    "saved_views", "event_records", "events", "pipelines", "stages", "board_layouts", "teams",
                    "team_members", "tasks", "notifications", "notification_prefs",
                    "secrets", "channels", "conversations", "conversation_reads", "messages", "consents",
-                   "chat_limits")
+                   "chat_limits",
+                   "forms", "form_versions", "form_submissions", "form_views", "form_rate")
     snapshot = "SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t::text), '')) FROM {} t WHERE {} = :w"
 
     def rows_of_b():
@@ -279,7 +325,16 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
         "/api/v1/conversations/{conversation_id}/messages/{message_id}",
         "/api/v1/contacts/{contact_id}/consents", "/api/v1/contacts/{contact_id}/consents/{kind}",
         "/api/v1/stream", "/api/hooks/{provider}/{channel_id}", "/api/public/chat/{widget_key}/session",
-        "/api/public/chat/{widget_key}/messages", "/api/public/chat/{widget_key}/identify"}
+        "/api/public/chat/{widget_key}/messages", "/api/public/chat/{widget_key}/identify",
+                # forms: the admin API, the analytics and exports, and the public runtime
+        "/api/v1/forms", "/api/v1/forms/{form_id}", "/api/v1/forms/{form_id}/restore",
+        "/api/v1/forms/{form_id}/duplicate", "/api/v1/forms/{form_id}/versions",
+        "/api/v1/forms/{form_id}/versions/{version_id}", "/api/v1/forms/{form_id}/publish",
+        "/api/v1/forms/{form_id}/submissions", "/api/v1/forms/{form_id}/submissions/export.csv",
+        "/api/v1/forms/{form_id}/submissions/{submission_id}", "/api/v1/forms/{form_id}/analytics",
+        "/api/public/forms/{public_key}", "/api/public/forms/{public_key}/views",
+        "/api/public/forms/{public_key}/submissions", "/api/public/forms/{public_key}/resume",
+        "/api/public/forms/{public_key}/submissions/{submission_id}/complete"}
 
     seen_own_data = False
     alice = signin_alice()
@@ -346,6 +401,10 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
     assert a_ids["inbound_text"] in detail.text and a_ids["note_text"] in detail.text
     assert a_ids["channel_id"] in {c["id"] for c in alice.get("/api/v1/channels", headers=own).json()["data"]}
     assert b_ids["channel_id"] not in alice.get("/api/v1/channels", headers=own).text
+    assert alice.get(f"/api/v1/forms/{a_ids['form_id']}", headers=own).json()["name"] == a_ids["form_name"]
+    assert [s["id"] for s in alice.get(f"/api/v1/forms/{a_ids['form_id']}/submissions", headers=own
+                                       ).json()["data"]] == [a_ids["waiting_id"], a_ids["submission_id"]]
+    assert alice.get(f"/api/public/forms/{a_ids['form_public_key']}").status_code == 200  # A's own key works
 
 
 def test_a_user_of_a_cannot_target_b_with_a_valid_looking_request(two_orgs):
@@ -478,7 +537,11 @@ def test_the_app_role_holds_only_the_grants_its_handlers_need():
               "secrets": {"INSERT", "UPDATE"}, "channels": {"SELECT", "INSERT", "UPDATE"},
               "conversations": {"SELECT", "INSERT", "UPDATE"}, "conversation_reads": {"SELECT", "INSERT", "UPDATE"},
               "messages": {"SELECT", "INSERT", "UPDATE"}, "consents": {"SELECT", "INSERT", "UPDATE", "DELETE"},
-              "chat_limits": {"SELECT", "INSERT", "UPDATE", "DELETE"}}
+              "chat_limits": {"SELECT", "INSERT", "UPDATE", "DELETE"},
+              # forms go to the trash and a version is never changed; only the rate counters are deleted
+              "forms": {"SELECT", "INSERT", "UPDATE"}, "form_versions": {"SELECT", "INSERT"},
+              "form_submissions": {"SELECT", "INSERT", "UPDATE"}, "form_views": {"SELECT", "INSERT", "UPDATE"},
+              "form_rate": {"SELECT", "INSERT", "UPDATE", "DELETE"}}
     every = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
     with engine.connect() as conn:
         for table, expected in wanted.items():
@@ -669,8 +732,10 @@ def test_a_user_of_a_gets_404s_for_bs_objects_fields_records_tags_views_and_link
     # what A can list and search is A's: not B's names, not B's tag, not B's count
     page = a.get(contact, params={"count": "true", "include": "tags,company", "limit": 200}, headers=mine).json()
     names = {r["display_name"] for r in page["data"]}  # A's contacts: the person, the texting customer, a chat visitor
-    assert names - {a_ids["customer_phone"]} - {n for n in names if n.startswith("Visitor ")} == {a_ids["record_name"]}
-    assert page["total"] == 3
+    # and the contact one of A's forms made
+    assert (names - {a_ids["customer_phone"]} - {n for n in names if n.startswith("Visitor ")}
+            == {a_ids["record_name"], a_ids["form_answer"]})
+    assert page["total"] == 4
     assert not any(leak in json.dumps(page) for leak in secrets_of(b_ids))
     for query in ({"q": "bravo"}, {"q": "secret"}, {"q": b_ids["record_name"]}, {"filter": json.dumps({"tag": tag})},
                   {"filter": json.dumps({"tag": b_ids["tag_name"]})},
@@ -801,7 +866,8 @@ def test_the_app_role_cannot_move_a_row_to_another_workspace_or_point_one_across
             assert conn.execute(text("DELETE FROM pipelines WHERE id NOT IN (SELECT pipeline_id FROM stages)")
                                 ).rowcount == 1  # Sales, which has nothing left
             conn.rollback()
-    assert db.scalar(text("SELECT count(*) FROM records WHERE workspace_id = :w"), {"w": b_ws}) == 7  # as filled
+    # as filled, with the inbox's two contacts and the contact a form made
+    assert db.scalar(text("SELECT count(*) FROM records WHERE workspace_id = :w"), {"w": b_ws}) == 8
     assert db.scalar(text("SELECT count(*) FROM stages WHERE workspace_id = :w"), {"w": b_ws}) == 8
     assert db.scalar(text("SELECT count(*) FROM pipelines WHERE workspace_id = :w"), {"w": b_ws}) == 2
     assert db.scalar(text("SELECT count(*) FROM tasks WHERE workspace_id = :w"), {"w": b_ws}) == 2

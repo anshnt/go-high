@@ -1,0 +1,197 @@
+{
+  "comment": "Shared by backend/tests/test_forms_logic.py and frontend/tests/forms-logic.test.ts: the server and the browser runtime must give exactly these answers.",
+  "conditions": [
+    {"name": "is ignores case and surrounding spaces", "when": {"field": "a", "op": "is", "value": "Yes"}, "answers": {"a": " yes "}, "expect": true},
+    {"name": "is on a different text", "when": {"field": "a", "op": "is", "value": "yes"}, "answers": {"a": "no"}, "expect": false},
+    {"name": "is on a missing answer", "when": {"field": "a", "op": "is", "value": "yes"}, "answers": {}, "expect": false},
+    {"name": "is_not on a missing answer", "when": {"field": "a", "op": "is_not", "value": "yes"}, "answers": {}, "expect": true},
+    {"name": "is on numbers, 3 equals 3.0", "when": {"field": "a", "op": "is", "value": 3}, "answers": {"a": 3.0}, "expect": true},
+    {"name": "a boolean is not the number 1", "when": {"field": "a", "op": "is", "value": 1}, "answers": {"a": true}, "expect": false},
+    {"name": "is true on a boolean", "when": {"field": "a", "op": "is", "value": true}, "answers": {"a": true}, "expect": true},
+    {"name": "is false on a yes/no answer of no", "when": {"field": "a", "op": "is", "value": false}, "answers": {"a": false}, "expect": true},
+    {"name": "contains in text, case blind", "when": {"field": "a", "op": "contains", "value": "lo wo"}, "answers": {"a": "Hello World"}, "expect": true},
+    {"name": "contains in text, not there", "when": {"field": "a", "op": "contains", "value": "xyz"}, "answers": {"a": "Hello World"}, "expect": false},
+    {"name": "contains in a list", "when": {"field": "a", "op": "contains", "value": "b"}, "answers": {"a": ["a", "b"]}, "expect": true},
+    {"name": "contains in a list, not there", "when": {"field": "a", "op": "contains", "value": "c"}, "answers": {"a": ["a", "b"]}, "expect": false},
+    {"name": "in with a scalar answer", "when": {"field": "a", "op": "in", "value": ["a", "b"]}, "answers": {"a": "b"}, "expect": true},
+    {"name": "in with a list answer that overlaps", "when": {"field": "a", "op": "in", "value": ["a", "b"]}, "answers": {"a": ["x", "b"]}, "expect": true},
+    {"name": "in with a list answer that does not", "when": {"field": "a", "op": "in", "value": ["a", "b"]}, "answers": {"a": ["x", "y"]}, "expect": false},
+    {"name": "not_in with an answer outside", "when": {"field": "a", "op": "not_in", "value": ["a", "b"]}, "answers": {"a": "c"}, "expect": true},
+    {"name": "not_in with a missing answer", "when": {"field": "a", "op": "not_in", "value": ["a", "b"]}, "answers": {}, "expect": true},
+    {"name": "not_in with an answer inside", "when": {"field": "a", "op": "not_in", "value": ["a", "b"]}, "answers": {"a": "a"}, "expect": false},
+    {"name": "gt on numbers", "when": {"field": "a", "op": "gt", "value": 3}, "answers": {"a": 5}, "expect": true},
+    {"name": "gt on equal numbers", "when": {"field": "a", "op": "gt", "value": 5}, "answers": {"a": 5}, "expect": false},
+    {"name": "gte on equal numbers", "when": {"field": "a", "op": "gte", "value": 5}, "answers": {"a": 5}, "expect": true},
+    {"name": "lt on numbers", "when": {"field": "a", "op": "lt", "value": 3}, "answers": {"a": 5}, "expect": false},
+    {"name": "lte on numbers", "when": {"field": "a", "op": "lte", "value": 5}, "answers": {"a": 4.5}, "expect": true},
+    {"name": "gt on ISO dates", "when": {"field": "a", "op": "gt", "value": "2026-01-01"}, "answers": {"a": "2026-10-18"}, "expect": true},
+    {"name": "lt on ISO dates", "when": {"field": "a", "op": "lt", "value": "2026-01-01"}, "answers": {"a": "2026-10-18"}, "expect": false},
+    {"name": "gt between a text and a number is false", "when": {"field": "a", "op": "gt", "value": 3}, "answers": {"a": "5"}, "expect": false},
+    {"name": "gt on a missing answer is false", "when": {"field": "a", "op": "gt", "value": 3}, "answers": {}, "expect": false},
+    {"name": "is_empty on a missing answer", "when": {"field": "a", "op": "is_empty"}, "answers": {}, "expect": true},
+    {"name": "is_empty on blank text", "when": {"field": "a", "op": "is_empty"}, "answers": {"a": "   "}, "expect": true},
+    {"name": "is_empty on an empty list", "when": {"field": "a", "op": "is_empty"}, "answers": {"a": []}, "expect": true},
+    {"name": "zero is an answer", "when": {"field": "a", "op": "is_empty"}, "answers": {"a": 0}, "expect": false},
+    {"name": "false is an answer", "when": {"field": "a", "op": "is_empty"}, "answers": {"a": false}, "expect": false},
+    {"name": "is_not_empty on text", "when": {"field": "a", "op": "is_not_empty"}, "answers": {"a": "x"}, "expect": true},
+    {"name": "is on a list is the same set in any order", "when": {"field": "a", "op": "is", "value": ["a", "b"]}, "answers": {"a": ["b", "a"]}, "expect": true},
+    {"name": "is on a list with a different set", "when": {"field": "a", "op": "is", "value": ["a", "b"]}, "answers": {"a": ["a"]}, "expect": false},
+    {"name": "is on a list answer against a scalar", "when": {"field": "a", "op": "is", "value": "a"}, "answers": {"a": ["a"]}, "expect": false},
+    {"name": "and of two true", "when": {"and": [{"field": "a", "op": "is", "value": "x"}, {"field": "b", "op": "gt", "value": 1}]}, "answers": {"a": "x", "b": 2}, "expect": true},
+    {"name": "and with one false", "when": {"and": [{"field": "a", "op": "is", "value": "x"}, {"field": "b", "op": "gt", "value": 1}]}, "answers": {"a": "x", "b": 1}, "expect": false},
+    {"name": "or with one true", "when": {"or": [{"field": "a", "op": "is", "value": "x"}, {"field": "b", "op": "gt", "value": 1}]}, "answers": {"a": "y", "b": 2}, "expect": true},
+    {"name": "or with none true", "when": {"or": [{"field": "a", "op": "is", "value": "x"}, {"field": "b", "op": "gt", "value": 1}]}, "answers": {"a": "y", "b": 0}, "expect": false},
+    {"name": "not flips", "when": {"not": {"field": "a", "op": "is", "value": "x"}}, "answers": {"a": "x"}, "expect": false},
+    {"name": "nested and, or, not", "when": {"and": [{"or": [{"field": "a", "op": "is", "value": "x"}, {"field": "a", "op": "is", "value": "y"}]}, {"not": {"field": "b", "op": "is_empty"}}]}, "answers": {"a": "y", "b": "z"}, "expect": true},
+    {"name": "an empty and holds", "when": {"and": []}, "answers": {}, "expect": true},
+    {"name": "an empty or does not", "when": {"or": []}, "answers": {}, "expect": false}
+  ],
+  "flows": [
+    {
+      "name": "no logic: every step, unticked checkbox and unknown keys dropped",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "name", "type": "short_text"}, {"key": "intro", "type": "heading"}, {"key": "news", "type": "checkbox"}]}, {"key": "s2", "fields": [{"key": "size", "type": "select"}, {"key": "tags", "type": "multi_select"}]}]},
+      "answers": {"name": "Ada", "news": false, "size": "big", "tags": [], "stale": "x"},
+      "expect": {"path": [{"key": "s1", "fields": ["name", "intro", "news"]}, {"key": "s2", "fields": ["size", "tags"]}], "ended": false, "answers": {"name": "Ada", "size": "big"}}
+    },
+    {
+      "name": "a hide rule hides a later field of the same step and drops its answer",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "plan", "type": "select"}, {"key": "seats", "type": "number"}]}], "logic": [{"id": "r1", "do": "hide", "target": "seats", "when": {"field": "plan", "op": "is", "value": "solo"}}]},
+      "answers": {"plan": "solo", "seats": 5},
+      "expect": {"path": [{"key": "s1", "fields": ["plan"]}], "ended": false, "answers": {"plan": "solo"}}
+    },
+    {
+      "name": "a hide rule that does not hold keeps the field",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "plan", "type": "select"}, {"key": "seats", "type": "number"}]}], "logic": [{"id": "r1", "do": "hide", "target": "seats", "when": {"field": "plan", "op": "is", "value": "solo"}}]},
+      "answers": {"plan": "team", "seats": 5},
+      "expect": {"path": [{"key": "s1", "fields": ["plan", "seats"]}], "ended": false, "answers": {"plan": "team", "seats": 5}}
+    },
+    {
+      "name": "a show rule keeps a field hidden until its condition holds",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "plan", "type": "select"}, {"key": "company", "type": "short_text"}]}], "logic": [{"id": "r1", "do": "show", "target": "company", "when": {"field": "plan", "op": "is", "value": "team"}}]},
+      "answers": {"plan": "solo", "company": "Acme"},
+      "expect": {"path": [{"key": "s1", "fields": ["plan"]}], "ended": false, "answers": {"plan": "solo"}}
+    },
+    {
+      "name": "a show rule reveals the field when its condition holds",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "plan", "type": "select"}, {"key": "company", "type": "short_text"}]}], "logic": [{"id": "r1", "do": "show", "target": "company", "when": {"field": "plan", "op": "is", "value": "team"}}]},
+      "answers": {"plan": "team", "company": "Acme"},
+      "expect": {"path": [{"key": "s1", "fields": ["plan", "company"]}], "ended": false, "answers": {"plan": "team", "company": "Acme"}}
+    },
+    {
+      "name": "a hide rule on a step skips the whole step",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "role", "type": "select"}]}, {"key": "s2", "fields": [{"key": "budget", "type": "number"}]}, {"key": "s3", "fields": [{"key": "email", "type": "email"}]}], "logic": [{"id": "r1", "do": "hide", "target": "s2", "when": {"field": "role", "op": "is", "value": "student"}}]},
+      "answers": {"role": "student", "budget": 100, "email": "a@example.com"},
+      "expect": {"path": [{"key": "s1", "fields": ["role"]}, {"key": "s3", "fields": ["email"]}], "ended": false, "answers": {"role": "student", "email": "a@example.com"}}
+    },
+    {
+      "name": "a jump skips the steps in between",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "size", "type": "select"}]}, {"key": "s2", "fields": [{"key": "detail", "type": "short_text"}]}, {"key": "s3", "fields": [{"key": "email", "type": "email"}]}], "logic": [{"id": "r1", "do": "jump", "from": "s1", "target": "s3", "when": {"field": "size", "op": "is", "value": "small"}}]},
+      "answers": {"size": "small", "detail": "ignored", "email": "a@example.com"},
+      "expect": {"path": [{"key": "s1", "fields": ["size"]}, {"key": "s3", "fields": ["email"]}], "ended": false, "answers": {"size": "small", "email": "a@example.com"}}
+    },
+    {
+      "name": "a jump that does not hold goes to the next step",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "size", "type": "select"}]}, {"key": "s2", "fields": [{"key": "detail", "type": "short_text"}]}, {"key": "s3", "fields": [{"key": "email", "type": "email"}]}], "logic": [{"id": "r1", "do": "jump", "from": "s1", "target": "s3", "when": {"field": "size", "op": "is", "value": "small"}}]},
+      "answers": {"size": "big", "detail": "x"},
+      "expect": {"path": [{"key": "s1", "fields": ["size"]}, {"key": "s2", "fields": ["detail"]}, {"key": "s3", "fields": ["email"]}], "ended": false, "answers": {"size": "big", "detail": "x"}}
+    },
+    {
+      "name": "an end rule finishes the form",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "ok", "type": "yes_no"}]}, {"key": "s2", "fields": [{"key": "why", "type": "long_text"}]}], "logic": [{"id": "r1", "do": "end", "from": "s1", "when": {"field": "ok", "op": "is", "value": true}}]},
+      "answers": {"ok": true, "why": "ignored"},
+      "expect": {"path": [{"key": "s1", "fields": ["ok"]}], "ended": true, "answers": {"ok": true}}
+    },
+    {
+      "name": "the first rule that holds wins",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "n", "type": "number"}]}, {"key": "s2", "fields": [{"key": "a", "type": "short_text"}]}, {"key": "s3", "fields": [{"key": "b", "type": "short_text"}]}], "logic": [{"id": "r1", "do": "jump", "from": "s1", "target": "s3", "when": {"field": "n", "op": "gt", "value": 5}}, {"id": "r2", "do": "end", "from": "s1", "when": {"field": "n", "op": "gt", "value": 1}}]},
+      "answers": {"n": 9, "b": "x"},
+      "expect": {"path": [{"key": "s1", "fields": ["n"]}, {"key": "s3", "fields": ["b"]}], "ended": false, "answers": {"n": 9, "b": "x"}}
+    },
+    {
+      "name": "a later rule applies when the first does not hold",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "n", "type": "number"}]}, {"key": "s2", "fields": [{"key": "a", "type": "short_text"}]}, {"key": "s3", "fields": [{"key": "b", "type": "short_text"}]}], "logic": [{"id": "r1", "do": "jump", "from": "s1", "target": "s3", "when": {"field": "n", "op": "gt", "value": 5}}, {"id": "r2", "do": "end", "from": "s1", "when": {"field": "n", "op": "gt", "value": 1}}]},
+      "answers": {"n": 3, "a": "x"},
+      "expect": {"path": [{"key": "s1", "fields": ["n"]}], "ended": true, "answers": {"n": 3}}
+    },
+    {
+      "name": "conditions never see the answer of a hidden field",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "plan", "type": "select"}, {"key": "code", "type": "short_text"}]}, {"key": "s2", "fields": [{"key": "extra", "type": "short_text"}]}], "logic": [{"id": "r1", "do": "hide", "target": "code", "when": {"field": "plan", "op": "is", "value": "solo"}}, {"id": "r2", "do": "hide", "target": "s2", "when": {"field": "code", "op": "is", "value": "VIP"}}]},
+      "answers": {"plan": "solo", "code": "VIP", "extra": "kept"},
+      "expect": {"path": [{"key": "s1", "fields": ["plan"]}, {"key": "s2", "fields": ["extra"]}], "ended": false, "answers": {"plan": "solo", "extra": "kept"}}
+    },
+    {
+      "name": "a jump into a hidden step goes on to the next visible one",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "go", "type": "select"}]}, {"key": "s2", "fields": [{"key": "a", "type": "short_text"}]}, {"key": "s3", "fields": [{"key": "b", "type": "short_text"}]}, {"key": "s4", "fields": [{"key": "c", "type": "short_text"}]}], "logic": [{"id": "r1", "do": "jump", "from": "s1", "target": "s3", "when": {"field": "go", "op": "is", "value": "far"}}, {"id": "r2", "do": "hide", "target": "s3", "when": {"field": "go", "op": "is", "value": "far"}}]},
+      "answers": {"go": "far", "a": "x", "b": "y", "c": "z"},
+      "expect": {"path": [{"key": "s1", "fields": ["go"]}, {"key": "s4", "fields": ["c"]}], "ended": false, "answers": {"go": "far", "c": "z"}}
+    },
+    {
+      "name": "a step that is hidden never runs its jump",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "role", "type": "select"}]}, {"key": "s2", "fields": [{"key": "a", "type": "short_text"}]}, {"key": "s3", "fields": [{"key": "b", "type": "short_text"}]}], "logic": [{"id": "r1", "do": "hide", "target": "s2", "when": {"field": "role", "op": "is", "value": "x"}}, {"id": "r2", "do": "end", "from": "s2", "when": {"field": "a", "op": "is_empty"}}]},
+      "answers": {"role": "x", "b": "y"},
+      "expect": {"path": [{"key": "s1", "fields": ["role"]}, {"key": "s3", "fields": ["b"]}], "ended": false, "answers": {"role": "x", "b": "y"}}
+    },
+    {
+      "name": "a hidden-type field takes part in logic",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "utm_source", "type": "hidden"}, {"key": "promo", "type": "short_text"}]}], "logic": [{"id": "r1", "do": "show", "target": "promo", "when": {"field": "utm_source", "op": "is", "value": "newsletter"}}]},
+      "answers": {"utm_source": "newsletter", "promo": "SAVE"},
+      "expect": {"path": [{"key": "s1", "fields": ["utm_source", "promo"]}], "ended": false, "answers": {"utm_source": "newsletter", "promo": "SAVE"}}
+    }
+  ],
+  "quizzes": [
+    {
+      "name": "everything right",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "q1", "type": "select", "quiz": {"correct": "b", "points": 2}}, {"key": "q2", "type": "yes_no", "quiz": {"correct": true, "points": 1}}]}], "quiz": {"pass_mark": 60, "bands": [{"min": 0, "title": "Beginner", "message": "Keep going"}, {"min": 80, "title": "Expert", "message": "Great"}]}},
+      "answers": {"q1": "b", "q2": true},
+      "expect": {"score": 3, "max_score": 3, "percent": 100, "passed": true, "band": "Expert", "review": {"q1": true, "q2": true}}
+    },
+    {
+      "name": "mixed answers",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "q1", "type": "select", "quiz": {"correct": "b", "points": 2}}, {"key": "q2", "type": "multi_select", "quiz": {"correct": ["x", "y"], "points": 3}}, {"key": "q3", "type": "yes_no", "quiz": {"correct": false, "points": 1}}, {"key": "q4", "type": "rating", "quiz": {"correct": 5, "points": 4}}]}], "quiz": {"pass_mark": 50, "bands": [{"min": 0, "title": "Beginner", "message": "Keep going"}, {"min": 30, "title": "Getting there", "message": "Nearly"}, {"min": 80, "title": "Expert", "message": "Great"}]}},
+      "answers": {"q1": "b", "q2": ["x"], "q3": false, "q4": 4},
+      "expect": {"score": 3, "max_score": 10, "percent": 30, "passed": false, "band": "Getting there", "review": {"q1": true, "q2": false, "q3": true, "q4": false}}
+    },
+    {
+      "name": "a multi select must match the whole set, in any order",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "q1", "type": "multi_select", "quiz": {"correct": ["x", "y"], "points": 5}}]}]},
+      "answers": {"q1": ["y", "x"]},
+      "expect": {"score": 5, "max_score": 5, "percent": 100, "passed": null, "band": null, "review": {"q1": true}}
+    },
+    {
+      "name": "a short answer matches any accepted text, ignoring case and spaces",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "q1", "type": "short_text", "quiz": {"correct": ["Paris", "paris, france"], "points": 2}}, {"key": "q2", "type": "short_text", "quiz": {"correct": "Oslo", "points": 2}}]}]},
+      "answers": {"q1": "  PARIS, France ", "q2": "Bergen"},
+      "expect": {"score": 2, "max_score": 4, "percent": 50, "passed": null, "band": null, "review": {"q1": true, "q2": false}}
+    },
+    {
+      "name": "a question the visitor was not shown does not count",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "level", "type": "select"}, {"key": "q1", "type": "yes_no", "quiz": {"correct": true, "points": 1}}, {"key": "q2", "type": "yes_no", "quiz": {"correct": true, "points": 9}}]}], "logic": [{"id": "r1", "do": "hide", "target": "q2", "when": {"field": "level", "op": "is", "value": "easy"}}], "quiz": {"pass_mark": 100}},
+      "answers": {"level": "easy", "q1": true, "q2": true},
+      "expect": {"score": 1, "max_score": 1, "percent": 100, "passed": true, "band": null, "review": {"q1": true}}
+    },
+    {
+      "name": "an unanswered question is wrong but counts",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "q1", "type": "select", "quiz": {"correct": "a", "points": 1}}, {"key": "q2", "type": "select", "quiz": {"correct": "a", "points": 1}}]}], "quiz": {"pass_mark": 50}},
+      "answers": {"q1": "a"},
+      "expect": {"score": 1, "max_score": 2, "percent": 50, "passed": true, "band": null, "review": {"q1": true, "q2": false}}
+    },
+    {
+      "name": "a band starts exactly at its percentage, by integer arithmetic",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "q1", "type": "yes_no", "quiz": {"correct": true, "points": 1}}, {"key": "q2", "type": "yes_no", "quiz": {"correct": true, "points": 1}}, {"key": "q3", "type": "yes_no", "quiz": {"correct": true, "points": 1}}]}], "quiz": {"pass_mark": 66, "bands": [{"min": 0, "title": "Low", "message": ""}, {"min": 66, "title": "Mid", "message": ""}, {"min": 67, "title": "High", "message": ""}]}},
+      "answers": {"q1": true, "q2": true, "q3": false},
+      "expect": {"score": 2, "max_score": 3, "percent": 66, "passed": true, "band": "Mid", "review": {"q1": true, "q2": true, "q3": false}}
+    },
+    {
+      "name": "a number answer is not a text answer",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "q1", "type": "number", "quiz": {"correct": 42, "points": 1}}, {"key": "q2", "type": "number", "quiz": {"correct": 42, "points": 1}}]}]},
+      "answers": {"q1": 42.0, "q2": "42"},
+      "expect": {"score": 1, "max_score": 2, "percent": 50, "passed": null, "band": null, "review": {"q1": true, "q2": false}}
+    },
+    {
+      "name": "no scored question, no result",
+      "definition": {"steps": [{"key": "s1", "fields": [{"key": "q1", "type": "select"}]}]},
+      "answers": {"q1": "a"},
+      "expect": null
+    }
+  ]
+}

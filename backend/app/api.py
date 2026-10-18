@@ -26,13 +26,15 @@ from .security import Ctx, in_workspace
 
 log = logging.getLogger("api")
 V1 = "/api/v1"
+PUBLIC = "/api/public"  # no session; answers with the same error envelope
 IDEMPOTENCY_TTL = timedelta(hours=24)
 CODES = {400: "bad_request", 401: "unauthenticated", 403: "forbidden", 404: "not_found", 405: "method_not_allowed",
          409: "conflict", 422: "validation_failed", 429: "rate_limited"}
 
 
 def is_v1(request: Request) -> bool:
-    return request.url.path == V1 or request.url.path.startswith(V1 + "/")
+    """Whether errors on this path use the {"error": ...} envelope."""
+    return request.url.path in (V1, PUBLIC) or request.url.path.startswith((V1 + "/", PUBLIC + "/"))
 
 
 class ApiError(HTTPException):

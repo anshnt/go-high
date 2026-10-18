@@ -125,6 +125,50 @@ Row level security separates tenants; what a user may do inside a workspace is `
 - `GET /api/v1/stream` carries ids only and no content, so permissions apply when the client refetches. A stream ends
   after 30 minutes, which is when a revoked session stops it.
 
+## Public forms
+
+- The public endpoints (`/api/public/forms/...`, the hosted page `/f/{key}` and `/embed.js`) need no session. A request
+  starts in a narrow system scope that can only read `forms` (the one policy that scope has; every other table shows it
+  nothing), finds the form by its public key (a random URL-safe string, never the internal id) and then moves to that
+  form's workspace, so every later query is confined by row level security like any other. A guessed id, another
+  workspace's key, a response id of another form or a resume token used on another form is a 404; a draft or trashed
+  form is a 404 and a closed one a 410. Every public answer is `Cache-Control: no-store`.
+- CORS: any origin may call these endpoints (`Access-Control-Allow-Origin: *`) and `Access-Control-Allow-Credentials` is
+  never sent; the runtime calls with `credentials: "omit"`. The admin API (`/api/v1/forms`) is not opened up.
+- Spam protection is on by default. A filled honeypot field is told it worked and nothing is stored. A response completed
+  faster than `FORM_MIN_FILL_SECONDS` (3) after the page was opened is refused (429); the time comes from a signed
+  token (HMAC under `SECRET_KEY`, bound to the form, valid for 7 days), so it cannot be forged or moved to another
+  form, though one token may be reused inside its week: the rate limit bounds that. Requests are limited per form,
+  visitor and minute by a Postgres counter, and every form has a body size limit that is enforced while the body streams
+  in (413). The visitor is a keyed hash of the client address, so counters and consent evidence never hold a raw address;
+  behind a proxy set `FORWARDED_ALLOW_IPS` or every visitor looks like the proxy.
+- A response in progress is addressed by its resume token: random, stored only as a SHA-256, returned once when the
+  response starts. Whoever holds the link can read the answers saved so far and complete that response, so treat resume
+  links as secrets. A completed response can no longer be resumed or changed, and completing it twice does nothing.
+- A public form writes to contacts, so it is a way for anyone to change data. It can only write the contact fields its
+  questions map to (checked when a version is saved and validated by the record engine's own types), an empty answer
+  never clears a field, and `settings.contact.existing` defaults to `fill_empty`, which adds to a known contact without
+  overwriting anything. Someone who knows a contact's email can still submit a form and, in the explicit `update` mode,
+  change those mapped fields; choose `update` only for forms people fill in about themselves.
+  `settings.double_submission = block` stops one contact from answering twice. The contact is written as the
+  organization's Automation role, so what a form may do to contacts is what that role may do, and removing
+  `contacts.write` from it stops forms from writing contacts.
+- Forms are governed by `forms.read`, `forms.write`, `forms.publish`, `forms.delete`, `responses.read` and
+  `responses.export`. Changing the status of a form or the settings of a live one needs `forms.publish`, so a Member
+  cannot redirect or reopen a live form. Responses and the timeline show a role only what its record permissions allow of
+  the contact (hidden fields, out of scope contacts).
+- Quiz right answers, points and the contact mapping are not in the public definition, and scores are computed on the
+  server. The runtime builds its page from text nodes (nothing in a definition or an answer is ever markup), refuses a
+  redirect that is not http or https (the server refuses to save one too) and the hosted page carries a strict
+  Content-Security-Policy.
+- Consent boxes are stored as evidence of opt-in (the words shown, when, the form and the visitor hash); the hash is not
+  put in events or sent to webhooks.
+- CSV export neutralizes spreadsheet formula injection: any text cell or header that starts with `=`, `+`, `-`, `@`, a
+  tab, a carriage return or a line feed gets a leading apostrophe (numbers are written as they are), so a response
+  cannot run a formula when someone opens the file.
+- Form versions are immutable: `gohigh_app` can insert but not update or delete them, nor delete forms, responses or
+  views (a form goes to the trash); only the per-minute rate counters are deleted by requests.
+
 ## Repository
 
 - `main` is protected: changes arrive by pull request with passing CI; force pushes and deletion are blocked.
