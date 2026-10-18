@@ -4,7 +4,7 @@ import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from helpers import H, link, make_record, names, type_id
+from helpers import H, link, make_record, names, stage_ids, type_id
 from sqlalchemy import text
 
 from app import permissions
@@ -67,7 +67,8 @@ def book(crm):
         tags[name] = client.post("/api/v1/tags", json={"name": name}, headers={H: ws}).json()["id"]
     for record, tag in (("ada", "vip"), ("grace", "vip"), ("alan", "beta")):
         client.post(f"/api/v1/records/{people[record]['id']}/tags", json={"add": [tags[tag]]}, headers={H: ws})
-    deals = {name: make_record(client, ws, "deal", name=name, amount=usd(amount), stage=stage)
+    stages = stage_ids(client, ws)
+    deals = {name: make_record(client, ws, "deal", name=name, amount=usd(amount), stage=stages[stage])
              for name, amount, stage in (("Engine order", 700000, "won"), ("Code audit", 90000, "proposal"))}
     contact_deal = type_id(client, ws, "deal", "contact")
     link(client, ws, deals["Engine order"]["id"], people["ada"]["id"], contact_deal)
@@ -77,7 +78,7 @@ def book(crm):
     link(client, ws, people["grace"]["id"], acme["id"], works_at)
     link(client, ws, people["alan"]["id"], bletchley["id"], works_at)
     return client, ws, {"people": people, "tags": tags, "me": me, "acme": acme, "bletchley": bletchley,
-                        "deals": deals}
+                        "deals": deals, "stages": stages}
 
 
 def find(client, ws, ast, key="contact", **params) -> list[str]:
@@ -227,8 +228,10 @@ def test_boolean_select_multi_select_user_and_record_operators(book):
     assert find(client, ws, leaf("company", "in", [d["acme"]["id"], d["bletchley"]["id"]])) == [
         "Ada Lovelace", "Alan Turing"]
     assert len(find(client, ws, leaf("company", "is_empty"))) == 6
-    assert find(client, ws, leaf("stage", "is", "won"), key="deal") == ["Engine order"]
-    assert find(client, ws, leaf("stage", "in", ["won", "proposal"]), key="deal") == ["Code audit", "Engine order"]
+    won, proposal = d["stages"]["won"], d["stages"]["proposal"]
+    assert find(client, ws, leaf("stage", "is", won), key="deal") == ["Engine order"]
+    assert find(client, ws, leaf("stage", "in", [won, proposal]), key="deal") == ["Code audit", "Engine order"]
+    assert find(client, ws, leaf("stage", "is", "not-a-stage"), key="deal") == []  # a stale stage matches nothing
     assert find(client, ws, leaf("owner_id", "is_empty")) != []
     assert find(client, ws, leaf("owner_id", "is", d["me"])) == []
     assert find(client, ws, leaf("created_by", "is", d["me"])) != []
@@ -272,18 +275,19 @@ def test_tags_filter_by_name_or_id_and_ignore_trashed_tags_of_others(book):
 
 def test_association_paths_look_through_links_in_both_directions(book):
     client, ws, d = book
+    proposal, won = d["stages"]["proposal"], d["stages"]["won"]
     # contact -> company ("works at" is stored from the contact) and deal -> contact (stored from the deal);
     # the `company` field of Ada and Alan is a plain value, not an association, so a path does not see it
     assert find(client, ws, leaf("company.name", "is", "Acme")) == ["Grace Hopper"]
     assert find(client, ws, leaf("company.industry", "contains", "code")) == ["Alan Turing"]
     assert find(client, ws, leaf("deal.amount", "gt", usd(500000))) == ["Ada Lovelace"]
-    assert find(client, ws, leaf("deal.stage", "is", "proposal")) == ["Alan Turing", "Grace Hopper"]
+    assert find(client, ws, leaf("deal.stage", "is", proposal)) == ["Alan Turing", "Grace Hopper"]
     assert find(client, ws, leaf("deal.name", "starts_with", "code")) == ["Alan Turing", "Grace Hopper"]
-    assert find(client, ws, {"and": [leaf("deal.stage", "is", "proposal"), leaf("lifecycle", "is", "lead")]}) == [
+    assert find(client, ws, {"and": [leaf("deal.stage", "is", proposal), leaf("lifecycle", "is", "lead")]}) == [
         "Alan Turing"]
-    assert find(client, ws, {"or": [leaf("deal.stage", "is", "won"), {"tag": "beta"}]}) == [
+    assert find(client, ws, {"or": [leaf("deal.stage", "is", won), {"tag": "beta"}]}) == [
         "Ada Lovelace", "Alan Turing"]
-    assert len(find(client, ws, {"not": leaf("deal.stage", "is", "proposal")})) == 6
+    assert len(find(client, ws, {"not": leaf("deal.stage", "is", proposal)})) == 6
     # from the other side
     assert find(client, ws, leaf("contact.lifecycle", "is", "customer"), key="company") == ["Acme"]
     assert find(client, ws, leaf("contact.first_name", "is", "Alan"), key="company") == ["Bletchley"]
@@ -293,7 +297,7 @@ def test_association_paths_look_through_links_in_both_directions(book):
     # an association to a trashed record no longer counts
     code_audit = d["deals"]["Code audit"]["id"]
     client.delete(f"{OBJECTS}/deal/records/{code_audit}", headers={H: ws})
-    assert find(client, ws, leaf("deal.stage", "is", "proposal")) == []
+    assert find(client, ws, leaf("deal.stage", "is", proposal)) == []
 
 
 def test_a_mistake_in_a_filter_is_a_400_that_points_at_it(book):

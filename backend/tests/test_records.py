@@ -2,7 +2,7 @@
 import json
 import uuid
 
-from helpers import H, add_member, drain, listing, make_record, names, verify_signature
+from helpers import H, add_member, drain, listing, make_record, names, stage_ids, verify_signature
 from sqlalchemy import text
 
 from app import config
@@ -49,8 +49,11 @@ def test_every_workspace_starts_with_contacts_companies_and_deals(make_user, crm
         assert company["fields"][0]["rules"] == {"required": True}
         deal = get(client, workspace, f"{OBJECTS}/deal").json()
         assert [(f["key"], f["type"]) for f in deal["fields"]] == [
-            ("name", "text"), ("amount", "money"), ("stage", "stage"), ("close_date", "date")]
-        assert deal["fields"][1]["options"] == {"currency": "USD"}
+            ("name", "text"), ("amount", "money"), ("stage", "stage"), ("close_date", "date"),
+            ("lost_reason", "select"), ("lost_note", "long_text")]
+        assert deal["fields"][1]["options"] == {"currency": "USD"} and deal["fields"][2]["options"] == {}
+        assert [c["id"] for c in deal["fields"][4]["options"]["choices"]] == [
+            "price", "timing", "competitor", "no_decision", "other"]
         types = get(client, workspace, "/api/v1/association-types").json()["data"]
         assert {(t["from_object"], t["to_object"], t["label"], t["inverse_label"]) for t in types} == {
             ("contact", "company", "works at", "employs"), ("deal", "contact", "contact", "deal"),
@@ -88,7 +91,7 @@ def test_a_contact_is_validated_normalized_and_named(crm, db):
     company = make_record(client, ws, "company", name="Analytical Engines")
     assert company["display_name"] == "Analytical Engines"
     deal = make_record(client, ws, "deal", name="Engine order", amount={"amount": 250000, "currency": "usd"},
-                       stage="proposal", close_date="2026-12-01")
+                       stage=stage_ids(client, ws)["proposal"], close_date="2026-12-01")
     assert deal["values"]["amount"] == {"amount": 250000, "currency": "USD"}
     assert row(db, deal["id"])["email_norm"] is None and row(db, deal["id"])["phone_e164"] is None
 

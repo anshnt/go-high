@@ -39,7 +39,7 @@ GOOD = [
     ("boolean", {}, {}, True, True),
     ("boolean", {}, {}, False, False),
     ("select", CHOICES, {}, "lead", "lead"),
-    ("stage", CHOICES, {}, "won", "won"),
+    ("stage", {}, {}, ID.upper(), ID),
     ("multi_select", CHOICES, {}, ["lead", "won", "lead"], ["lead", "won"]),
     ("email", {}, {}, "  Ada@Example.COM ", "ada@example.com"),
     ("phone", {}, {}, "(415) 555-2671", "+14155552671"),
@@ -90,7 +90,8 @@ BAD = [
     ("select", CHOICES, {}, "nope", "choices"),
     ("select", CHOICES, {}, 5, "choices"),
     ("select", CHOICES, {}, ["lead"], "choices"),
-    ("stage", CHOICES, {}, "nope", "choices"),
+    ("stage", {}, {}, "nope", "must be an id"),
+    ("stage", {}, {}, 5, "must be an id"),
     ("multi_select", CHOICES, {}, "lead", "list"),
     ("multi_select", CHOICES, {}, ["lead", "nope"], "choices"),
     ("multi_select", CHOICES, {"max_items": 1}, ["lead", "won"], "more than 1"),
@@ -188,7 +189,8 @@ def test_options_belong_to_their_type():
     assert types.check_options("text", {}) == {}
     for type_, bad, message in [("money", {"currency": "ZZZ"}, "ISO 4217"), ("phone", {"region": "ZZ"}, "country"),
                                 ("record", {}, "key of the object"), ("text", {"choices": []}, "no option"),
-                                ("number", {"currency": "USD"}, "no option"), ("text", [], "object")]:
+                                ("number", {"currency": "USD"}, "no option"), ("text", [], "object"),
+                                ("stage", {"choices": []}, "no option")]:
         with pytest.raises(ValueError, match=message):
             types.check_options(type_, bad)
 
