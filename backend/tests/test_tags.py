@@ -1,7 +1,7 @@
 """Tags: creation, usage counts, rename, merge with a preview, delete, and adding or removing them on records."""
 import uuid
 
-from helpers import H, add_member, make_record, names
+from helpers import H, add_member, make_record, make_role, names, rule, user_id_of
 from sqlalchemy import text
 
 TAGS = "/api/v1/tags"
@@ -217,3 +217,22 @@ def test_members_apply_tags_but_only_admins_rename_merge_and_delete(crm, db):
         r = member.request(method, path, json=body, headers={H: ws})
         assert r.status_code == 403, (method, path)
     assert {t["name"] for t in listed(client, ws)["data"]} == {"vip", "other", "from member"}
+
+
+def test_tagging_needs_write_on_the_records_object_and_merge_counts_only_what_the_caller_sees(crm, db):
+    client, ws, ids = crm
+    vip, other = tag(client, ws, "vip"), tag(client, ws, "other")
+    reader = make_role(client, ws, "Tagging reader", copy_from="viewer", capabilities=[
+        "contacts.read", "schema.read", "tags.write"])
+    keeper = make_role(client, ws, "Own tag keeper", copy_from="viewer", capabilities=[
+        "contacts.read", "schema.read", "tags.write", "tags.manage"], rules=[rule("*", "own")])
+    viewer = add_member(db, ids["org_id"], "v@example.com", workspace_id=ws, workspace_role=reader["key"])
+    lead = add_member(db, ids["org_id"], "k@example.com", workspace_id=ws, workspace_role=keeper["key"])
+    ada = make_record(client, ws, first_name="Ada")
+    mine = make_record(client, ws, first_name="Mine", owner_id=user_id_of(lead))
+    r = viewer.post(f"/api/v1/records/{ada['id']}/tags", json={"add": [vip["id"]]}, headers={H: ws})
+    assert r.status_code == 403 and "contacts.write" in r.json()["error"]["message"]
+    for record in (ada, mine):
+        put(client, ws, record["id"], add=[vip["id"]])
+    preview = lead.post(f"{TAGS}/{vip['id']}/merge", json={"into": other["id"], "preview": True}, headers={H: ws})
+    assert (preview.json()["records"], preview.json()["gaining"]) == (1, 1)  # Ada is outside the lead's scope

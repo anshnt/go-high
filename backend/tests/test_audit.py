@@ -123,8 +123,9 @@ def test_a_role_assignment_is_recorded_with_the_role_before_and_after(crm, db):
     assert all(r["actor"]["id"] == user_id_of(client) for r in rows)
 
 
-def test_password_and_session_changes_go_to_the_audit_log_of_every_workspace_of_the_user(crm):
-    client, ws, ids = crm
+def test_password_and_session_changes_go_to_the_audit_log_of_every_workspace_of_the_user(make_user):
+    client, ids = make_user("a@example.com", verified=False)
+    ws = ids["workspace_id"]
     me = user_id_of(client)
     second = client.post("/api/workspaces", json={"name": "Second", "brand_id": ids["brand_id"]}).json()["id"]
     for _ in range(2):  # two more sessions of the same user

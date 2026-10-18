@@ -195,14 +195,18 @@ def blocker(c: Ctx, t: Task) -> Task | None:
 
 def spawn_next(c: Ctx, done: Task, tz: ZoneInfo) -> Task | None:
     """The next occurrence of a finished recurring task, from its rule, or None when the series has ended. The tasks of
-    a series point at the first one, which is how COUNT is counted.
+    a series point at the first one, which is how COUNT is counted (up to `done`: a task reopened and finished again
+    finds its next occurrence already there, and returns that one instead of a second copy).
     ponytail: deleting the first task of a series restarts the count at the next one."""
     root = done.parent_task_id or done.id
-    seen = 1 + c.db.scalar(select(func.count()).select_from(Task).where(Task.parent_task_id == root))
+    series = (Task.workspace_id == c.workspace.id, Task.parent_task_id == root)
+    seen = 1 + c.db.scalar(select(func.count()).select_from(Task).where(*series, Task.due_at <= done.due_at))
     following = recurrence.advance(recurrence.parse(done.recurrence), done.due_at, done.all_day, tz, seen)
     if following is None:
         return None
     due_at, rule = following
+    if there := c.db.scalar(select(Task).where(*series, Task.due_at == due_at).limit(1)):
+        return there
     t = Task(workspace_id=c.workspace.id, created_by=done.created_by, title=done.title, notes=done.notes,
              due_at=due_at, all_day=done.all_day, assignee_id=done.assignee_id, priority=done.priority,
              record_id=done.record_id, recurrence=recurrence.render(rule), parent_task_id=root,
