@@ -48,9 +48,16 @@ export function SettingsTab({ kind, draft, onDraft, def, onDef, contact, errors 
         <Input label="Tell these people about each response" hint="Email addresses, separated by commas. Sending arrives with the email module; for now it is noted in the server log." value={s.notify_emails.join(", ")} error={errors["settings.notify_emails"]} onChange={(e) => set({ notify_emails: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })} />
       </Card>
 
-      <Card title="Contacts" hint="A response finds the contact with the same email or phone, or creates one. An empty answer never clears a field.">
+      <Card title="Contacts" hint="A response finds the contact with the same email or phone, or creates one. An empty answer never clears a field. A contact the form creates gets its Source set to Form (when your contacts have a Source field); a contact you already had keeps its Source.">
         <Switch label="Create or update a contact from the answers" checked={s.contact.create} onCheckedChange={(create) => set({ contact: { ...s.contact, create } })} />
-        <Select label="When the contact already exists" value={s.contact.existing} onValueChange={(existing) => set({ contact: { ...s.contact, existing: existing as "update" | "fill_empty" } })} disabled={!s.contact.create} options={[{ value: "update", label: "Update the fields the answers fill in" }, { value: "fill_empty", label: "Only fill fields that are empty" }]} />
+        <Select label="When the contact already exists" value={s.contact.existing} onValueChange={(existing) => set({ contact: { ...s.contact, existing: existing as "update" | "fill_empty" } })} disabled={!s.contact.create} options={[{ value: "fill_empty", label: "Only fill fields that are empty (recommended)" }, { value: "update", label: "Update the fields the answers fill in" }]} />
+        {s.contact.create && (
+          <p className="ui-hint">
+            {s.contact.existing === "fill_empty"
+              ? "A stranger's answer never overwrites what you already know: only fields that are empty on the contact are filled in."
+              : "Every answer replaces the contact's value. Use this only for a form people fill in about themselves, because anyone who knows an email address can send a response with it."}
+          </p>
+        )}
         <Select label="Someone who already answered" value={s.double_submission} onValueChange={(double_submission) => set({ double_submission: double_submission as "allow" | "block" })} options={[{ value: "allow", label: "May answer again" }, { value: "block", label: "Cannot answer again" }]} />
         <div className="fm-mapping">
           <h3>Answers that fill contact fields</h3>

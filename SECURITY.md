@@ -147,10 +147,16 @@ Row level security separates tenants; what a user may do inside a workspace is `
   links as secrets. A completed response can no longer be resumed or changed, and completing it twice does nothing.
 - A public form writes to contacts, so it is a way for anyone to change data. It can only write the contact fields its
   questions map to (checked when a version is saved and validated by the record engine's own types), an empty answer
-  never clears a field, and `settings.contact.existing = fill_empty` makes it add to a known contact without
-  overwriting anything. Someone who knows a contact's email can still submit a form and, in `update` mode, change those
-  mapped fields; use `fill_empty` for forms whose contacts are valuable. `settings.double_submission = block` stops one
-  contact from answering twice.
+  never clears a field, and `settings.contact.existing` defaults to `fill_empty`, which adds to a known contact without
+  overwriting anything. Someone who knows a contact's email can still submit a form and, in the explicit `update` mode,
+  change those mapped fields; choose `update` only for forms people fill in about themselves.
+  `settings.double_submission = block` stops one contact from answering twice. The contact is written as the
+  organization's Automation role, so what a form may do to contacts is what that role may do, and removing
+  `contacts.write` from it stops forms from writing contacts.
+- Forms are governed by `forms.read`, `forms.write`, `forms.publish`, `forms.delete`, `responses.read` and
+  `responses.export`. Changing the status of a form or the settings of a live one needs `forms.publish`, so a Member
+  cannot redirect or reopen a live form. Responses and the timeline show a role only what its record permissions allow of
+  the contact (hidden fields, out of scope contacts).
 - Quiz right answers, points and the contact mapping are not in the public definition, and scores are computed on the
   server. The runtime builds its page from text nodes (nothing in a definition or an answer is ever markup), refuses a
   redirect that is not http or https (the server refuses to save one too) and the hosted page carries a strict
