@@ -70,7 +70,7 @@ def drafts(e: Event, names: dict[uuid.UUID, str]) -> list[Draft]:
     d, actor = e.data, names.get(e.actor_id, "Someone")
     if e.type in ("task.created", "task.updated"):
         new = d["assignee_id"] if e.type == "task.created" else (d["changes"].get("assignee_id") or {}).get("new")
-        if not new or d.get("parent_task_id"):  # the next occurrence of a repeating task is not an assignment
+        if not new or (e.type == "task.created" and d.get("parent_task_id")):  # a repeat's next one is no assignment
             return []
         who = uuid.UUID(new)
         return [Draft("task_assigned", e.workspace_id, who, e.actor_id, f"{actor} assigned you a task",

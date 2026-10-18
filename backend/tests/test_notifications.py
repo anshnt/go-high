@@ -118,6 +118,9 @@ def test_the_next_occurrence_of_a_repeating_task_is_not_announced_as_an_assignme
     assert done["next"]["assignee_id"] == who["ben"]
     drain()
     assert len(inbox(clients["ben"], ws)) == 1
+    clients["ann"].patch(f"{T}/{done['next']['id']}", json={"assignee_id": who["cara"]}, headers={H: ws})
+    drain()  # handing a later occurrence to someone else is an assignment
+    assert [n["title"] for n in inbox(clients["cara"], ws)] == ["a assigned you a task"]
 
 
 def test_a_record_assigned_to_you_notifies_you(team):
