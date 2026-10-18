@@ -5,6 +5,9 @@ from typing import Literal, NamedTuple
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
+import phonenumbers
+from phonenumbers import timezone
+
 # The standard carrier keyword lists (CTIA, as Twilio and Telnyx apply them).
 STOP = frozenset({"STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "REVOKE", "OPTOUT"})
 START = frozenset({"START", "YES", "UNSTOP"})
@@ -36,6 +39,64 @@ def quiet_until(now: datetime, tz: str | tzinfo, start: str = "21:00", end: str 
         return None
     day = local.date() + timedelta(days=int(wraps and at >= begin))
     return datetime.combine(day, finish, zone).astimezone(UTC).astimezone(zone)  # a time in a DST gap moves forward
+
+
+def phone_zones(e164: str) -> tuple[str, ...]:
+    """The time zones a phone number may be in (an area code usually gives one, a country with no area detail
+    several), or none when it cannot be told."""
+    try:
+        zones = timezone.time_zones_for_number(phonenumbers.parse(e164, None))
+    except phonenumbers.NumberParseException:
+        return ()
+    return tuple(z for z in zones if z != "Etc/Unknown")
+
+
+class Consent(NamedTuple):
+    status: Literal["opted_in", "opted_out", "dnd"]
+    source: str  # stop, start, unsubscribe, complaint, manual
+    changed_at: datetime
+
+
+class Refusal(NamedTuple):
+    code: str  # opted_out, dnd, quiet_hours, frequency_cap
+    reason: str  # shown to the person composing
+    retry_at: datetime | None = None  # when sending is allowed again, if waiting helps
+
+
+OPT_OUT_SOURCES = {"stop": "STOP", "unsubscribe": "unsubscribe", "complaint": "a spam complaint", "manual": "staff"}
+QUIET_KINDS = frozenset({"sms", "whatsapp"})
+REPLY_WINDOW = timedelta(hours=24)  # a contact who wrote this recently may be answered at any hour
+
+
+def can_send(kind: str, now: datetime, *, consent: Consent | None = None, zones: tuple[str, ...] = (),
+             quiet: tuple[str, str] = ("21:00", "08:00"), replying: bool = False, sent: int = 0,
+             cap: tuple[int, int] | None = None) -> Refusal | None:
+    """None when a message on a channel of this `kind` may go to the contact now, else why not. `consent` is the
+    contact's row for the kind, `zones` the contact's time zones (several when unsure: any of them in quiet hours
+    waits for the latest end), `replying` that the contact wrote within REPLY_WINDOW, `sent` the messages sent to
+    them on the channel in the cap's window and `cap` (max, hours). Quiet hours only bind SMS and WhatsApp.
+    ponytail: A2P registration status of the sending number (ADR 0005) is not checked until the wizard exists."""
+    if consent and consent.status == "opted_out":
+        when = consent.changed_at
+        source = OPT_OUT_SOURCES.get(consent.source, consent.source)
+        return Refusal("opted_out", f"Opted out by {source} on {when:%b} {when.day}")
+    if consent and consent.status == "dnd":
+        return Refusal("dnd", f"Do not disturb is on for {kind}")
+    if kind in QUIET_KINDS and not replying:
+        waits = []
+        for zone in zones:
+            try:
+                if until := quiet_until(now, zone, *quiet):
+                    waits.append((until, zone))
+            except (KeyError, ValueError):  # a name that is not a time zone: treated as unknown
+                continue
+        if waits:
+            until, zone = max(waits)
+            return Refusal("quiet_hours", f"Quiet hours for this contact ({zone}): sending resumes at "
+                                          f"{until:%H:%M}", until)
+    if cap and cap[0] and sent >= cap[0]:
+        return Refusal("frequency_cap", f"Frequency cap reached: {cap[0]} messages in {cap[1]} hours")
+    return None
 
 
 # GSM 03.38: the basic table, and the extension table whose characters take an escape plus the character.
