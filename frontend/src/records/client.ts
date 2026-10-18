@@ -45,6 +45,6 @@ const me = () => {
 };
 const demo = import.meta.env.VITE_DEMO === "1" ? (await import("./memoryClient.ts")).createMemoryClient({ latency: 60, me }) : undefined;
 
-const live = createApiClient(api, { me });
+const live = createApiClient(api);
 
 export const useRecordsClient = (): RecordsClient => demo ?? live;

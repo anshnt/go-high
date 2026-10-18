@@ -7,6 +7,7 @@ import type { RecordsClient } from "./client.ts";
 import { RecordsError } from "./errors.ts";
 import { DISPLAY_NAME, valueType } from "./schema.ts";
 import type {
+  Choice,
   ColorName,
   FieldDef,
   FieldType,
@@ -52,6 +53,9 @@ export type ApiEvent = {
   data: Record<string, unknown>;
 };
 type ApiLinkType = { id: string; from_object: string; to_object: string; label: string; inverse_label: string };
+type ApiStage = { id: string; name: string; kind: "open" | "won" | "lost"; probability: number; color: string | null };
+export type ApiPipeline = { id: string; object: string; name: string; archived_at: string | null; stages: ApiStage[] };
+type ApiMember = { user_id: string; name: string; email: string };
 
 // ---- shapes ----
 
@@ -82,8 +86,30 @@ const SYSTEM_COLUMNS: Omit<FieldDef, "position">[] = [
 /** An object's name is derived from several fields (a contact's first and last name): lists sort and filter by that derived column. */
 const NAME_COLUMN: Omit<FieldDef, "position"> = { key: DISPLAY_NAME, label: "Name", type: "text", options: {}, rules: { read_only: true }, is_system: true, archived: false };
 
-export function toFields(fields: ApiField[], object: ObjectDef): FieldDef[] {
-  const own: FieldDef[] = fields.map(({ archived_at, ...f }) => ({ ...f, archived: archived_at !== null }));
+/**
+ * The stages a stage field offers: the stages of the object's pipelines, in order, live pipelines first. The API keeps a
+ * stage field's options empty (a stage is a row of a pipeline), so the choices come from the pipelines. The pipeline's name
+ * is added only where there is a choice of pipelines, and archived ones say so (they hold deals but take no new ones).
+ * `first` is where a new record starts: the first open stage of the first live pipeline, as the server decides.
+ */
+export function stageChoices(pipelines: ApiPipeline[], object: string): { choices: Choice[]; first?: string } {
+  const mine = pipelines.filter((p) => p.object === object).sort((a, b) => Number(a.archived_at !== null) - Number(b.archived_at !== null));
+  const several = mine.filter((p) => p.archived_at === null).length > 1;
+  const choices = mine.flatMap((p) =>
+    p.stages.map((st): Choice => ({ id: st.id, label: p.archived_at ? `${p.name} (archived): ${st.name}` : several ? `${p.name}: ${st.name}` : st.name, color: colorName(st.color), probability: st.probability / 100 })),
+  );
+  const live = mine.find((p) => p.archived_at === null);
+  return { choices, first: live?.stages.find((st) => st.kind === "open")?.id };
+}
+
+export function toFields(fields: ApiField[], object: ObjectDef, pipelines: ApiPipeline[] = []): FieldDef[] {
+  const stages = stageChoices(pipelines, object.key);
+  const own: FieldDef[] = fields.map(({ archived_at, ...f }) => ({
+    ...f,
+    archived: archived_at !== null,
+    // a stage is always set (a new deal starts in the first open stage), so it is required and the pickers do not clear it
+    ...(f.type === "stage" ? { options: { ...f.options, choices: stages.choices, default: stages.first }, rules: { ...f.rules, required: true } } : {}),
+  }));
   const last = own.reduce((n, f) => Math.max(n, f.position), 0);
   // the derived name goes first, so it sorts and filters as the list's name column; the columns come after the fields
   const name = object.primary_fields.length === 1 ? [] : [{ ...NAME_COLUMN, position: -1 }];
@@ -211,17 +237,10 @@ export function toTimelineEvent(e: ApiEvent, recordId: string, links: ApiLinkTyp
 
 // ---- the client ----
 
-export type ApiClientOptions = {
-  /** The signed-in user: the owner a new record gets unless the caller says otherwise. */
-  me?: () => UserRef | null;
-};
-
 const enc = encodeURIComponent;
 const chunks = <T>(list: T[], size: number): T[][] => Array.from({ length: Math.ceil(list.length / size) }, (_, i) => list.slice(i * size, (i + 1) * size));
 
-export function createApiClient(http: Http, opts: ApiClientOptions = {}): RecordsClient {
-  const me = opts.me ?? (() => null);
-
+export function createApiClient(http: Http): RecordsClient {
   // What rarely changes in a session is read once. A failed read is forgotten, so a retry asks again.
   const once = <T>(load: () => Promise<T>) => {
     let p: Promise<T> | undefined;
@@ -249,12 +268,18 @@ export function createApiClient(http: Http, opts: ApiClientOptions = {}): Record
     return out;
   }
 
+  const pipelines = once(() =>
+    call(async () => {
+      const [live, archived] = await Promise.all([http.get<ApiPage<ApiPipeline>>("/api/v1/pipelines"), http.get<ApiPage<ApiPipeline>>("/api/v1/pipelines?archived=true")]);
+      return [...live.data, ...archived.data];
+    }),
+  );
   const objects = once(() => call(async () => (await all<ApiObject>("/api/v1/objects")).map(({ archived_at: _gone, ...o }): ObjectDef => o)));
   const fieldsOf = keyed((object: string) =>
     call(async () => {
       const [def, page] = await Promise.all([objects().then((list) => list.find((o) => o.key === object)), http.get<ApiPage<ApiField>>(`/api/v1/objects/${enc(object)}/fields`)]);
       if (!def) throw new RecordsError(404, "Object not found");
-      return toFields(page.data, def);
+      return toFields(page.data, def, page.data.some((f) => f.type === "stage") ? await pipelines() : []);
     }),
   );
   const tags = once(() => call(async () => (await all<{ id: string; name: string; color: string | null }>("/api/v1/tags")).map(toTag)));
@@ -308,8 +333,9 @@ export function createApiClient(http: Http, opts: ApiClientOptions = {}): Record
     },
 
     async create(object, input: NewRecord) {
-      const owner = input.owner_id === undefined ? (me()?.id ?? null) : input.owner_id;
-      const made = await call(() => http.post<ApiRow>(`/api/v1/objects/${enc(object)}/records${queryString({ include: "tags" })}`, { values: input.values, owner_id: owner }));
+      // no owner given: the server decides (the creator's, or unassigned when the role sees unassigned records)
+      const body = { values: input.values, ...(input.owner_id === undefined ? {} : { owner_id: input.owner_id }) };
+      const made = await call(() => http.post<ApiRow>(`/api/v1/objects/${enc(object)}/records${queryString({ include: "tags" })}`, body));
       for (const tag of input.tags ?? []) await call(() => http.post(`/api/v1/records/${enc(made.id)}/tags`, { add: [tag] }));
       return toRow(input.tags?.length ? await call(() => http.get<ApiRow>(`${row(object, made.id)}${queryString({ include: "tags" })}`)) : made);
     },
@@ -350,7 +376,13 @@ export function createApiClient(http: Http, opts: ApiClientOptions = {}): Record
     untag: (ids, tagId) => bulk("/api/v1/records/tags", ids, (part) => ({ record_ids: part, remove: [tagId] })),
 
     async listUsers() {
-      return (await call(() => http.get<ApiPage<UserRef>>("/api/v1/members"))).data;
+      try {
+        const page = await call(() => http.get<ApiPage<ApiMember>>("/api/v1/members"));
+        return page.data.map((m): UserRef => ({ id: m.user_id, name: m.name, email: m.email }));
+      } catch (e) {
+        if (e instanceof RecordsError && e.status === 403) return []; // a role that may not see people still works with records: owners show as unknown
+        throw e;
+      }
     },
 
     async listLinkTypes(): Promise<LinkType[]> {

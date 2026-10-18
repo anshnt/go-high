@@ -61,7 +61,8 @@ test("an object named by one field is listed by that field, one named by several
   assert.equal(nameOf(def("name"), {}), "");
 });
 
-test("people are not sortable, since a sort would need the users joined", () => {
+test("people and stages are not sortable, since a sort would need users or stages joined", () => {
+  assert.equal(isSortable(f("stage", "stage")), false);
   assert.equal(isSortable(f("owner_id", "user")), false);
   assert.equal(isSortable(f("rep", "user")), false);
   assert.equal(isSortable(f("created_at", "datetime")), true);

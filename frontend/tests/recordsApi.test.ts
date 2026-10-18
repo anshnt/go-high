@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ApiError, fetchSend, httpOf, queryString } from "../src/lib/http.ts";
-import { asRecordsError, colorName, convertFilter, createApiClient, parseSort, sortParam, toTimelineEvent, type ApiEvent } from "../src/records/apiClient.ts";
+import { asRecordsError, colorName, convertFilter, createApiClient, parseSort, sortParam, stageChoices, toTimelineEvent, type ApiEvent, type ApiPipeline } from "../src/records/apiClient.ts";
 import { RecordsError } from "../src/records/errors.ts";
 import type { Filter, Tag } from "../src/records/types.ts";
 
@@ -22,7 +22,7 @@ function fake(routes: Record<string, Handler>) {
     return out instanceof Response ? out : out === undefined ? new Response(null, { status: 204 }) : json(out);
   }) as unknown as typeof fetch;
   const http = httpOf(fetchSend({ workspace: () => "ws-1", fetch: fetchImpl }));
-  const client = createApiClient(http, { me: () => ({ id: "u-me", name: "Me" }) });
+  const client = createApiClient(http);
   return { calls, client, http };
 }
 
@@ -43,8 +43,8 @@ async function fails(run: () => Promise<unknown>): Promise<RecordsError> {
 }
 
 test("every request names the workspace, and bodies are JSON", async () => {
-  const { calls, client } = fake({ "GET /api/v1/members": () => page([{ id: "u1", name: "Ada", email: "ada@example.com" }]) });
-  assert.deepEqual(await client.listUsers(), [{ id: "u1", name: "Ada", email: "ada@example.com" }]);
+  const { calls, client } = fake({ "GET /api/v1/members": () => page([{ user_id: "u1", name: "Ada", email: "ada@example.com", role: { key: "admin" }, implicit: true, teams: [] }]) });
+  assert.deepEqual(await client.listUsers(), [{ id: "u1", name: "Ada", email: "ada@example.com" }]); // the permissions module's user_id is the picker's id
   assert.equal(calls[0]!.headers["X-Workspace-Id"], "ws-1");
   assert.equal(calls[0]!.headers["Content-Type"], undefined);
 });
@@ -168,7 +168,7 @@ test("one record: read, create and change, with the tags back each time", async 
   assert.equal((await client.get("contact", "c1")).tags[0]!.name, "VIP");
 
   await client.create("contact", { values: { first_name: "Ada" } });
-  assert.deepEqual(calls[1]!.body, { values: { first_name: "Ada" }, owner_id: "u-me" }); // the creator owns it unless told otherwise
+  assert.deepEqual(calls[1]!.body, { values: { first_name: "Ada" } }); // no owner sent: the server decides, by the creator's role
   await client.create("contact", { values: { first_name: "Bo" }, owner_id: null });
   assert.equal(calls[2]!.body.owner_id, null);
   await client.create("contact", { values: { first_name: "Cy" }, owner_id: "u9" });
@@ -243,7 +243,7 @@ test("saved views map the filter, the sort and the owner both ways", async () =>
 test("tags, people and link types", async () => {
   const { client } = fake({
     "GET /api/v1/tags": () => page([{ id: "t1", name: "VIP", color: "purple", count: 4 }, { id: "t2", name: "None", color: null }]),
-    "GET /api/v1/members": () => page([{ id: "u1", name: "Ada", email: "a@example.com" }]),
+    "GET /api/v1/members": () => page([{ user_id: "u1", name: "Ada", email: "a@example.com" }]),
     "GET /api/v1/association-types": () => page([{ id: "a1", from_object: "contact", to_object: "company", label: "works at", inverse_label: "employs", cardinality: "many_to_many" }]),
   });
   assert.deepEqual(await client.listTags(), [{ id: "t1", name: "VIP", color: "purple" }, { id: "t2", name: "None", color: "gray" }]);
@@ -348,4 +348,79 @@ test("a query converts day filters using the fields of the object and of the one
 test("the query string helper leaves out what is not there", () => {
   assert.equal(queryString({}), "");
   assert.equal(queryString({ a: 1, b: undefined, c: null, d: "", e: "x y", f: ["p", "q"], g: false }), "?a=1&e=x+y&f=p%2Cq&g=false");
+});
+
+// ---- stages: a deal's stage is a pipeline stage, and the pipelines say which ----
+
+const pipeline = (id: string, name: string, object = "deal", archived_at: string | null = null): ApiPipeline => ({
+  id,
+  object,
+  name,
+  archived_at,
+  stages: [
+    { id: `${id}-lead`, name: "Lead", kind: "open", probability: 10, color: "gray" },
+    { id: `${id}-proposal`, name: "Proposal", kind: "open", probability: 50, color: "amber" },
+    { id: `${id}-won`, name: "Won", kind: "won", probability: 100, color: "green" },
+    { id: `${id}-lost`, name: "Lost", kind: "lost", probability: 0, color: "#123456" },
+  ],
+});
+
+test("the stages of the pipelines are the choices of a stage field", () => {
+  const one = stageChoices([pipeline("p1", "Sales")], "deal");
+  assert.deepEqual(one.choices.map((c) => [c.label, c.color, c.probability]), [["Lead", "gray", 0.1], ["Proposal", "amber", 0.5], ["Won", "green", 1], ["Lost", "gray", 0]]);
+  assert.equal(one.first, "p1-lead"); // a new deal starts in the first open stage
+  // with several live pipelines the choices say which; an archived one takes no new deals and says so
+  const many = stageChoices([pipeline("p1", "Sales"), pipeline("p3", "Old", "deal", "2026-01-01T00:00:00Z"), pipeline("p2", "Renewals")], "deal");
+  assert.deepEqual(many.choices.slice(0, 2).map((c) => c.label), ["Sales: Lead", "Sales: Proposal"]);
+  assert.equal(many.choices.at(-1)!.label, "Old (archived): Lost");
+  assert.equal(many.choices.length, 12);
+  assert.equal(many.first, "p1-lead");
+  assert.deepEqual(stageChoices([pipeline("p1", "Sales")], "contact"), { choices: [], first: undefined });
+  assert.equal(stageChoices([pipeline("p3", "Old", "deal", "2026-01-01T00:00:00Z")], "deal").first, undefined);
+});
+
+test("a deal's stage field comes with the stages, a default and no way to clear it", async () => {
+  const deal = { id: "o3", key: "deal", singular: "Deal", plural: "Deals", icon: "handshake", is_system: true, primary_fields: ["name"], archived_at: null };
+  const { calls, client } = fake({
+    "GET /api/v1/objects/deal/fields": () => page([field("name", "text", { rules: { required: true } }), field("stage", "stage"), field("lost_reason", "select", { options: { choices: [{ id: "price", label: "Price" }] } })]),
+    "GET /api/v1/objects?limit=200": () => page([deal]),
+    "GET /api/v1/pipelines?archived=true": () => page([]),
+    "GET /api/v1/pipelines": () => page([pipeline("p1", "Sales")]),
+  });
+  const fields = await client.listFields("deal");
+  const stage = fields.find((f) => f.key === "stage")!;
+  assert.deepEqual(stage.options.choices!.map((c) => c.label), ["Lead", "Proposal", "Won", "Lost"]);
+  assert.equal(stage.options.default, "p1-lead");
+  assert.equal(stage.rules.required, true);
+  assert.deepEqual(fields.find((f) => f.key === "lost_reason")!.options.choices, [{ id: "price", label: "Price" }]); // other fields are left alone
+  await client.listFields("deal");
+  assert.equal(calls.filter((c) => c.path.startsWith("/api/v1/pipelines")).length, 2); // live and archived, once
+});
+
+test("an object without a stage field never asks for pipelines", async () => {
+  const { calls, client } = fake({
+    "GET /api/v1/objects/contact/fields": () => page([field("first_name", "text")]),
+    "GET /api/v1/objects?limit=200": () => page([contact]),
+  });
+  await client.listFields("contact");
+  assert.ok(!calls.some((c) => c.path.startsWith("/api/v1/pipelines")));
+});
+
+test("a move an exit rule refuses comes back as the messages of what is missing, keyed by field", async () => {
+  const refused = { error: { code: "validation_failed", message: "The deal cannot leave Proposal yet", fields: { "values.close_date": "Close date is required to leave Proposal", "values.amount": "Amount is required to leave Proposal" } } };
+  const { calls, client } = fake({ "PATCH /api/v1/objects/deal/records/d1": () => json(refused, 422) });
+  const e = await fails(() => client.update("deal", "d1", { stage: "p1-won" }));
+  assert.equal(e.status, 422);
+  assert.deepEqual(e.fields, { close_date: "Close date is required to leave Proposal", amount: "Amount is required to leave Proposal" });
+  assert.deepEqual(calls[0]!.body, { values: { stage: "p1-won" } });
+  const lost = { error: { code: "validation_failed", message: "The deal is not valid", fields: { "values.lost_reason": "Lost reason is required to move a deal to Lost" } } };
+  const again = fake({ "PATCH /api/v1/objects/deal/records/d1": () => json(lost, 422) });
+  assert.deepEqual((await fails(() => again.client.update("deal", "d1", { stage: "p1-lost" }))).fields, { lost_reason: "Lost reason is required to move a deal to Lost" });
+});
+
+test("people the role may not see leave the owner picker empty, anything else still fails", async () => {
+  const denied = fake({ "GET /api/v1/members": () => json({ error: { code: "forbidden", message: "Your role does not allow this" } }, 403) });
+  assert.deepEqual(await denied.client.listUsers(), []);
+  const down = fake({ "GET /api/v1/members": () => json({ error: { code: "x", message: "Try later" } }, 503) });
+  assert.equal((await fails(() => down.client.listUsers())).status, 503);
 });

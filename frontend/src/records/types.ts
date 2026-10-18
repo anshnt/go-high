@@ -34,6 +34,8 @@ export type FieldOptions = {
   object?: string;
   /** formula, rollup: the type of the computed value */
   result?: FieldType;
+  /** stage: where a new record starts (a stage id); the new record form fills it in */
+  default?: string;
 };
 
 export type FieldRules = {

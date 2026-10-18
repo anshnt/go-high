@@ -248,7 +248,8 @@ export function RecordDetail({ client, def, id, initial, fields, onClose, onChan
           return null;
         } catch (e) {
           setRow((r) => withChange(r, def, key, prev ?? undefined));
-          return e instanceof RecordsError && e.fields?.[key] ? e.fields[key]! : errorMessage(e);
+          // a refused move says what is missing on the deal ("Close date is required to leave Proposal"): all of it, under the field being changed
+          return e instanceof RecordsError && e.fields ? (e.fields[key] ?? Object.values(e.fields).join(" ")) : errorMessage(e);
         }
       };
       const job = chain.current.then(run);

@@ -25,8 +25,9 @@ export const nameOf = (def: Pick<ObjectDef, "primary_fields">, values: Record<st
     .filter((v): v is string => typeof v === "string" && v !== "")
     .join(" ");
 
-// A person is not sortable: the server would have to join users, so a list never offers it (the owner column included).
-const UNSORTABLE: FieldType[] = ["multi_select", "record", "long_text", "user"];
+// A person or a stage is not sortable: the server would have to join users or stages, so a list never offers it (the
+// owner column included).
+const UNSORTABLE: FieldType[] = ["multi_select", "record", "long_text", "user", "stage"];
 export const isSortable = (f: Pick<FieldDef, "type" | "options">) => !UNSORTABLE.includes(valueType(f));
 
 /** Raw value of a field on a record, whether it lives in a column or in `values`. */

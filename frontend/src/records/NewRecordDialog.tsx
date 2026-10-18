@@ -28,6 +28,8 @@ export function NewRecordDialog({ client, def, fields, open, onOpenChange, onCre
   const toast = useToast();
   const formId = useId();
   const editable = useMemo(() => fields.filter((f) => !isReadOnly(f)), [fields]);
+  // what a field starts as: a new deal starts in its pipeline's first open stage
+  const initial = useMemo(() => Object.fromEntries(editable.flatMap((f) => (f.options.default === undefined ? [] : [[f.key, f.options.default]]))), [editable]);
   // what a record needs to exist comes first: required fields and the ones that make up its name (a contact's first and last name)
   const needed = (f: FieldDef) => f.rules.required || def.primary_fields.includes(f.key);
   const required = editable.filter(needed);
@@ -41,7 +43,7 @@ export function NewRecordDialog({ client, def, fields, open, onOpenChange, onCre
 
   useEffect(() => {
     if (open) {
-      setValues({});
+      setValues(initial);
       setErrors({});
       setShowMore(false);
       setRound((n) => n + 1);
@@ -81,7 +83,7 @@ export function NewRecordDialog({ client, def, fields, open, onOpenChange, onCre
       toast({ title: `${def.singular} created`, description: row.display_name, tone: "success" });
       onCreated(row, another);
       if (another) {
-        setValues({});
+        setValues(initial);
         setErrors({});
         setRound((n) => n + 1);
       } else onOpenChange(false);
