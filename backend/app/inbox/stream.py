@@ -169,7 +169,8 @@ async def frames(queue: asyncio.Queue, backlog: list[dict], workspace_id: str):
             try:
                 payload = await asyncio.wait_for(queue.get(), min(HEARTBEAT, left))
             except TimeoutError:
-                yield ": ping\n\n"
+                if loop.time() < deadline:
+                    yield ": ping\n\n"
                 continue
             yield frame(payload)
     finally:
