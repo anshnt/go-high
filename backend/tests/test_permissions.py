@@ -339,6 +339,25 @@ def test_nobody_hands_out_a_role_that_can_do_more_than_their_own(crm, db):
                      headers={H: ws}).status_code == 200
 
 
+def test_nobody_gives_themselves_a_role_or_one_that_sees_more_than_their_own(crm, db):
+    admin, ws, ids = crm
+    caps = [*role_of(admin, ws, "viewer")["capabilities"], "members.manage"]
+    helper = make_role(admin, ws, "Own helper", copy_from="viewer", capabilities=caps,
+                       rules=[rule("*", "own", hidden=["phone"])])
+    wider = make_role(admin, ws, "Team viewer", copy_from="viewer", rules=[rule("*", "team", hidden=["phone"])])
+    unhidden = make_role(admin, ws, "Own viewer", copy_from="viewer", rules=[rule("*", "own")])
+    same = make_role(admin, ws, "Own narrow", copy_from="viewer",
+                     rules=[rule("*", "own", hidden=["phone"]), rule("deal", "none")])
+    lead = add_member(db, ids["org_id"], "lead@example.com", workspace_id=ws, workspace_role=helper["key"])
+    target = user_id_of(add_member(db, ids["org_id"], "t@example.com", workspace_id=ws, workspace_role="viewer"))
+    for role in (wider, unhidden):  # same capabilities, but a wider scope or one hidden field fewer
+        r = lead.put(f"{MEMBERS}/{target}", json={"role_id": role["id"]}, headers={H: ws})
+        assert r.status_code == 403 and "sees more than yours" in r.json()["error"]["message"]
+    assert lead.put(f"{MEMBERS}/{target}", json={"role_id": same["id"]}, headers={H: ws}).status_code == 200
+    r = lead.put(f"{MEMBERS}/{user_id_of(lead)}", json={"role_id": same["id"]}, headers={H: ws})
+    assert r.status_code == 403 and "your own role" in r.json()["error"]["message"]
+
+
 def test_a_role_cannot_be_edited_to_change_its_own_key_or_system_flag_in_sql(crm, db):
     """The database refuses what the API never does: request handlers may not change a role's key or system flag,
     delete a system role, or edit Owner and Admin or their rules (row level security and column grants)."""

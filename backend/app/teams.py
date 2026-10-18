@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 
 from . import events, permissions
 from .api import ApiError
-from .models import OrgMember, Role, Team, TeamMember, User, WorkspaceMember
+from .models import SCOPES, OrgMember, Role, Team, TeamMember, User, WorkspaceMember
 from .permissions import requires
 from .records.store import member_ids
 from .security import Ctx
@@ -34,6 +34,23 @@ class PatchTeam(BaseModel):
 
 class Assign(BaseModel):
     role_id: uuid.UUID
+
+
+# scope: the scopes it covers. `team` and `own_and_unassigned` each see records the other does not.
+WITHIN = {"all": set(SCOPES), "team": {"team", "own", "none"},
+          "own_and_unassigned": {"own_and_unassigned", "own", "none"}, "own": {"own", "none"}, "none": {"none"}}
+
+
+def broader_rules(mine: permissions.Grants, theirs: permissions.Grants) -> list[str]:
+    """The objects whose rule in `theirs` sees or changes more than in `mine`: a wider scope, or a field `mine` hides
+    or cannot change that `theirs` can (on records it sees: scope `none` is never broader)."""
+    out = []
+    for key in sorted({*mine.rules, *theirs.rules, "*"}):
+        a, b = mine.rule(key), theirs.rule(key)
+        if b.scope != "none" and (b.scope not in WITHIN[a.scope] or a.hidden - b.hidden
+                                  or a.readonly - b.readonly - b.hidden):
+            out.append(key)
+    return out
 
 
 def team_data(t: Team) -> dict:
@@ -195,7 +212,7 @@ def list_members(c: Ctx = Depends(requires("members.read"))):
 def assign_role(user_id: uuid.UUID, body: Assign, c: Ctx = Depends(requires("members.manage"))):
     """Gives a member of the organization a role in this workspace (and adds them to it). Org owners and admins are
     admins everywhere and keep that. Unless you are one yourself, you cannot hand out a role that can do more than
-    yours."""
+    yours (more capabilities, a wider scope, fewer hidden or read-only fields), nor give yourself one."""
     role = c.db.get(Role, body.role_id)  # row level security: this organization's roles only
     if role is None:
         raise HTTPException(404, "Role not found")
@@ -209,6 +226,10 @@ def assign_role(user_id: uuid.UUID, body: Assign, c: Ctx = Depends(requires("mem
     if not c.org_admin and (beyond := set(role.capabilities) - permissions.grants(c).capabilities):
         raise ApiError(403, "forbidden",
                        f"You cannot give a role that can do more than yours: {', '.join(sorted(beyond))}")
+    if not c.org_admin and user_id == c.user_id:
+        raise ApiError(403, "forbidden", "You cannot change your own role")
+    if not c.org_admin and (wider := broader_rules(permissions.grants(c), permissions.load(c.db, role))):
+        raise ApiError(403, "forbidden", f"You cannot give a role that sees more than yours: {', '.join(wider)}")
     member = c.db.get(WorkspaceMember, (user_id, c.workspace.id))
     old = role_ref(found[0]) if found else None  # a role exactly when they are a member already
     if member is not None and member.role_id == role.id:
