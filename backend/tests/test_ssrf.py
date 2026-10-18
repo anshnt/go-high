@@ -177,3 +177,57 @@ def test_a_slow_receiver_times_out(receiver):
     with pytest.raises(TimeoutError):
         ssrf.post(receiver.url(), b"{}", {}, timeout=0.5)
     assert time.monotonic() - started < 2
+
+
+def test_a_resolver_failure_is_a_refusal_and_repeated_answers_are_checked_once(monkeypatch):
+    for error in (socket.gaierror(-2, "Name or service not known"), UnicodeError("label too long"),
+                  ValueError("embedded null")):
+        def fail(*args, error=error, **kwargs):
+            raise error
+
+        monkeypatch.setattr(socket, "getaddrinfo", fail)
+        with pytest.raises(Blocked, match="localhost does not resolve"):
+            ssrf.resolve("localhost", 443)
+    answer = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, 443)) for ip in ("127.0.0.1", "127.0.0.2", "127.0.0.1")]
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: answer)
+    assert ssrf.resolve("localhost", 443) == ["127.0.0.1", "127.0.0.2"]  # in the resolver's order, once each
+
+
+def test_the_next_checked_address_is_tried_when_one_refuses_and_the_last_error_is_raised(monkeypatch):
+    tried = []
+
+    def create_connection(address, timeout):
+        tried.append(address[0])
+        if address[0] != "93.184.216.35":
+            raise ConnectionRefusedError(f"refused by {address[0]}")
+        return "socket"
+
+    monkeypatch.setattr(socket, "create_connection", create_connection)
+    target = Target(False, "hooks.example.com", 80, "/", ["93.184.216.34", "93.184.216.35"])
+    assert ssrf.connect(target, time.monotonic() + 5) == "socket"
+    assert tried == ["93.184.216.34", "93.184.216.35"]
+    tried.clear()
+    with pytest.raises(ConnectionRefusedError, match="93.184.216.36"):
+        ssrf.connect(Target(False, "hooks.example.com", 80, "/", ["93.184.216.34", "93.184.216.36"]),
+                     time.monotonic() + 5)
+    assert tried == ["93.184.216.34", "93.184.216.36"]  # never anything but the checked addresses
+    with pytest.raises(OSError, match="no address"):
+        ssrf.connect(Target(False, "hooks.example.com", 80, "/", []), time.monotonic() + 5)
+
+
+def test_a_failed_tls_handshake_closes_the_socket(monkeypatch):
+    closed = []
+
+    class Sock:
+        def close(self):
+            closed.append(True)
+
+    class Context:
+        def wrap_socket(self, sock, server_hostname):
+            raise ssl.SSLCertVerificationError("hostname mismatch")
+
+    monkeypatch.setattr(socket, "create_connection", lambda address, timeout: Sock())
+    monkeypatch.setattr(ssl, "create_default_context", lambda: Context())
+    with pytest.raises(ssl.SSLError):
+        ssrf.connect(Target(True, "hooks.example.com", 443, "/", ["93.184.216.34"]), time.monotonic() + 5)
+    assert closed == [True]

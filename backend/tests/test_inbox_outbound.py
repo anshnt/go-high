@@ -435,6 +435,56 @@ def test_a_reply_that_meets_quiet_hours_in_the_worker_waits_for_the_window(crm, 
     assert len(receiver.requests) == 1 and row(db, "SELECT status FROM messages") == ("sent",)
 
 
+def test_a_channel_disabled_while_a_reply_waits_fails_it_and_sends_nothing(crm, db, receiver, monkeypatch):
+    client, ws, _ = crm
+    channel = add_channel(client, ws)
+    point(monkeypatch, receiver, "twilio", SENT)
+    _, conv = start(client, ws, channel)
+    assert reply(client, ws, conv, "queued").status_code == 201
+    client.patch(f"/api/v1/channels/{channel['id']}", json={"status": "disabled"}, headers={H: ws})
+    drain()
+    assert receiver.requests == []
+    assert row(db, "SELECT status, error FROM messages") == ("failed", "The channel is disabled")
+    assert last_event(db) == "message.failed"
+
+
+def test_a_contact_who_lost_their_number_while_a_reply_waits_fails_it_for_good(crm, db, receiver, monkeypatch):
+    client, ws, _ = crm
+    channel = add_channel(client, ws)
+    point(monkeypatch, receiver, "twilio", SENT)
+    contact, conv = start(client, ws, channel)
+    assert reply(client, ws, conv, "queued").status_code == 201
+    r = client.patch(f"/api/v1/objects/contact/records/{contact['id']}", json={"values": {"phone": None}},
+                     headers={H: ws})
+    assert r.status_code == 200, r.text
+    drain()
+    due_now(db)
+    drain()
+    assert receiver.requests == []
+    status, error_ = row(db, "SELECT status, error FROM messages")
+    assert (status, error_) == ("failed", "the contact has no address on this channel")
+    assert row(db, "SELECT count(*) FROM jobs WHERE kind = 'message.send' AND status <> 'done'") == (0,)
+
+
+def test_a_send_job_for_a_message_that_is_gone_or_already_done_does_nothing(crm, db, receiver, monkeypatch):
+    from app import jobs
+
+    client, ws, _ = crm
+    channel = add_channel(client, ws)
+    point(monkeypatch, receiver, "twilio", SENT)
+    _, conv = start(client, ws, channel)
+    message = reply(client, ws, conv, "once").json()
+    drain()
+    assert len(receiver.requests) == 1
+    jobs.enqueue(db, "message.send", {"message_id": message["id"]})  # a duplicate job for a sent message
+    jobs.enqueue(db, "message.send", {"message_id": "00000000-0000-0000-0000-000000000000"})
+    db.commit()
+    drain()
+    assert len(receiver.requests) == 1
+    assert row(db, "SELECT status FROM messages") == ("sent",)
+    assert row(db, "SELECT count(*) FROM jobs WHERE status <> 'done'") == (0,)
+
+
 def test_a_message_that_already_has_a_provider_id_is_not_sent_again(crm, db, receiver, monkeypatch):
     client, ws, _ = crm
     channel = add_channel(client, ws, "telnyx")

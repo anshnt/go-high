@@ -1,6 +1,7 @@
 """The filter language: every operator against real rows, AND/OR/NOT nesting, tags, association paths, and the 400 a
 mistake gets (never SQL)."""
 import json
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -349,6 +350,9 @@ def test_a_mistake_in_a_filter_is_a_400_that_points_at_it(book):
     bad({"tag": 5}, "filter.tag", "tag name or id")
     bad({"tag": ""}, "filter.tag", "tag name or id")
     bad({"tag": "x", "extra": 1}, "filter", "only a tag")
+    bad({"team": [str(uuid.uuid4())], "extra": 1}, "filter", "only a team")
+    for value in ([], "not a list", [5], ["not-a-uuid"], {"id": str(uuid.uuid4())}, None):
+        bad({"team": value}, "filter.team", "must be a list of team ids")
     bad({"field": "score", "op": "is", "value": 1, "extra": 1}, "filter", "unexpected key 'extra'")
     bad({"field": 5, "op": "is"}, "filter.field", "must be a field key")
     bad({"field": "score", "op": 5}, "filter.op", "operator is required")

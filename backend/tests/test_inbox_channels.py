@@ -139,6 +139,49 @@ def test_settings_are_checked_per_provider_and_secrets_belong_in_secrets(crm):
     assert client.post("/api/v1/channels", json={**smtp, "kind": "voice"}, headers={H: ws}).status_code == 422
 
 
+def test_setting_values_must_be_short_plain_values(crm):
+    client, ws, _ = crm
+    smtp = {"kind": "email", "provider": "smtp", "name": "SMTP", "address": "me@example.com",
+            "config": {"host": "smtp.example.com"}}
+
+    def problem(**config):
+        r = client.post("/api/v1/channels", json={**smtp, "config": {**smtp["config"], **config}}, headers={H: ws})
+        assert r.status_code == 422, r.text
+        [(key, message)] = r.json()["error"]["fields"].items()
+        return key, message
+
+    assert problem(port=0) == ("config.port", "must be a port number")
+    assert problem(port=65536) == ("config.port", "must be a port number")
+    assert problem(port="smtp") == ("config.port", "is not a valid value")
+    assert problem(host={"name": "smtp.example.com"}) == ("config.host", "must be text or a number")
+    assert problem(reply_to=["a@example.com", "b@example.com"]) == ("config.reply_to", "must be text or a number")
+    assert problem(host="h" * 501) == ("config.host", "is too long")
+    assert problem(frequency_cap={"max": 1, "hours": 721}) == ("config.frequency_cap",
+                                                               'must be {"max": messages, "hours": 1 to 720}')
+    assert problem(auto_replies={"stop": "x" * 321})[0] == "config.auto_replies"
+    ok = client.post("/api/v1/channels", json={**smtp, "config": {**smtp["config"], "port": "587", "host": "h" * 500}},
+                     headers={H: ws})
+    assert ok.status_code == 201, ok.text
+
+
+def test_channels_are_listed_by_status(crm):
+    client, ws, _ = crm
+    chat = add_channel(client, ws, "internal")  # a chat channel is active at once
+    sms = add_channel(client, ws, "twilio")  # a provider channel waits for its first check
+    client.patch(f"/api/v1/channels/{sms['id']}", json={"status": "disabled"}, headers={H: ws})
+
+    def listed(**params) -> list[str]:
+        r = client.get("/api/v1/channels", params=params, headers={H: ws})
+        assert r.status_code == 200, r.text
+        return [c["id"] for c in r.json()["data"]]
+
+    assert listed(status="active") == [chat["id"]]
+    assert listed(status="disabled") == [sms["id"]]
+    assert listed(status="failing") == []
+    assert sorted(listed()) == sorted([chat["id"], sms["id"]])
+    assert client.get("/api/v1/channels", params={"status": "broken"}, headers={H: ws}).status_code == 422
+
+
 def test_update_merges_settings_rotates_secrets_and_disables(crm, db):
     client, ws, _ = crm
     channel = add_channel(client, ws, "twilio")

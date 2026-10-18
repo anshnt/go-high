@@ -19,6 +19,7 @@ dev = [
     "pytest>=9",
     "httpx2>=2.13.1",
     "ruff>=0.15",
+    "pytest-cov>=7.1.0",
 ]
 
 [tool.pytest.ini_options]

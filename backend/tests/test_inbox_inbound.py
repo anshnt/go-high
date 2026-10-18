@@ -176,6 +176,30 @@ def test_unsigned_wrongly_signed_or_tampered_webhooks_are_refused_and_store_noth
     assert count(db, "messages") == 1
 
 
+def test_a_body_the_signature_check_cannot_even_read_is_refused_not_an_error(crm, db, monkeypatch, caplog):
+    client, ws, _ = crm
+    channel = add_channel(client, ws)
+
+    def unreadable(account, request):
+        raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+
+    monkeypatch.setattr(twilio, "verify", unreadable)
+    with caplog.at_level(logging.WARNING, logger="inbox"):
+        r = sms_in(anonymous, channel, ALICE, "hi")
+    assert r.status_code == 401 and any("refused" in rec.message for rec in caplog.records)
+    assert count(db, "messages") == 0
+    assert sql(db, "SELECT status FROM channels")[0][0] == "pending"  # a refused webhook proves nothing
+
+
+def test_a_message_with_no_sender_is_acknowledged_and_dropped(crm, db, caplog):
+    client, ws, _ = crm
+    channel = add_channel(client, ws)
+    with caplog.at_level(logging.WARNING, logger="inbox"):
+        assert sms_in(anonymous, channel, "", "who is this").status_code == 200
+    assert any("has no sender" in r.message for r in caplog.records)
+    assert count(db, "records") == count(db, "messages") == count(db, "conversations") == 0
+
+
 def test_a_signed_body_that_is_not_what_the_provider_sends_is_a_400(crm):
     client, ws, _ = crm
     channel = add_channel(client, ws, "telnyx")

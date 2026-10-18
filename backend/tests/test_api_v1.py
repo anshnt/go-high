@@ -93,6 +93,26 @@ def test_cursors_round_trip_and_cannot_be_forged(monkeypatch):
     assert decode_cursor(encode_cursor(at, id_)) == (at, id_)
 
 
+def test_a_cursor_signed_for_one_listing_is_refused_by_another(crm):
+    """Every cursor is signed with the same key, so one listing can be handed another's (or a stale one of another
+    shape): that is a 400, never a 500."""
+    client, ws, _ = crm
+    issued = {  # the shapes the listings sign
+        "events": api.seal(["2026-10-16T12:30:00+00:00", 42]),
+        "tasks": api.seal([1024.0, str(uuid.uuid4())]),
+        "messages": api.seal(["seq", 7]),
+        "other": api.seal([None, None]),
+        "nested": api.seal([["2026-10-16T12:30:00+00:00"], {"id": 1}]),
+        "short": api.seal(["2026-10-16T12:30:00+00:00"]),
+    }
+    for path in (ROOT, "/api/v1/audit", "/api/v1/tasks", "/api/v1/bookings", "/api/v1/tags"):
+        for name, cursor in issued.items():
+            if (path, name) in {("/api/v1/audit", "events"), ("/api/v1/tasks", "tasks")}:
+                continue  # its own shape
+            r = client.get(path, params={"cursor": cursor}, headers={H: ws})
+            assert r.status_code == 400 and r.json()["error"]["code"] == "invalid_cursor", (path, name, r.text)
+
+
 def test_pages_cover_every_row_once_and_the_last_page_has_no_cursor(make_user):
     client, ids = make_user("a@example.com")
     ws = ids["workspace_id"]

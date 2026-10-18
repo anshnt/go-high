@@ -70,6 +70,8 @@ cd backend && uv run pytest
 
 Tests marked `perf` check speed (20 000 contacts, a filtered, sorted page in under 300 ms) and depend on the machine; leave them out with `uv run pytest -m "not perf"`.
 
+For a coverage report add `--cov=app --cov-report=term-missing` (pytest-cov is a dev dependency); CI runs the suite without it and sets no threshold.
+
 Background jobs: register a handler with `@jobs.handler("kind")` and call `jobs.enqueue(db, "kind", payload, run_at=...)` inside your transaction. Failed jobs retry with exponential backoff (10 s doubling, capped at 1 hour) and become `dead` after `max_attempts`.
 
 ## Tenancy and auth

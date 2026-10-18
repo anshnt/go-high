@@ -113,6 +113,32 @@ def test_revoking_a_session_takes_effect_immediately(make_user):
     assert len(first.get("/api/auth/sessions").json()) == 1
 
 
+def test_revoking_the_current_session_signs_out_and_clears_the_cookie(make_user):
+    client, _ = make_user("a@example.com")
+    other, _ = signin()
+    [mine] = [s for s in client.get("/api/auth/sessions").json() if s["current"]]
+    r = client.delete(f"/api/auth/sessions/{mine['id']}")
+    assert r.status_code == 204 and "max-age=0" in r.headers["set-cookie"].lower()
+    assert client.get("/api/me").status_code == 401
+    assert other.get("/api/me").status_code == 200  # the other device stays signed in
+    kept = other.delete(f"/api/auth/sessions/{mine['id']}")
+    assert kept.status_code == 404 and "set-cookie" not in kept.headers  # revoking another one keeps your cookie
+
+
+def test_a_stored_password_hash_that_cannot_be_read_never_signs_in(make_user, db):
+    from app.security import hash_password, verify_password
+
+    make_user("a@example.com")
+    stored = hash_password(PASSWORD)
+    assert verify_password(PASSWORD, stored) and not verify_password("wrong password", stored)
+    for broken in ("", "scrypt$", "scrypt$16384$nothex$00", "scrypt$many$00$00", "plain-text-password",
+                   PASSWORD):
+        assert verify_password(PASSWORD, broken) is False, broken
+    db.execute(text("UPDATE user_credentials SET password_hash = 'scrypt$x$y'"))
+    db.commit()
+    assert signin()[1].status_code == 401
+
+
 def test_users_cannot_see_or_revoke_each_others_sessions(make_user):
     a, _ = make_user("a@example.com")
     b, _ = make_user("b@example.com")

@@ -104,7 +104,7 @@ def list_bookings(from_: Annotated[AwareDatetime | None, Query(alias="from")] = 
         try:
             at, last = unseal(cursor)
             point = tuple_(datetime.fromisoformat(at), uuid.UUID(last))
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, AttributeError):
             raise ApiError(400, "invalid_cursor", "The cursor is not valid") from None
         stmt = stmt.where(key > point if order == "asc" else key < point)
     stmt = stmt.order_by(*(col.asc() if order == "asc" else col.desc() for col in (Booking.starts_at, Booking.id)))

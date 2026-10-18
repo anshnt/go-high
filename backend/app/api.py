@@ -121,7 +121,7 @@ def decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
     try:
         created_at, id_ = unseal(cursor)
         return datetime.fromisoformat(created_at), uuid.UUID(id_)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, AttributeError):  # AttributeError: uuid.UUID of a number, from another listing
         raise ApiError(400, "invalid_cursor", "The cursor is not valid") from None
 
 
