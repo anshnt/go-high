@@ -542,7 +542,8 @@ def test_the_app_role_cannot_move_a_row_to_another_workspace_or_point_one_across
         # a row of A cannot reference a row of B: the foreign keys carry the workspace
         a_record = db.scalar(text("SELECT id FROM records WHERE workspace_id = :w LIMIT 1"), {"w": a_ws})
         ids = {"a": a_ws, "bo": b_object, "ao": a_object, "bt": b_ids["tag_id"], "ar": a_record,
-               "br": b_ids["record_id"], "bty": b_ids["type_id"], "bp": b_ids["pipeline_id"], "u": alice}
+               "br": b_ids["record_id"], "bty": b_ids["type_id"], "bp": b_ids["pipeline_id"], "u": alice,
+               "bs": b_ids["stage_id"]}
         for statement in ("INSERT INTO records (workspace_id, object_id) VALUES (:a, :bo)",
                           "INSERT INTO fields (workspace_id, object_id, key, label, type) "
                           "VALUES (:a, :bo, 'x', 'X', 'text')",
@@ -556,7 +557,8 @@ def test_the_app_role_cannot_move_a_row_to_another_workspace_or_point_one_across
                           "INSERT INTO saved_views (workspace_id, object_id, name, shared) VALUES (:a, :bo, 'x', true)",
                           "INSERT INTO event_records (workspace_id, event_id, record_id) VALUES (:a, 1, :br)",
                           "INSERT INTO stages (workspace_id, pipeline_id, name) VALUES (:a, :bp, 'x')",
-                          "INSERT INTO board_layouts (workspace_id, pipeline_id, user_id) VALUES (:a, :bp, :u)"):
+                          "INSERT INTO board_layouts (workspace_id, pipeline_id, user_id) VALUES (:a, :bp, :u)",
+                          "INSERT INTO records (workspace_id, object_id, stage_id) VALUES (:a, :ao, :bs)"):
             with pytest.raises(DBAPIError, match="foreign key"), conn.begin():
                 context(conn, workspace_id=a_ws, user_id=alice)  # a layout is its user's, so the policy needs one
                 conn.execute(text(statement), ids)

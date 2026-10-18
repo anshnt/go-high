@@ -1,8 +1,10 @@
 """Pipelines and stages: seeding, the API, the stage field, exit rules, lost reasons, stage events and filters."""
 import json
 
+import pytest
 from helpers import H, add_member, link, listing, make_deal, make_record, move, names, stage_ids, type_id
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 P = "/api/v1/pipelines"
 DEALS = "/api/v1/objects/deal/records"
@@ -93,6 +95,29 @@ def test_a_new_deal_starts_in_the_first_open_stage_and_needs_no_contact(crm, db)
     # the lead column of an empty workspace is the same default for the next one
     moved = move(client, ws, deal["id"], stages["won"])
     assert moved.status_code == 200 and deal_stage(client, ws, deal["id"]) == stages["won"]
+
+
+def test_the_stage_id_column_follows_the_stage_value_and_protects_a_stage_with_deals(crm, db):
+    client, ws, _ = crm
+    s = stage_ids(client, ws)
+    deal = make_deal(client, ws, "Followed")
+
+    def column(record_id) -> str | None:
+        db.expire_all()
+        return db.scalar(text("SELECT stage_id::text FROM records WHERE id = :i"), {"i": record_id})
+
+    assert column(deal["id"]) == s["lead"]
+    assert move(client, ws, deal["id"], s["qualified"]).status_code == 200 and column(deal["id"]) == s["qualified"]
+    client.patch(f"{DEALS}/{deal['id']}", json={"values": {"stage": None}}, headers={H: ws})
+    assert column(deal["id"]) is None
+    client.patch(f"{DEALS}/{deal['id']}", json={"values": {"stage": s["won"]}}, headers={H: ws})
+    assert column(deal["id"]) == s["won"]
+    assert column(make_record(client, ws, first_name="Ada")["id"]) is None  # only deals have one
+    # the database refuses to delete a stage that a deal, even a trashed one, is in
+    client.delete(f"{DEALS}/{deal['id']}", headers={H: ws})
+    with pytest.raises(IntegrityError, match="foreign key"):
+        db.execute(text("DELETE FROM stages WHERE id = :s"), {"s": s["won"]})
+    db.rollback()
 
 
 def test_a_stage_value_must_be_a_stage_of_a_live_pipeline_of_this_workspace(crm, make_user):

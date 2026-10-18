@@ -5,9 +5,10 @@ segments, workflow conditions and permissions:
              {"or": [{"tag": "vip"}, {"field": "deal.amount", "op": "gt", "value": {"amount": 500000}}]}]}
 
 Nodes are `and`, `or`, `not`, `tag` and `field` leaves. A leaf names a field of the object (or of an associated object
-as `company.name`, compiled to EXISTS) and an operator its type supports. Every field, operator and value is checked
-against the field's type and a mistake is a FilterError with a pointer to the node, so a filter never becomes SQL it
-did not earn: values are bound parameters and names only ever come from the catalog."""
+as `company.name`, compiled to EXISTS; `stage.kind` and `stage.pipeline` for a stage field) and an operator its type
+supports. Every field, operator and value is checked against the field's type and a mistake is a FilterError with a
+pointer to the node, so a filter never becomes SQL it did not earn: values are bound parameters and names only ever
+come from the catalog."""
 import re
 import uuid
 from datetime import date, datetime
