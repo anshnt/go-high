@@ -190,13 +190,13 @@ def test_a_record_event_reaches_a_subscribed_webhook(crm, receiver):
     client.patch(f"{R}/{ada['id']}", json={"values": {"lifecycle": "lead"}}, headers={H: ws})
     client.delete(f"{R}/{ada['id']}", headers={H: ws})  # not subscribed to record.deleted
     drain()
-    seen = [json.loads(r["body"]) for r in receiver.requests]
+    requests = sorted(receiver.requests, key=lambda r: json.loads(r["body"])["id"])  # deliveries are not ordered
+    seen = [json.loads(r["body"]) for r in requests]
     assert [s["type"] for s in seen] == ["record.created", "record.updated"]
     assert seen[0]["subject"] == {"type": "record", "id": ada["id"]}
     assert seen[0]["data"]["values"] == {"first_name": "Ada", "email": "ada@example.com"}
     assert seen[1]["data"]["changes"] == {"lifecycle": {"old": None, "new": "lead"}}
-    assert verify_signature(hook["secret"], receiver.requests[0]["headers"]["gohigh-signature"],
-                            receiver.requests[0]["body"])
+    assert verify_signature(hook["secret"], requests[0]["headers"]["gohigh-signature"], requests[0]["body"])
 
 
 def test_record_links_and_owners_must_exist_in_this_workspace(crm, make_user, db):
