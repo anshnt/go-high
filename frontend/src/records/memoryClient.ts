@@ -272,7 +272,41 @@ export function createMemoryClient(opts: MemoryOptions = {}): RecordsClient {
     }
   };
 
-  const client: RecordsClient = {
+  /** Checks a change to one record and returns what saves it (nothing to save when nothing changes), so a bulk update can check them all first. */
+  const planUpdate = (object: string, id: string, changes: Record<string, unknown>): (() => RecordRow) => {
+    const def = objectDef(object);
+    const cur = rowOf(object, id);
+    const { owner_id, ...vals } = changes;
+    check(object, vals, true);
+    known(owner_id);
+    const next = { ...cur.values };
+    const diffs: NonNullable<TimelineEvent["changes"]> = [];
+    for (const [k, raw] of Object.entries(vals)) {
+      const nv = isEmptyValue(raw) ? undefined : raw;
+      if (canonical(cur.values[k] ?? null) === canonical(nv ?? null)) continue;
+      diffs.push({ field: k, from: cur.values[k] ?? null, to: nv ?? null });
+      if (nv === undefined) delete next[k];
+      else next[k] = nv;
+    }
+    const ownerChanged = owner_id !== undefined && owner_id !== cur.owner_id;
+    if (ownerChanged) diffs.push({ field: "owner_id", from: cur.owner_id, to: owner_id ?? null });
+    if (!diffs.length) return () => cur;
+    exitRules(object, next);
+    return () => {
+      const rec: RecordRow = {
+        ...cur,
+        values: next,
+        owner_id: ownerChanged ? ((owner_id as string | null) ?? null) : cur.owner_id,
+        display_name: nameOf(def, next),
+        updated_at: stamp(),
+      };
+      put(rec);
+      log(rec, { type: "updated", changes: diffs });
+      return rec;
+    };
+  };
+
+  return {
     async listObjects() {
       await wait();
       return ds.objects;
@@ -357,39 +391,14 @@ export function createMemoryClient(opts: MemoryOptions = {}): RecordsClient {
 
     async update(object, id, changes) {
       await wait();
-      const def = objectDef(object);
-      const cur = rowOf(object, id);
-      const { owner_id, ...vals } = changes;
-      check(object, vals, true);
-      known(owner_id);
-      const next = { ...cur.values };
-      const diffs: NonNullable<TimelineEvent["changes"]> = [];
-      for (const [k, raw] of Object.entries(vals)) {
-        const nv = isEmptyValue(raw) ? undefined : raw;
-        if (canonical(cur.values[k] ?? null) === canonical(nv ?? null)) continue;
-        diffs.push({ field: k, from: cur.values[k] ?? null, to: nv ?? null });
-        if (nv === undefined) delete next[k];
-        else next[k] = nv;
-      }
-      const ownerChanged = owner_id !== undefined && owner_id !== cur.owner_id;
-      if (ownerChanged) diffs.push({ field: "owner_id", from: cur.owner_id, to: owner_id ?? null });
-      if (!diffs.length) return toRow(cur);
-      exitRules(object, next);
-      const rec: RecordRow = {
-        ...cur,
-        values: next,
-        owner_id: ownerChanged ? ((owner_id as string | null) ?? null) : cur.owner_id,
-        display_name: nameOf(def, next),
-        updated_at: stamp(),
-      };
-      put(rec);
-      log(rec, { type: "updated", changes: diffs });
-      return toRow(rec);
+      return toRow(planUpdate(object, id, changes)());
     },
 
     async updateMany(object, ids, changes) {
-      for (const id of ids) rowOf(object, id); // all or nothing, like the API
-      for (const id of ids) await client.update(object, id, changes);
+      await wait();
+      // every record is checked before any changes, so one refusal leaves them all as they were, like the API
+      const plans = ids.map((id) => planUpdate(object, id, changes));
+      for (const commit of plans) commit();
     },
 
     async remove(object, ids) {
@@ -477,5 +486,4 @@ export function createMemoryClient(opts: MemoryOptions = {}): RecordsClient {
       return m && !users.some((u) => u.id === m.id) ? [m, ...users] : users;
     },
   };
-  return client;
 }
