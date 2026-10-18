@@ -84,12 +84,16 @@ def db():
 
 @pytest.fixture
 def make_user():
-    """Signs up a new user (own org, brand and workspace) and returns (signed-in client, signup response)."""
-    def make(email: str, org_name: str | None = None):
+    """Signs up a new user (own org, brand and workspace) and returns (signed-in client, signup response). The address
+    counts as proved, as if an email link had been used, unless `verified=False` (what sign up alone leaves)."""
+    def make(email: str, org_name: str | None = None, verified: bool = True):
         client = TestClient(app)
         r = client.post("/api/auth/signup", json={"email": email, "name": email.split("@")[0], "password": PASSWORD,
                                                   "org_name": org_name or f"Org of {email}"})
         assert r.status_code == 201, r.text
+        if verified:
+            with engine.begin() as conn:
+                conn.execute(text("UPDATE users SET email_verified_at = now() WHERE email = :e"), {"e": email})
         return client, r.json()
     return make
 

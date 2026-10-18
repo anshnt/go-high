@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from . import config, events, roles_seed, security
 from .db import rescope, scoped
+from .events import Event
 from .models import (
     AuthSession,
     Brand,
@@ -28,6 +29,7 @@ from .models import (
 from .records.seed import seed_workspace
 from .security import COOKIE, Ctx, system_db, token_hash, user
 from .tenancy import my_orgs, my_workspaces, workspace_data, workspace_ids
+from .webhooks import WebhookEndpoint
 
 log = logging.getLogger("auth")
 router = APIRouter(prefix="/api")
@@ -83,6 +85,21 @@ def sessions_revoked(db: Session, user_id: uuid.UUID, count: int, reason: str) -
                         {"user_id": user_id, "count": count, "reason": reason}, actor=("user", user_id),
                         workspace_id=workspace_id)
         rescope(db, **scope)
+
+
+def disable_squatter_webhooks(db: Session, user_id: uuid.UUID) -> None:
+    """Turns off the webhooks of the organizations this account created at sign up, before the address was proved:
+    whoever registered it may have pointed them at themselves. The owner can check the URL and turn them back on.
+    One workspace at a time, as the webhook policy checks the workspace of each row."""
+    orgs = [uuid.UUID(o) for o in db.scalars(select(Event.data["org_id"].astext).where(
+        Event.type == "user.signed_up", Event.subject_id == user_id))]
+    scope = dict(db.info.get("scope", {}))
+    for workspace_id in db.scalars(select(Workspace.id).where(Workspace.org_id.in_(orgs))).all():
+        rescope(db, **{**scope, "workspace_id": workspace_id})
+        db.execute(update(WebhookEndpoint).where(WebhookEndpoint.workspace_id == workspace_id, WebhookEndpoint.active)
+                   .values(active=False, disabled_reason="Disabled when the email address was verified: check the "
+                                                         "URL before turning it back on"))
+    rescope(db, **scope)
 
 
 @router.post("/auth/signup", status_code=201)
@@ -180,6 +197,7 @@ def consume_magic_link(body: MagicConsume, request: Request, response: Response,
         ended = db.execute(update(AuthSession).where(AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None))
                            .values(revoked_at=func.now())).rowcount
         sessions_revoked(db, user_id, ended, "email_verified")
+        disable_squatter_webhooks(db, user_id)
     security.start_session(db, response, request, user_id)
     db.commit()
     db.refresh(account)

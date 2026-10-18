@@ -43,7 +43,7 @@ from . import events, jobs, ssrf
 from .api import ApiError, Idem, idempotency, paginate
 from .db import Base
 from .events import Event
-from .models import created, pk
+from .models import User, created, pk
 from .permissions import requires
 from .security import Ctx
 
@@ -149,6 +149,14 @@ def check_url(url: str) -> None:
         raise ApiError(422, "validation_failed", "The request is not valid", {"url": str(e)}) from None
 
 
+def need_verified_email(c: Ctx) -> None:
+    """403 until the user has proved their address with an email link. Sign up does not prove it, and a target set
+    by whoever registered someone else's address would keep receiving the real owner's data after they take over."""
+    if c.db.scalar(select(User.email_verified_at).where(User.id == c.user_id)) is None:
+        raise ApiError(403, "email_unverified", "Confirm your email address with a sign-in link before setting up "
+                                                "webhooks")
+
+
 def endpoint_or_404(c: Ctx, endpoint_id: uuid.UUID) -> WebhookEndpoint:
     ep = c.db.get(WebhookEndpoint, endpoint_id)  # row level security: this workspace's endpoints only
     if ep is None:
@@ -158,6 +166,7 @@ def endpoint_or_404(c: Ctx, endpoint_id: uuid.UUID) -> WebhookEndpoint:
 
 @router.post("", status_code=201)
 def create_webhook(body: NewWebhook, c: Ctx = Depends(manage), idem: Idem = Depends(idempotency)):
+    need_verified_email(c)
     check_url(body.url)
     ep = WebhookEndpoint(workspace_id=c.workspace.id, url=body.url, event_types=body.event_types, filter=body.filter,
                          secret=f"whsec_{secrets.token_urlsafe(32)}", created_by=c.user_id)
@@ -182,6 +191,7 @@ def get_webhook(endpoint_id: uuid.UUID, c: Ctx = Depends(manage)):
 
 @router.patch("/{endpoint_id}")
 def update_webhook(endpoint_id: uuid.UUID, body: PatchWebhook, c: Ctx = Depends(manage)):
+    need_verified_email(c)
     ep = endpoint_or_404(c, endpoint_id)
     changes = {k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None}
     before = {k: getattr(ep, k) for k in ("event_types", "filter", "active")}
