@@ -1,7 +1,7 @@
 import { ListChecks, Plus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
-import { errorText } from "../lib/api";
+import { whatWentWrong } from "../lib/errors";
 import { addDays, dueIso, startOfDay } from "../lib/dates";
 import { useMe } from "../lib/session";
 import { useStore } from "../lib/store";
@@ -81,7 +81,7 @@ export function TasksPage() {
         setLoaded({ key, tasks: list });
         setError(undefined);
       })
-      .catch((e) => alive && setError(errorText(e)));
+      .catch((e) => alive && setError(whatWentWrong(e)));
     return () => {
       alive = false;
     };

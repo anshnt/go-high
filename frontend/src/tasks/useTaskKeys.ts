@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { Task } from "../lib/tasks";
-
-const TYPING = 'input, textarea, select, [contenteditable], [role="menu"], [role="listbox"], [role="combobox"]';
+import { TYPING } from "../shell/useShortcuts";
 
 type Options = {
   /** The tasks in the order they are listed. */

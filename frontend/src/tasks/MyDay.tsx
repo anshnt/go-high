@@ -1,7 +1,7 @@
 import { CalendarClock, CircleCheck, ListChecks, MessagesSquare, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { errorText } from "../lib/api";
+import { whatWentWrong } from "../lib/errors";
 import { DAY_NAMES, MONTH_NAMES, startOfDay } from "../lib/dates";
 import { useMe } from "../lib/session";
 import { useStore } from "../lib/store";
@@ -57,7 +57,7 @@ export function MyDay() {
         setDay(d);
         setError(undefined);
       })
-      .catch((e) => alive && setError(errorText(e)));
+      .catch((e) => alive && setError(whatWentWrong(e)));
     return () => {
       alive = false;
     };

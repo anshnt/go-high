@@ -128,7 +128,7 @@ def test_a_record_assigned_to_you_notifies_you(team):
     drain()
     [note] = inbox(clients["ben"], ws)
     assert note["kind"] == "record_assigned" and note["title"] == "a assigned you Ada Lovelace"
-    assert note["link"] == f"/records/contact/{ada['id']}" and note["subject"] == {"type": "record", "id": ada["id"]}
+    assert note["link"] == f"/contacts/{ada['id']}" and note["subject"] == {"type": "record", "id": ada["id"]}
     assert inbox(ann, ws) == []
     ann.patch(f"/api/v1/objects/contact/records/{mine['id']}", json={"owner_id": who["cara"]}, headers={H: ws})
     ann.patch(f"/api/v1/objects/contact/records/{ada['id']}", json={"values": {"last_name": "King"}}, headers={H: ws})

@@ -107,4 +107,7 @@ export function useMembers(): Member[] {
 export const personName = (members: Member[], id: string | null) => (id ? (members.find((m) => m.id === id)?.name ?? "Someone") : "Unassigned");
 
 export const PRIORITY_LABEL: Record<Priority, string> = { none: "No priority", low: "Low", medium: "Medium", high: "High" };
-export const recordPath = (r: { object: string; id: string }) => `/records/${r.object}/${r.id}`;
+const SYSTEM_PLURALS: Record<string, string> = { contact: "contacts", company: "companies", deal: "deals" };
+/** Where a record opens: the system objects at /contacts, /companies and /deals, a custom one under /objects. */
+export const recordPath = (r: { object: string; id: string }) =>
+  SYSTEM_PLURALS[r.object] ? `/${SYSTEM_PLURALS[r.object]}/${r.id}` : `/objects/${r.object}/${r.id}`;

@@ -1,4 +1,5 @@
 import { ApiError } from "./api";
+import { DemoMiss, demoTasks } from "./demoTasks";
 import type { Me, Workspace } from "./session";
 
 /** Built with VITE_DEMO=1 (the public demo): no backend, fictional data, nothing leaves the browser.
@@ -58,6 +59,13 @@ export async function demoRequest<T>(method: string, path: string, body?: unknow
   if (route === "DELETE /api/auth/sessions/demo-session") {
     signedIn = false;
     return answer(undefined);
+  }
+  try {
+    const mine = demoTasks(method, path, body, { id: me.user.id, name: me.user.name, email: me.user.email });
+    if (mine !== undefined) return answer(mine); // tasks, My Day, notifications and people: in memory (demoTasks.ts)
+  } catch (e) {
+    if (e instanceof DemoMiss) throw new ApiError(e.status, e.message);
+    throw e;
   }
   throw new ApiError(501, "This is not available in the demo. Run go-high yourself for the full product.");
 }

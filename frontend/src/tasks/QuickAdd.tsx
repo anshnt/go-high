@@ -1,6 +1,6 @@
 import { CalendarDays, Plus } from "lucide-react";
 import { useMemo, useState, type FormEvent, type Ref } from "react";
-import { errorText } from "../lib/api";
+import { whatWentWrong } from "../lib/errors";
 import { dueIso, dueLabel, parseDue } from "../lib/dates";
 import { createTask, touch, type Task } from "../lib/tasks";
 import { Button } from "../ui";
@@ -41,7 +41,7 @@ export function QuickAdd({ assigneeId, defaultDue, recordId, placeholder = "Add 
       onCreated?.(task);
       touch();
     } catch (err) {
-      setError(errorText(err));
+      setError(whatWentWrong(err));
     } finally {
       setBusy(false);
     }

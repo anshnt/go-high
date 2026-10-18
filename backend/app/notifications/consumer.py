@@ -51,8 +51,13 @@ def task_link(task_id: str) -> str:
     return f"/tasks?task={task_id}"
 
 
+PLURALS = {"contact": "contacts", "company": "companies", "deal": "deals"}
+
+
 def record_link(object_key: str, record_id: str) -> str:
-    return f"/records/{object_key}/{record_id}"
+    """Where the record screens open it: the system objects at /contacts, /companies and /deals, a custom one under
+    /objects."""
+    return f"/{PLURALS[object_key]}/{record_id}" if object_key in PLURALS else f"/objects/{object_key}/{record_id}"
 
 
 def drafts(e: Event, names: dict[uuid.UUID, str]) -> list[Draft]:

@@ -444,21 +444,6 @@
   color: var(--text-2);
   font-size: var(--fs-sm);
 }
-.ui-toast-action {
-  align-self: center;
-  flex: none;
-  min-height: var(--control-h-sm);
-  padding: 0 var(--space-2);
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: none;
-  color: var(--accent-text);
-  font-weight: 600;
-  cursor: pointer;
-}
-.ui-toast-action:hover {
-  background: var(--hover);
-}
 .ui-toast-close {
   position: relative;
   display: inline-flex;

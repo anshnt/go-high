@@ -1,7 +1,7 @@
 import { ChevronLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { errorText } from "../lib/api";
+import { whatWentWrong } from "../lib/errors";
 import { getPrefs, savePrefs, type Pref } from "../lib/notifications";
 import { zone } from "../lib/tasks";
 import { PageHeader } from "../shell/PageHeader";
@@ -25,7 +25,7 @@ export function NotificationSettings() {
   useEffect(() => {
     getPrefs()
       .then(setPrefs)
-      .catch((e) => setError(errorText(e)));
+      .catch((e) => setError(whatWentWrong(e)));
   }, []);
 
   const change = (kind: string, patch: Partial<Pref>) => {
@@ -47,7 +47,7 @@ export function NotificationSettings() {
       setDirty(false);
       toast({ title: "Notification settings saved", tone: "success" });
     } catch (e) {
-      toast({ title: "Could not save", description: errorText(e), tone: "danger" });
+      toast({ title: "Could not save", description: whatWentWrong(e), tone: "danger" });
     } finally {
       setBusy(false);
     }

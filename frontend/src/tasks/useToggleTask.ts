@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { errorText } from "../lib/api";
+import { whatWentWrong } from "../lib/errors";
 import { dueLabel } from "../lib/dates";
 import { completeTask, deleteTask, reopenTask, touch, type Task } from "../lib/tasks";
 import { useToast } from "../ui";
@@ -23,18 +23,19 @@ export function useToggleTask() {
           title: "Task completed",
           description: done.next ? `${task.title}. Next: ${dueLabel(done.next, new Date())}` : task.title,
           tone: "success",
+          duration: 8000,
           action: {
             label: "Undo",
             onClick: () => {
               reopenTask(task.id)
                 .then(() => (done.next ? deleteTask(done.next.id) : undefined))
-                .catch((e) => toast({ title: "Could not undo", description: errorText(e), tone: "danger" }))
+                .catch((e) => toast({ title: "Could not undo", description: whatWentWrong(e), tone: "danger" }))
                 .finally(touch);
             },
           },
         });
       } catch (e) {
-        toast({ title: "Could not update the task", description: errorText(e), tone: "danger" });
+        toast({ title: "Could not update the task", description: whatWentWrong(e), tone: "danger" });
       } finally {
         touch();
       }

@@ -1,6 +1,6 @@
 import { Lock } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { errorText } from "../lib/api";
+import { whatWentWrong } from "../lib/errors";
 import { dueDate, dueIso, fromInputDate, toInputDate, toInputTime } from "../lib/dates";
 import { presetOf, ruleFor, type Preset } from "../lib/recurrence";
 import { useMe } from "../lib/session";
@@ -80,7 +80,7 @@ export function TaskSheet({ target, onClose }: { target: Target; onClose: () => 
         setTask(t);
         setDraft(draftOf(t));
       })
-      .catch((e) => alive && setError(errorText(e)));
+      .catch((e) => alive && setError(whatWentWrong(e)));
     return () => {
       alive = false;
     };
@@ -136,7 +136,7 @@ export function TaskSheet({ target, onClose }: { target: Target; onClose: () => 
       touch();
       onClose();
     } catch (err) {
-      setError(errorText(err));
+      setError(whatWentWrong(err));
     } finally {
       setBusy(false);
     }
@@ -154,16 +154,17 @@ export function TaskSheet({ target, onClose }: { target: Target; onClose: () => 
       toast({
         title: "Task deleted",
         description: title,
+        duration: 8000,
         action: {
           label: "Undo",
           onClick: () =>
             createTask({ title, notes, due_at, all_day, assignee_id, priority, record_id, recurrence })
-              .catch((e) => toast({ title: "Could not restore the task", description: errorText(e), tone: "danger" }))
+              .catch((e) => toast({ title: "Could not restore the task", description: whatWentWrong(e), tone: "danger" }))
               .finally(touch),
         },
       });
     } catch (err) {
-      setError(errorText(err));
+      setError(whatWentWrong(err));
       setConfirmDelete(false);
     } finally {
       setBusy(false);
