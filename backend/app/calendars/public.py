@@ -98,7 +98,8 @@ def booking_view(ws: Workspace, b: Booking, cal: Calendar, token: str) -> dict:
     cutoff = None if cal.cutoff_hours is None else b.starts_at - timedelta(hours=cal.cutoff_hours)
     return {"status": b.status, "starts_at": b.starts_at, "ends_at": b.ends_at, "time_zone": b.time_zone,
             "calendar": {"name": cal.name, "description": cal.description, "time_zone": cal.time_zone,
-                         "color": cal.color, "business": ws.name, "durations": cal.durations},
+                         "color": cal.color, "business": ws.name, "durations": cal.durations,
+                         "window_days": cal.window_days},
             "location": b.location, "invitee": {"name": b.invitee_name},
             "can_change": can_change(b, cal, now()), "change_until": cutoff,
             "ics_path": f"/api/public/bookings/{token}/ics", "confirmation": cal.confirmation}
@@ -315,11 +316,35 @@ async def cors(request: Request, call_next):
     return response
 
 
+def built(name: str) -> Path | None:
+    file = Path(config.FRONTEND_DIST) / "book" / name
+    return file if file.is_file() else None
+
+
+NOT_BUILT = {"detail": "Booking page not built; run `npm run build` in frontend/."}
+
+
 def page() -> Response:
-    file = Path(config.FRONTEND_DIST) / "book" / "page.html"
-    if file.is_file():
-        return FileResponse(file)
-    return JSONResponse({"detail": "Booking page not built; run `npm run build` in frontend/."}, status_code=404)
+    """The page (frontend/src/book/page.html): one script tag, the route comes from the address. A manage link holds a
+    secret, so the page sends no referrer anywhere."""
+    file = built("page.html")
+    if file is None:
+        return JSONResponse(NOT_BUILT, status_code=404)
+    return FileResponse(file, headers={
+        "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                                   "font-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; "
+                                   "form-action 'none'",
+        "Referrer-Policy": "no-referrer"})
+
+
+@pages.get("/book/book.js", include_in_schema=False)
+def booking_script():
+    """The page and widget script, for `<script async src="https://host/book/book.js">` on any site."""
+    file = built("book.js")
+    if file is None:
+        return JSONResponse(NOT_BUILT, status_code=404)
+    # five minutes: an embed picks up a new script soon, without a request per page view
+    return FileResponse(file, media_type="text/javascript", headers={"Cache-Control": "public, max-age=300"})
 
 
 @pages.get("/book/{workspace_slug}/{calendar_slug}", include_in_schema=False)

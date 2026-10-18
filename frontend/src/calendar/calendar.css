@@ -1,0 +1,239 @@
+/* The calendar screen: a week of bookings on a time grid, and the booking pages as cards. */
+.cl-views {
+  margin-top: var(--space-3);
+}
+.cl-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-3);
+}
+.cl-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.cl-toolbar h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+}
+.cl-zone {
+  margin: 0 0 0 auto;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.cl-scroll {
+  max-height: min(70vh, 720px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.cl-grid {
+  display: grid;
+  grid-template-columns: 56px repeat(7, minmax(80px, 1fr));
+  min-width: 616px; /* a phone scrolls the week sideways inside the box, never the page */
+}
+.cl-corner,
+.cl-dayhead {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.cl-corner {
+  left: 0;
+  z-index: 4;
+}
+.cl-dayhead {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-2) 0;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+}
+.cl-dayhead strong {
+  color: var(--text);
+  font-size: var(--fs-lg);
+}
+.cl-dayhead[data-today] strong {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.cl-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--surface);
+}
+.cl-gutter span {
+  position: absolute;
+  right: var(--space-2);
+  transform: translateY(-50%);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+.cl-col {
+  position: relative;
+  border-left: 1px solid var(--border);
+  background-image: linear-gradient(to bottom, var(--border) 1px, transparent 1px);
+  background-size: 100% 48px;
+}
+.cl-off {
+  position: absolute;
+  inset-inline: 0;
+  background: var(--surface-2);
+  opacity: 0.7;
+}
+.cl-now {
+  position: absolute;
+  inset-inline: 0;
+  z-index: 2;
+  border-top: 2px solid var(--danger);
+}
+.cl-loading {
+  position: absolute;
+  inset: var(--space-2);
+  height: 96px;
+}
+.cl-event {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 2px 6px;
+  overflow: hidden;
+  border: 1px solid var(--surface);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font: inherit;
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+}
+.cl-event[data-short] {
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  padding-block: 0;
+}
+.cl-event:hover {
+  filter: brightness(0.97);
+}
+.cl-event:focus-visible {
+  z-index: 3;
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.cl-event strong,
+.cl-event span {
+  flex: none;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cl-event[data-status="booked"] {
+  border-left-color: var(--warning);
+  background: var(--warning-soft);
+  color: var(--warning-text);
+}
+.cl-event[data-status="cancelled"] {
+  border-left-color: var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+.cl-event[data-status="showed"],
+.cl-event[data-status="no_show"] {
+  border-left-color: var(--text-3);
+  background: var(--hover);
+  color: var(--text-2);
+}
+.cl-empty,
+.cl-error {
+  margin-top: var(--space-3);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.cl-error {
+  color: var(--danger-text);
+}
+.cl-facts {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+}
+.cl-fact {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: var(--space-3);
+}
+.cl-fact dt {
+  color: var(--text-2);
+}
+.cl-fact dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+.cl-cards {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cl-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.cl-card > div:first-child {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.cl-card h3 {
+  margin: 0;
+  font-size: var(--fs-lg);
+}
+.cl-card p {
+  margin: 2px 0 var(--space-2);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.cl-card code {
+  display: block;
+  overflow: hidden;
+  color: var(--text-2);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--fs-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cl-card-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+.cl-card-actions a {
+  text-decoration: none;
+}

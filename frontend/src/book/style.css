@@ -1,0 +1,562 @@
+/* The booking page and widget. They live in a shadow root, so the host page cannot restyle them and they cannot restyle
+   the host. The tokens are the app's (src/styles/tokens.css), as in the forms runtime; a host may set --gh-accent,
+   --gh-radius and --gh-font on the element that holds the widget. Light unless data-theme says dark. */
+:host {
+  display: block;
+}
+.gh {
+  --bg: #ffffff;
+  --surface-2: #f8f8fa;
+  --hover: #f1f1f4;
+  --border: #e4e4e9;
+  --border-strong: #b5b5c0;
+  --text: #18181c;
+  --text-2: #55555f;
+  --accent: var(--gh-accent, #4f46e5);
+  --accent-hover: color-mix(in srgb, var(--accent) 88%, black);
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, var(--bg));
+  --on-accent: #ffffff;
+  --danger: #b42318;
+  --danger-line: #dc2626;
+  --danger-soft: #fdecec;
+  --success: #146c35;
+  --success-soft: #e7f6ec;
+  --warning: #8a4b00;
+  --warning-soft: #fdf3e2;
+  --info: #1d4ed8;
+  --info-soft: #e8effd;
+  --radius: var(--gh-radius, 8px);
+  container-type: inline-size;
+  box-sizing: border-box;
+  color: var(--text);
+  font: 15px/1.5 var(--gh-font, "Geist Variable", system-ui, -apple-system, "Segoe UI", sans-serif);
+  -webkit-font-smoothing: antialiased;
+  color-scheme: light;
+}
+.gh[data-theme="dark"] {
+  --bg: #17171b;
+  --surface-2: #1d1d22;
+  --hover: #24242b;
+  --border: #2a2a31;
+  --border-strong: #5a5a66;
+  --text: #ededf0;
+  --text-2: #a6a6b1;
+  --accent: var(--gh-accent, #7377f0);
+  --on-accent: #0e0e11;
+  --danger: #fca5a5;
+  --danger-line: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.14);
+  --success: #6ee7b7;
+  --success-soft: rgba(52, 211, 153, 0.14);
+  --warning: #fcd34d;
+  --warning-soft: rgba(251, 191, 36, 0.14);
+  --info: #93c5fd;
+  --info-soft: rgba(96, 165, 250, 0.14);
+  color-scheme: dark;
+}
+.gh *,
+.gh *::before,
+.gh *::after {
+  box-sizing: border-box;
+}
+.gh h1,
+.gh h2,
+.gh h3,
+.gh p,
+.gh ul,
+.gh dl,
+.gh dd,
+.gh fieldset {
+  margin: 0;
+  padding: 0;
+}
+.gh fieldset {
+  border: 0;
+  min-width: 0;
+}
+.gh ul {
+  list-style: none;
+}
+.gh a:not(.gh-btn) {
+  color: var(--accent);
+}
+.gh :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.gh [tabindex="-1"]:focus {
+  outline: none;
+}
+.gh-view {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 4px);
+  padding: 24px;
+}
+@container (max-width: 480px) {
+  .gh-view {
+    padding: 16px;
+  }
+}
+.gh-stack > * + * {
+  margin-top: 16px;
+}
+.gh-icon {
+  flex: none;
+  vertical-align: -3px;
+}
+.gh-spin {
+  animation: gh-spin 0.8s linear infinite;
+}
+@keyframes gh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* the calendar's heading */
+.gh-head {
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.gh-business {
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+}
+.gh-title {
+  font-size: 22px;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+.gh-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 8px;
+  color: var(--text-2);
+  font-size: 14px;
+}
+.gh-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.gh-desc {
+  margin-top: 8px;
+  color: var(--text-2);
+  white-space: pre-line;
+}
+.gh-hint {
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+/* controls */
+.gh-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.gh-label {
+  font-size: 14px;
+  font-weight: 500;
+}
+.gh-req {
+  color: var(--danger);
+}
+.gh-error {
+  color: var(--danger);
+  font-size: 13px;
+}
+.gh-error:empty {
+  display: none;
+}
+.gh-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: inherit;
+  font: inherit;
+}
+textarea.gh-input {
+  min-height: 96px;
+  resize: vertical;
+}
+.gh-input[aria-invalid="true"] {
+  border-color: var(--danger-line);
+}
+.gh-input:focus-visible {
+  outline-offset: 0;
+}
+.gh-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+}
+.gh-btn:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--hover);
+}
+.gh-btn[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: default;
+}
+.gh-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.gh-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.gh-primary:hover:not(:disabled) {
+  background: var(--accent-hover) !important;
+}
+.gh-danger {
+  border-color: var(--danger-line);
+  color: var(--danger);
+}
+.gh-icon-btn {
+  width: 40px;
+  min-height: 40px;
+  padding: 0;
+}
+.gh-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.gh-back:hover {
+  color: var(--text);
+}
+.gh-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.gh-alert {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 14px;
+}
+.gh-alert:empty {
+  display: none;
+}
+.gh-note {
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: 14px;
+}
+.gh-hp {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.gh-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* the picker: controls on top, then the month and the times, side by side when there is room */
+.gh-picker {
+  display: grid;
+  gap: 20px;
+}
+.gh-controls {
+  display: grid;
+  gap: 16px;
+}
+@container (min-width: 640px) {
+  .gh-picker {
+    grid-template-columns: minmax(0, 1fr) 220px;
+  }
+  .gh-controls {
+    grid-column: 1 / -1;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+  }
+  .gh-controls > :only-child {
+    grid-column: 1 / -1;
+    max-width: 420px;
+  }
+}
+.gh-seg-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.gh-seg-item {
+  position: relative;
+}
+.gh-seg-item input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+}
+.gh-seg-item span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 6px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  font-size: 14px;
+  cursor: pointer;
+}
+.gh-seg-item input:checked + span {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+}
+.gh-seg-item input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.gh-cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.gh-month {
+  font-size: 16px;
+}
+.gh-cal-nav {
+  display: flex;
+  gap: 4px;
+}
+.gh-grid {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.gh-grid th {
+  padding: 4px 0;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+.gh-grid td {
+  padding: 2px;
+  text-align: center;
+}
+.gh-day {
+  width: 100%;
+  max-width: 44px;
+  aspect-ratio: 1;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 14px;
+  cursor: default;
+}
+.gh-day[data-open] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+.gh-day[data-open]:hover {
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg));
+}
+.gh-day[data-today] {
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.gh-day[data-selected],
+.gh-day[data-selected]:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.gh-grid[aria-busy="true"] .gh-day {
+  opacity: 0.5;
+}
+.gh-cal-msg {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 8px;
+  font-size: 14px;
+}
+.gh-times-title {
+  margin-bottom: 8px;
+  font-size: 15px;
+}
+.gh-slots {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+@container (min-width: 640px) {
+  .gh-slots {
+    grid-template-columns: 1fr;
+    max-height: 380px;
+    overflow-y: auto;
+    padding: 2px;
+  }
+}
+.gh-slots-empty {
+  grid-column: 1 / -1;
+}
+.gh-slot {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.gh-slot:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* the chosen time, the details form, the result */
+.gh-when {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.gh-when strong {
+  font-size: 15px;
+}
+.gh-old {
+  color: var(--text-2);
+  text-decoration: line-through;
+}
+.gh-form {
+  display: grid;
+  gap: 16px;
+}
+.gh-choices {
+  display: grid;
+  gap: 8px;
+}
+.gh-choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.gh-choice:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.gh-choice input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+.gh-done {
+  text-align: center;
+}
+.gh-done-icon {
+  display: inline-flex;
+  padding: 10px;
+  border-radius: 50%;
+  background: var(--success-soft);
+  color: var(--success);
+}
+.gh-facts {
+  display: grid;
+  gap: 10px;
+  text-align: left;
+}
+.gh-facts > div {
+  display: flex;
+  gap: 10px;
+}
+.gh-facts .gh-icon {
+  margin-top: 2px;
+  color: var(--text-2);
+}
+.gh-done .gh-actions {
+  justify-content: center;
+}
+.gh-copy {
+  display: flex;
+  gap: 8px;
+}
+.gh-copy .gh-input {
+  font-size: 13px;
+}
+.gh-pill {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.gh-pill[data-tone="success"] {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.gh-pill[data-tone="warning"] {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.gh-pill[data-tone="info"] {
+  background: var(--info-soft);
+  color: var(--info);
+}
+.gh-pill[data-tone="danger"] {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.gh-pill[data-tone="neutral"] {
+  background: var(--hover);
+  color: var(--text-2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .gh-spin {
+    animation: none;
+  }
+}
