@@ -9,7 +9,6 @@ import time
 
 import psycopg
 import pytest
-import uvicorn
 from fastapi.testclient import TestClient
 from helpers import H, drain, make_record
 from inbox_helpers import add_channel, conversations_of, sms_in, sql
@@ -21,24 +20,6 @@ from app.main import app
 anonymous = TestClient(app)
 ALICE = "+14155550123"
 TYPES = ["record.created", "conversation.created", "message.received"]
-
-
-@pytest.fixture(scope="module")
-def live():
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning"))
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    deadline = time.monotonic() + 30
-    while not server.started:
-        assert time.monotonic() < deadline and thread.is_alive(), "the server did not start"
-        time.sleep(0.05)
-    deadline = time.monotonic() + 10
-    while not stream.hub.seen_connection:  # the LISTEN connection is up
-        assert time.monotonic() < deadline, "the listener did not connect"
-        time.sleep(0.05)
-    yield server.servers[0].sockets[0].getsockname()[1]
-    server.should_exit = True
-    thread.join(15)
 
 
 class Stream:

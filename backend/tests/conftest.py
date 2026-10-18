@@ -3,9 +3,12 @@ TEST_DATABASE_URL at a server; the test database is created if missing."""
 import os
 import re
 import ssl
+import threading
+import time
 from datetime import UTC, datetime
 
 import pytest
+import uvicorn
 from fakes import FakeSMTP, Files, make_cert
 from fastapi.testclient import TestClient
 from helpers import PASSWORD, Receiver
@@ -23,7 +26,7 @@ with create_engine(URL.set(database="postgres"), isolation_level="AUTOCOMMIT").c
 
 from app import config, ssrf  # noqa: E402  (must import after DATABASE_URL is set)
 from app.db import SessionLocal, engine  # noqa: E402
-from app.inbox import consent  # noqa: E402
+from app.inbox import consent, stream  # noqa: E402
 from app.main import app, migrate  # noqa: E402
 
 migrate()
@@ -140,3 +143,23 @@ def _trusting(context, trusted):
     for pem in trusted:
         context.load_verify_locations(cadata=pem)
     return context
+
+
+@pytest.fixture(scope="module")
+def live():
+    """The app under uvicorn on a free port, with its lifespan (and so its LISTEN connection), for what a test client
+    cannot do: read a stream that never ends, run a script that makes its own HTTP calls. Yields the port."""
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 30
+    while not server.started:
+        assert time.monotonic() < deadline and thread.is_alive(), "the server did not start"
+        time.sleep(0.05)
+    deadline = time.monotonic() + 10
+    while not stream.hub.seen_connection:  # the LISTEN connection is up
+        assert time.monotonic() < deadline, "the listener did not connect"
+        time.sleep(0.05)
+    yield server.servers[0].sockets[0].getsockname()[1]
+    server.should_exit = True
+    thread.join(15)
