@@ -111,7 +111,8 @@ def fill_calendars(client, ids: dict, name: str, title: str) -> None:
     client.put(f"/api/v1/calendars/{cal['id']}/resources", json=[{"resource_id": room["id"]}], headers=ws)
     day = weekday_after(14)
     ids["invitee_email"] = f"{name}.invitee@secret.example"
-    done = visit(public_client(), cal, instant(day, "10:00"), name=f"{title} Secret Invitee",
+    ids["invitee_name"] = f"{title} Secret Invitee"
+    done = visit(public_client(), cal, instant(day, "10:00"), name=ids["invitee_name"],
                  email=ids["invitee_email"], phone="+14155550123").json()
     booked = client.get("/api/v1/bookings", headers=ws).json()["data"][0]
     me = client.get("/api/me").json()["user"]["id"]
@@ -247,8 +248,12 @@ def two_orgs(make_user, db, monkeypatch):
     return a, a_ids, b, b_ids
 
 
+NOT_SECRET = {"booking_day"}  # a date: A's own rows can name the same day
+
+
 def secrets_of(ids: dict) -> list[str]:
-    return [str(v) for v in ids.values() if isinstance(v, str)] + ["bob@example.com", "Bravo Org"]
+    return [str(v) for k, v in ids.items() if isinstance(v, str) and k not in NOT_SECRET] + ["bob@example.com",
+                                                                                              "Bravo Org"]
 
 
 def signin_alice() -> TestClient:
@@ -807,10 +812,10 @@ def test_a_user_of_a_gets_404s_for_bs_objects_fields_records_tags_views_and_link
     # what A can list and search is A's: not B's names, not B's tag, not B's count
     page = a.get(contact, params={"count": "true", "include": "tags,company", "limit": 200}, headers=mine).json()
     names = {r["display_name"] for r in page["data"]}  # A's contacts: the person, the texting customer, a chat visitor
-    # and the contact one of A's forms made
+    # the contact one of A's forms made and the invitee of A's booking
     assert (names - {a_ids["customer_phone"]} - {n for n in names if n.startswith("Visitor ")}
-            == {a_ids["record_name"], a_ids["form_answer"]})
-    assert page["total"] == 4
+            == {a_ids["record_name"], a_ids["form_answer"], a_ids["invitee_name"]})
+    assert page["total"] == 5
     assert not any(leak in json.dumps(page) for leak in secrets_of(b_ids))
     for query in ({"q": "bravo"}, {"q": "secret"}, {"q": b_ids["record_name"]}, {"filter": json.dumps({"tag": tag})},
                   {"filter": json.dumps({"tag": b_ids["tag_name"]})},
@@ -953,7 +958,8 @@ def test_the_app_role_cannot_move_or_point_calendar_rows_across_workspaces(two_o
     a_ws, b_ws = a_ids["workspace_id"], b_ids["workspace_id"]
     alice = signin_alice().get("/api/me").json()["user"]["id"]
     ids = {"a": a_ws, "b": b_ws, "u": alice, "ac": a_ids["calendar_id"], "bc": b_ids["calendar_id"],
-           "br": b_ids["resource_id"], "bb": b_ids["booking_id"], "bk": b_ids["record_id"]}
+           "br": b_ids["resource_id"], "ar": a_ids["resource_id"], "bb": b_ids["booking_id"],
+           "bk": b_ids["record_id"]}
     span = "now(), now() + interval '1 hour'"
     with engine.connect() as conn:
         for table in ("calendars", "calendar_hosts", "resources", "calendar_resources", "availability", "bookings",
@@ -972,14 +978,14 @@ def test_the_app_role_cannot_move_or_point_calendar_rows_across_workspaces(two_o
                 conn.execute(text(statement), ids)
         for statement in ("INSERT INTO calendar_hosts (workspace_id, calendar_id, user_id) VALUES (:a, :bc, :u)",
                           "INSERT INTO calendar_resources (calendar_id, resource_id, workspace_id) "
-                          "VALUES (:bc, :br, :a)",
+                          "VALUES (:bc, :ar, :a)",  # B's calendar (B's own pair with its room exists already)
                           "INSERT INTO calendar_resources (calendar_id, resource_id, workspace_id) "
                           "VALUES (:ac, :br, :a)",
                           "INSERT INTO bookings (workspace_id, calendar_id, host_ids, starts_at, ends_at, token_hash) "
                           f"VALUES (:a, :bc, '{{}}', {span}, 'tok1')",
                           "INSERT INTO bookings (workspace_id, calendar_id, host_ids, starts_at, ends_at, token_hash, "
                           f"contact_id) VALUES (:a, :ac, '{{}}', {span}, 'tok2', :bk)",
-                          "INSERT INTO booking_resources (booking_id, resource_id, workspace_id) VALUES (:bb, :br, :a)",
+                          "INSERT INTO booking_resources (booking_id, resource_id, workspace_id) VALUES (:bb, :ar, :a)",
                           "INSERT INTO booking_reminders (workspace_id, booking_id, offset_minutes, due_at) "
                           "VALUES (:a, :bb, 5, now())",
                           "INSERT INTO availability (workspace_id, resource_id) VALUES (:a, :br)",
