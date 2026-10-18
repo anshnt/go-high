@@ -26,7 +26,7 @@ def records(*actions: str) -> set[str]:
 
 
 MEMBER = {*records("read", "write", "delete"), "schema.read", "tags.write", "views.write", "messages.send",
-          "members.read"}
+          "members.read", "tasks.read", "tasks.write", "tasks.delete"}
 # key: (name, description, capabilities). Every role starts with the rule "all records of every object".
 SYSTEM_ROLES = {
     "owner": ("Owner", "Everything, billing included. Cannot be changed.", set(CAPABILITIES)),
@@ -35,9 +35,10 @@ SYSTEM_ROLES = {
                 MEMBER | records("export") | {"tags.manage", "views.manage", "pipelines.manage", "workflows.publish"}),
     "member": ("Member", "Works with records, tags and views.", MEMBER),
     "viewer": ("Viewer", "Reads records, and cannot change anything.",
-               {*records("read"), "schema.read", "members.read"}),
+               {*records("read"), "schema.read", "members.read", "tasks.read"}),
     "automation": ("Automation", "What workflows and AI agents run as: reads and writes records, tags, sends messages.",
-                   {*records("read", "write"), "schema.read", "tags.write", "messages.send"}),
+                   {*records("read", "write"), "schema.read", "tags.write", "messages.send", "tasks.read",
+                    "tasks.write"}),
 }
 
 

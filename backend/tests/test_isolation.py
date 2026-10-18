@@ -20,7 +20,8 @@ TENANT_TABLES = ["organizations", "brands", "workspaces", "users", "org_members"
                  "auth_sessions", "magic_links", "login_attempts", "events", "webhook_endpoints", "webhook_deliveries",
                  "idempotency_keys", "objects", "fields", "records", "tags", "record_tags", "association_types",
                  "associations", "saved_views", "event_records", "pipelines", "stages", "board_layouts", "roles",
-                 "role_object_rules", "teams", "team_members", "user_credentials"]
+                 "role_object_rules", "teams", "team_members", "user_credentials", "tasks", "notifications",
+                 "notification_prefs"]
 NOT_TENANT_DATA = {"jobs", "event_cursors"}  # the queue and the consumer cursors: no tenant rows, no app role access
 
 
@@ -84,6 +85,33 @@ def fill_crm(client, ids: dict, name: str) -> None:
     ids["team_id"] = post("/api/v1/teams", name=ids["team_name"])["id"]
 
 
+def fill_tasks(client, ids: dict, name: str, db) -> None:
+    """A task on the contact, a task that waits for it, a notification and a preference of the org's user; their ids,
+    titles and notes go into `ids`, where they count as secrets when they belong to org B."""
+    ws = {"X-Workspace-Id": ids["workspace_id"]}
+    me = client.get("/api/me").json()["user"]["id"]
+    title = name.title()
+    ids["task_title"], ids["task_notes"] = f"{title} Secret Task", f"{name} secret task notes"
+    task = client.post("/api/v1/tasks", headers=ws, json={
+        "title": ids["task_title"], "notes": ids["task_notes"], "assignee_id": me, "record_id": ids["record_id"]})
+    assert task.status_code == 201, task.text
+    ids["task_id"] = task.json()["id"]
+    follow = client.post("/api/v1/tasks", headers=ws, json={
+        "title": f"{title} Follow-up", "depends_on_task_id": ids["task_id"]})
+    assert follow.status_code == 201, follow.text
+    ids["follow_task_id"], ids["follow_task_title"] = follow.json()["id"], f"{title} Follow-up"
+    ids["notification_title"] = f"{title} secret notification"
+    ids["notification_id"] = str(db.scalar(text(
+        "INSERT INTO notifications (workspace_id, user_id, kind, title, body) "
+        "VALUES (:w, :u, 'task_due', :t, 'x') RETURNING id"),
+        {"w": ids["workspace_id"], "u": me, "t": ids["notification_title"]}))
+    db.execute(text("INSERT INTO notification_prefs (user_id, workspace_id, kind, scope, tz) "
+                    "VALUES (:u, :w, 'task_due', 'all', :tz)"),
+               {"u": me, "w": ids["workspace_id"], "tz": f"{title}/Zone"})
+    db.commit()
+    ids["pref_tz"] = f"{title}/Zone"
+
+
 @pytest.fixture
 def two_orgs(make_user, db):
     """Org A and org B, each with a user, a second workspace, a live session, a webhook and one delivery in its log,
@@ -102,6 +130,7 @@ def two_orgs(make_user, db):
             "RETURNING id"), {"e": ids["webhook_id"], "w": ids["workspace_id"]}))
         db.commit()
         fill_crm(client, ids, name)
+        fill_tasks(client, ids, name, db)
     b_ids["session_id"] = b.get("/api/auth/sessions").json()[0]["id"]
     b_ids["user_id"] = b.get("/api/me").json()["user"]["id"]
     a_ids["user_id"] = a.get("/api/me").json()["user"]["id"]
@@ -127,7 +156,7 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
                "record_id": b_ids["record_id"], "tag_id": b_ids["tag_id"], "view_id": b_ids["view_id"],
                "association_id": b_ids["association_id"], "type_id": b_ids["type_id"], "role_id": b_ids["role_id"],
                "team_id": b_ids["team_id"], "user_id": b_ids["user_id"], "pipeline_id": b_ids["pipeline_id"],
-               "stage_id": b_ids["stage_id"], "deal_id": b_ids["deal_id"]}
+               "stage_id": b_ids["stage_id"], "deal_id": b_ids["deal_id"], "task_id": b_ids["task_id"]}
     others = {"key": [b_ids["object_key"], "contact"], "field_key": [b_ids["field_key"], "email"]}  # B's, and A's own
     body = {"name": "x", "brand_id": b_ids["brand_id"], "org_id": b_ids["org_id"], "email": "bob@example.com",
             "workspace_id": b_ids["workspace_id"], "password": "not the password", "token": "bogus",
@@ -145,10 +174,17 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
             # permissions: B's role and team in every place a body takes one
             "copy_from": b_ids["role_key"], "role_id": b_ids["role_id"], "capabilities": ["contacts.read"],
             "object_rules": [], "parent_team_id": b_ids["team_id"], "description": "x",
-            "ids": [b_ids["record_id"], b_ids["trashed_id"], b_ids["company_id"]]}  # bulk delete and restore
+            # tasks and notifications: B's ids wherever a body takes one
+            "title": "Swept task", "notes": "swept", "due_at": "2031-01-01T00:00:00Z", "assignee_id": b_ids["user_id"],
+            "priority": "low", "recurrence": "FREQ=DAILY", "record_id": b_ids["record_id"],
+            "depends_on_task_id": b_ids["task_id"], "action": "assign", "all": False,
+            # bulk delete and restore of records, and bulk changes of tasks
+            "ids": [b_ids["record_id"], b_ids["trashed_id"], b_ids["company_id"], b_ids["task_id"],
+                    b_ids["follow_task_id"], b_ids["notification_id"]],
+            "prefs": [{"kind": "task_due", "scope": "all", "tz": "UTC"}]}
     tables_of_b = ("objects", "fields", "records", "tags", "record_tags", "association_types", "associations",
                    "saved_views", "event_records", "events", "pipelines", "stages", "board_layouts", "teams",
-                   "team_members")
+                   "team_members", "tasks", "notifications", "notification_prefs")
     snapshot = "SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t::text), '')) FROM {} t WHERE {} = :w"
 
     def rows_of_b():
@@ -180,7 +216,11 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
         "/api/v1/roles/{role_id}", "/api/v1/teams", "/api/v1/teams/{team_id}",
         "/api/v1/teams/{team_id}/members/{user_id}", "/api/v1/members", "/api/v1/members/{user_id}",
         "/api/v1/permissions/explain", "/api/v1/audit", "/api/v1/audit/export",
-        "/api/v1/objects/{key}/records/delete", "/api/v1/objects/{key}/records/restore"}
+        "/api/v1/objects/{key}/records/delete", "/api/v1/objects/{key}/records/restore", "/api/v1/tasks",
+        "/api/v1/tasks/bulk", "/api/v1/tasks/{task_id}", "/api/v1/tasks/{task_id}/complete",
+        "/api/v1/tasks/{task_id}/reopen", "/api/v1/tasks/{task_id}/reorder", "/api/v1/my-day",
+        "/api/v1/notifications", "/api/v1/notifications/unread-count", "/api/v1/notifications/read",
+        "/api/v1/notifications/prefs"}
 
     seen_own_data = False
     alice = signin_alice()
@@ -358,7 +398,10 @@ def test_the_app_role_holds_only_the_grants_its_handlers_need():
               "teams": {"SELECT", "INSERT", "UPDATE", "DELETE"}, "team_members": {"SELECT", "INSERT", "DELETE"},
               "workspace_members": {"SELECT", "INSERT"},  # and UPDATE of role_id alone
               # one policy per row of a user's own (and the pre-auth scope); the grants are what that scope needs
-              "user_credentials": {"SELECT", "INSERT", "UPDATE", "DELETE"}}
+              "user_credentials": {"SELECT", "INSERT", "UPDATE", "DELETE"},
+              # tasks are the workspace's; a notification is read and marked read by its user (the worker writes it)
+              "tasks": {"SELECT", "INSERT", "UPDATE", "DELETE"}, "notifications": {"SELECT"},
+              "notification_prefs": {"SELECT", "INSERT", "UPDATE"}}
     every = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
     with engine.connect() as conn:
         for table, expected in wanted.items():
@@ -368,6 +411,9 @@ def test_the_app_role_holds_only_the_grants_its_handlers_need():
         columns = {c: conn.scalar(text("SELECT has_column_privilege('gohigh_app', 'jobs', :c, 'SELECT')"), {"c": c})
                    for c in ("id", "kind", "payload", "status")}
         assert columns == {"id": True, "kind": False, "payload": False, "status": False}
+        marking = {c: conn.scalar(text("SELECT has_column_privilege('gohigh_app', 'notifications', :c, 'UPDATE')"),
+                                  {"c": c}) for c in ("read_at", "title", "user_id", "created_at")}
+        assert marking == {"read_at": True, "title": False, "user_id": False, "created_at": False}
         updatable = {(table, c): conn.scalar(text("SELECT has_column_privilege('gohigh_app', :t, :c, 'UPDATE')"),
                                              {"t": table, "c": c})
                      for table, cs in (("roles", ("name", "description", "capabilities", "key", "is_system", "org_id")),
@@ -428,6 +474,7 @@ def test_a_user_of_a_gets_404s_for_bs_objects_fields_records_tags_views_and_link
     pipe, stage, deals = b_ids["pipeline_id"], b_ids["stage_id"], "/api/v1/objects/deal/records"
     contact = "/api/v1/objects/contact/records"
     theirs = f"/api/v1/objects/{key}"
+    btask = f"/api/v1/tasks/{b_ids['task_id']}"
     attempts = [
         ("GET", theirs, None), ("PATCH", theirs, {"singular": "x"}), ("DELETE", theirs, None),
         ("GET", f"{theirs}/fields", None),
@@ -490,6 +537,11 @@ def test_a_user_of_a_gets_404s_for_bs_objects_fields_records_tags_views_and_link
         ("POST", "/api/v1/objects/company/records/delete", {"ids": [b_ids["company_id"]]}),
         ("GET", f"{contact}/{record}?include=tags", None),
         ("PATCH", f"{contact}/{record}?include=tags", {"values": {}}),
+        # tasks
+        ("GET", btask, None), ("PATCH", btask, {"title": "x"}), ("DELETE", btask, None),
+        ("POST", f"{btask}/complete", None), ("POST", f"{btask}/reopen", None),
+        ("POST", f"{btask}/reorder", {"before_id": None}),
+        ("POST", f"/api/v1/tasks/{a_ids['task_id']}/reorder", {"before_id": b_ids["task_id"]}),
     ]
     for method, path, body in attempts:
         r = a.request(method, path, json=body, headers=mine)
@@ -524,7 +576,16 @@ def test_a_user_of_a_gets_404s_for_bs_objects_fields_records_tags_views_and_link
             # a bulk change that mixes A's own ids with B's is refused whole: A's record stays where it is
             ("POST", f"{contact}/delete", {"ids": [a_ids["record_id"], record]}, 404),
             ("POST", f"{contact}/restore", {"ids": [a_ids["trashed_id"], b_ids["trashed_id"]]}, 404),
-            ("POST", f"{contact}/delete", {"ids": [b_ids["company_id"]]}, 404)]:
+            ("POST", f"{contact}/delete", {"ids": [b_ids["company_id"]]}, 404),
+            ("POST", "/api/v1/tasks", {"title": "x", "record_id": b_ids["record_id"]}, 422),
+            ("POST", "/api/v1/tasks", {"title": "x", "assignee_id": b_ids["user_id"]}, 422),
+            ("POST", "/api/v1/tasks", {"title": "x", "depends_on_task_id": b_ids["task_id"]}, 422),
+            ("PATCH", f"/api/v1/tasks/{a_ids['task_id']}", {"depends_on_task_id": b_ids["task_id"]}, 422),
+            ("PATCH", f"/api/v1/tasks/{a_ids['task_id']}", {"record_id": b_ids["record_id"]}, 422),
+            ("PATCH", f"/api/v1/tasks/{a_ids['task_id']}", {"assignee_id": b_ids["user_id"]}, 422),
+            ("POST", "/api/v1/tasks/bulk", {"ids": [b_ids["task_id"]], "action": "assign",
+                                            "assignee_id": b_ids["user_id"]}, 422),
+            ("POST", "/api/v1/notifications/read", {"ids": [b_ids["notification_id"]]}, 200)]:
         r = a.request(method, path, json=body, headers=mine)
         assert r.status_code == status, (method, path, r.status_code, r.text[:200])
         assert not any(leak in r.text for leak in secrets_of(b_ids)), (method, path)
@@ -572,6 +633,24 @@ def test_a_user_of_a_gets_404s_for_bs_objects_fields_records_tags_views_and_link
     deal_b = b.get(f"{deals}/{b_ids['deal_id']}", headers=theirs_h).json()
     assert deal_b["values"]["stage"] == stage and deal_b["values"]["name"] == b_ids["deal_name"]
     assert b.get(f"/api/v1/pipelines/{pipe}/layout", headers=theirs_h).json()["collapsed"] == [b_ids["won_stage_id"]]
+    # tasks: A lists, filters and bulk-changes only its own, and B's are as they were
+    tasks = "/api/v1/tasks"
+    page = a.get(tasks, params={"limit": 200}, headers=mine).json()["data"]
+    assert {t["title"] for t in page} == {a_ids["task_title"], a_ids["follow_task_title"]}
+    for query in ({"record_id": b_ids["record_id"]}, {"assignee": b_ids["user_id"]}, {"assignee": "me", "due": "none"}):
+        found = a.get(tasks, params=query, headers=mine).json()["data"]
+        assert not [t for t in found if "Bravo" in t["title"]], query
+    r = a.post(f"{tasks}/bulk", json={"ids": [b_ids["task_id"], b_ids["follow_task_id"]], "action": "complete"},
+               headers=mine)
+    assert r.status_code == 200 and r.json() == {"data": [], "skipped": []}
+    assert b.get(f"{tasks}/{b_ids['task_id']}", headers=theirs_h).json()["status"] == "open"
+    assert b.get(f"{tasks}/{b_ids['follow_task_id']}", headers=theirs_h).json()["depends_on"]["title"] == (
+        b_ids["task_title"])
+    assert [n["title"] for n in b.get("/api/v1/notifications", headers=theirs_h).json()["data"]] == [
+        b_ids["notification_title"]]
+    assert a.get("/api/v1/notifications", headers=mine).json()["data"][0]["title"] == a_ids["notification_title"]
+    assert a.get("/api/v1/notifications/unread-count", headers=mine).json() == {"count": 1}
+    assert b.get("/api/v1/notifications/unread-count", headers=theirs_h).json() == {"count": 1}  # A could not mark it
 
 
 def test_the_app_role_cannot_move_a_row_to_another_workspace_or_point_one_across(two_orgs, db):
@@ -582,7 +661,8 @@ def test_the_app_role_cannot_move_a_row_to_another_workspace_or_point_one_across
     alice = signin_alice().get("/api/me").json()["user"]["id"]
     with engine.connect() as conn:
         # a row cannot change its workspace: the policy checks the new row as well as the old
-        for table in ("objects", "fields", "records", "tags", "saved_views", "pipelines", "stages", "board_layouts"):
+        for table in ("objects", "fields", "records", "tags", "saved_views", "pipelines", "stages", "board_layouts",
+                      "tasks", "notification_prefs"):
             with pytest.raises(DBAPIError, match="row-level security"), conn.begin():
                 context(conn, workspace_id=a_ws, user_id=alice)
                 conn.execute(text(f"UPDATE {table} SET workspace_id = :b"), {"b": b_ws})
@@ -595,7 +675,9 @@ def test_the_app_role_cannot_move_a_row_to_another_workspace_or_point_one_across
                           "VALUES (:b, :bo, 'x', 'X', 'text')",
                           "INSERT INTO pipelines (workspace_id, name) VALUES (:b, 'x')",
                           "INSERT INTO stages (workspace_id, pipeline_id, name) VALUES (:b, :bp, 'x')",
-                          "INSERT INTO board_layouts (workspace_id, pipeline_id, user_id) VALUES (:b, :bp, :u)"):
+                          "INSERT INTO board_layouts (workspace_id, pipeline_id, user_id) VALUES (:b, :bp, :u)",
+                          "INSERT INTO tasks (workspace_id, title) VALUES (:b, 'x')",
+                          "INSERT INTO notification_prefs (workspace_id, user_id, kind) VALUES (:b, :u, 'task_due')"):
             with pytest.raises(DBAPIError, match="row-level security"), conn.begin():
                 context(conn, workspace_id=a_ws, user_id=alice)
                 conn.execute(text(statement), {"b": b_ws, "bo": b_object, "bp": b_ids["pipeline_id"], "u": alice})
@@ -603,7 +685,7 @@ def test_the_app_role_cannot_move_a_row_to_another_workspace_or_point_one_across
         a_record = db.scalar(text("SELECT id FROM records WHERE workspace_id = :w LIMIT 1"), {"w": a_ws})
         ids = {"a": a_ws, "bo": b_object, "ao": a_object, "bt": b_ids["tag_id"], "ar": a_record,
                "br": b_ids["record_id"], "bty": b_ids["type_id"], "bp": b_ids["pipeline_id"], "u": alice,
-               "bs": b_ids["stage_id"]}
+               "bs": b_ids["stage_id"], "btask": b_ids["task_id"]}
         for statement in ("INSERT INTO records (workspace_id, object_id) VALUES (:a, :bo)",
                           "INSERT INTO fields (workspace_id, object_id, key, label, type) "
                           "VALUES (:a, :bo, 'x', 'X', 'text')",
@@ -618,11 +700,15 @@ def test_the_app_role_cannot_move_a_row_to_another_workspace_or_point_one_across
                           "INSERT INTO event_records (workspace_id, event_id, record_id) VALUES (:a, 1, :br)",
                           "INSERT INTO stages (workspace_id, pipeline_id, name) VALUES (:a, :bp, 'x')",
                           "INSERT INTO board_layouts (workspace_id, pipeline_id, user_id) VALUES (:a, :bp, :u)",
-                          "INSERT INTO records (workspace_id, object_id, stage_id) VALUES (:a, :ao, :bs)"):
+                          "INSERT INTO records (workspace_id, object_id, stage_id) VALUES (:a, :ao, :bs)",
+                          "INSERT INTO tasks (workspace_id, title, record_id) VALUES (:a, 'x', :br)",
+                          "INSERT INTO tasks (workspace_id, title, depends_on_task_id) VALUES (:a, 'x', :btask)",
+                          "INSERT INTO tasks (workspace_id, title, parent_task_id) VALUES (:a, 'x', :btask)"):
             with pytest.raises(DBAPIError, match="foreign key"), conn.begin():
                 context(conn, workspace_id=a_ws, user_id=alice)  # a layout is its user's, so the policy needs one
                 conn.execute(text(statement), ids)
-        for statement in ("DELETE FROM records", "DELETE FROM objects", "DELETE FROM fields"):
+        for statement in ("DELETE FROM records", "DELETE FROM objects", "DELETE FROM fields",
+                          "DELETE FROM notification_prefs"):
             with pytest.raises(DBAPIError, match="permission denied"), conn.begin():
                 context(conn, workspace_id=a_ws)
                 conn.execute(text(statement))
@@ -639,6 +725,7 @@ def test_the_app_role_cannot_move_a_row_to_another_workspace_or_point_one_across
     assert db.scalar(text("SELECT count(*) FROM records WHERE workspace_id = :w"), {"w": b_ws}) == 5  # as filled
     assert db.scalar(text("SELECT count(*) FROM stages WHERE workspace_id = :w"), {"w": b_ws}) == 8
     assert db.scalar(text("SELECT count(*) FROM pipelines WHERE workspace_id = :w"), {"w": b_ws}) == 2
+    assert db.scalar(text("SELECT count(*) FROM tasks WHERE workspace_id = :w"), {"w": b_ws}) == 2
 
 
 def test_a_private_view_is_hidden_from_other_users_in_sql_too(two_orgs):

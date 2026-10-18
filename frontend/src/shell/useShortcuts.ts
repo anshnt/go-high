@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router";
-import { CORE } from "../lib/nav";
+import { CORE, MY_DAY_NAV } from "../lib/nav";
 
 export const TYPING = 'input, textarea, select, [contenteditable], [role="menu"], [role="listbox"], [role="combobox"]';
 
@@ -22,7 +22,7 @@ export function useShortcuts({ togglePalette, openShortcuts }: { togglePalette: 
         openShortcuts();
       } else if (gAt && Date.now() - gAt < 1000) {
         gAt = 0;
-        const item = CORE.find((c) => c.gKey === e.key);
+        const item = [MY_DAY_NAV, ...CORE].find((c) => c.gKey === e.key);
         if (item) {
           e.preventDefault();
           navigate(item.path);

@@ -14,7 +14,10 @@ ROLES = "/api/v1/roles"
 MEMBERS = "/api/v1/members"
 # (method, path) of the /api/v1 routes anyone signed in to a workspace may call. None: even reading the schema is a
 # capability, so a new public route has to be listed here on purpose.
-PUBLIC: set[tuple[str, str]] = set()
+PUBLIC: set[tuple[str, str]] = {  # a person's own notifications and settings: nobody else's, so no capability
+    ("GET", "/api/v1/notifications"), ("GET", "/api/v1/notifications/unread-count"),
+    ("POST", "/api/v1/notifications/read"), ("GET", "/api/v1/notifications/prefs"),
+    ("PUT", "/api/v1/notifications/prefs")}
 
 
 def role_of(client, ws, key):

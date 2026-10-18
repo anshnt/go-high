@@ -3,7 +3,9 @@ import {
   Inbox,
   Kanban,
   LayoutGrid,
+  ListChecks,
   Settings,
+  Sunrise,
   Users,
   Workflow,
   ChartColumn,
@@ -36,9 +38,14 @@ export const CORE: NavItem[] = [
   { id: "contacts", label: "Contacts", path: "/contacts", also: ["/companies", "/deals", "/objects"], icon: Users, gKey: "c", blurb: "People and companies with custom fields, tags, a full timeline and saved views." },
   { id: "pipeline", label: "Pipeline", path: "/pipeline", icon: Kanban, gKey: "p", blurb: "Deals on a board you can drag, with stages, values and clear next steps." },
   { id: "calendar", label: "Calendar", path: "/calendar", icon: CalendarDays, gKey: "k", blurb: "Booking pages, team availability and appointments synced with Google and Microsoft." },
+  { id: "tasks", label: "Tasks", path: "/tasks", icon: ListChecks, gKey: "t", blurb: "To-dos on any record, with due dates, owners, repeats and a board and calendar view." },
   { id: "automations", label: "Automations", path: "/automations", icon: Workflow, gKey: "a", blurb: "Visual workflows that follow up, route leads and update records while you sleep." },
   { id: "reports", label: "Reports", path: "/reports", icon: ChartColumn, gKey: "r", blurb: "Dashboards for leads, revenue and response times, with shareable saved views." },
 ];
+
+// Where signing in lands, above the core items. A demo build (VITE_DEMO=1) has no tasks to show, so it opens on contacts.
+export const MY_DAY_NAV: NavItem = { id: "my-day", label: "My Day", path: "/my-day", icon: Sunrise, gKey: "m", blurb: "Your tasks, appointments and conversations for today in one list." };
+export const HOME = import.meta.env.VITE_DEMO === "1" ? "/contacts" : MY_DAY_NAV.path;
 
 export const APPS_NAV: NavItem = { id: "apps", label: "Apps", path: "/apps", icon: LayoutGrid, blurb: "Switch on only the modules you need." };
 export const SETTINGS_NAV: NavItem = { id: "settings", label: "Settings", path: "/settings", icon: Settings, blurb: "One searchable hub for every setting." };
@@ -75,7 +82,7 @@ export const SETTINGS: SettingsSection[] = [
   { id: "calendars", label: "Calendars", blurb: "Availability, booking rules and connected calendars.", keywords: "booking google outlook" },
   { id: "pipelines", label: "Pipelines", blurb: "Stages, win reasons and deal rules.", keywords: "deals stages" },
   { id: "fields", label: "Custom fields and tags", blurb: "Fields and tags that shape your records.", keywords: "properties labels" },
-  { id: "notifications", label: "Notifications", blurb: "Choose what pings you and where.", keywords: "alerts push email digest" },
+  { id: "notifications", label: "Notifications", blurb: "Choose what pings you and where, and when it stays quiet.", keywords: "alerts push email digest quiet hours" },
   { id: "integrations", label: "Integrations", blurb: "Connect other tools to this workspace.", keywords: "connect oauth zapier" },
   { id: "api", label: "API and webhooks", blurb: "Private tokens, webhooks and event logs.", keywords: "developer token key" },
   { id: "security", label: "Security", blurb: "Two-factor, sessions and IP rules.", keywords: "2fa sessions ip" },

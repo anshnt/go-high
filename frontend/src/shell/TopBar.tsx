@@ -1,10 +1,11 @@
-import { Bell, Keyboard, LogOut, Moon, Rows3, Search, SlidersHorizontal, Sun } from "lucide-react";
+import { Keyboard, LogOut, Moon, Rows3, Search, SlidersHorizontal, Sun } from "lucide-react";
 import { MOD } from "../lib/platform";
 import { density, theme, toggleDensity, toggleTheme } from "../lib/prefs";
 import { signOut, useMe } from "../lib/session";
 import { useStore } from "../lib/store";
-import { Avatar, Button, DropdownMenu, Kbd, MenuItem, MenuLabel, MenuSeparator, Tooltip } from "../ui";
+import { Avatar, Button, DropdownMenu, Kbd, MenuItem, MenuSeparator, Tooltip } from "../ui";
 import { HealthDot } from "./HealthDot";
+import { NotificationBell } from "./NotificationBell";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 type Props = { onSearch: () => void; onCustomize: () => void; onShortcuts: () => void };
@@ -27,17 +28,7 @@ export function TopBar({ onSearch, onCustomize, onShortcuts }: Props) {
       </button>
 
       <div className="sh-topbar-actions">
-        <DropdownMenu
-          label="Notifications"
-          trigger={
-            <Button variant="ghost" size="icon" aria-label="Notifications">
-              <Bell size={18} aria-hidden />
-            </Button>
-          }
-        >
-          <MenuLabel>Notifications</MenuLabel>
-          <div className="sh-notify-empty">You are all caught up.</div>
-        </DropdownMenu>
+        <NotificationBell />
 
         <Tooltip content={dark ? "Switch to light theme" : "Switch to dark theme"}>
           <Button className="sh-theme-btn" variant="ghost" size="icon" aria-label={dark ? "Switch to light theme" : "Switch to dark theme"} onClick={toggleTheme}>

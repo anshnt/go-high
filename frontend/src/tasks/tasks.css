@@ -1,0 +1,722 @@
+/* Tasks, My Day and notification settings. Tokens only: both themes and both densities come from tokens.css. */
+
+/* ---- Controls above the list ---- */
+.tk-page .sh-page-actions {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.tk-views {
+  margin-top: var(--space-3);
+}
+.tk-seg {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.tk-seg button {
+  min-height: calc(var(--control-h-sm) - 4px);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  background: none;
+  color: var(--text-2);
+  font-weight: 500;
+  cursor: pointer;
+}
+.tk-seg button:hover {
+  color: var(--text);
+}
+.tk-seg button[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---- Quick add ---- */
+.tk-quick {
+  margin-bottom: var(--space-5);
+}
+.tk-quick-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-h);
+  padding: 0 var(--space-2) 0 var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text-3);
+}
+.tk-quick-field:focus-within {
+  border-color: var(--accent);
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.tk-quick-field input {
+  flex: 1;
+  min-width: 0;
+  height: calc(var(--control-h) - 2px);
+  border: 0;
+  outline: none;
+  background: none;
+  color: var(--text);
+}
+.tk-quick-due {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.tk-quick-hint {
+  margin-top: var(--space-1);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+.tk-quick-hint[data-error] {
+  color: var(--danger-text);
+}
+
+/* ---- List ---- */
+.tk-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+.tk-group-title,
+.tk-column-title,
+.tk-section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.tk-group-title[data-bucket="overdue"] {
+  color: var(--danger-text);
+}
+.tk-count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  background: var(--hover);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  line-height: 20px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.tk-list,
+.tk-cards {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tk-list {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+.tk-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3);
+  min-height: var(--row-h);
+  padding: var(--space-2) var(--space-3);
+}
+.tk-row + .tk-row {
+  border-top: 1px solid var(--border);
+}
+.tk-row .ui-check-row {
+  margin-top: 2px;
+}
+.tk-row:hover,
+.tk-row[data-active] {
+  background: var(--surface-2);
+}
+.tk-row[data-active] {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.tk-body {
+  min-width: 0;
+}
+.tk-title {
+  display: block;
+  max-width: 100%;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-weight: 500;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.tk-title:hover {
+  color: var(--accent-text);
+}
+[data-done] > .tk-body .tk-title,
+[data-done] .tk-card-top .tk-title {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+.tk-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+}
+.tk-meta:empty {
+  display: none;
+}
+.tk-fact {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--text-2);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.tk-fact svg {
+  flex: none;
+}
+.tk-fact-text {
+  min-width: 0;
+  max-width: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tk-fact[data-bucket="overdue"] {
+  color: var(--danger-text);
+  font-weight: 600;
+}
+.tk-fact[data-bucket="today"] {
+  color: var(--accent-text);
+  font-weight: 600;
+}
+.tk-fact[data-bucket="waiting"] {
+  color: var(--warning-text);
+}
+.tk-fact-link {
+  color: var(--accent-text);
+}
+.tk-fact-link:hover .tk-fact-text,
+.tk-fact-link:hover {
+  text-decoration: underline;
+}
+.tk-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.tk-chips:empty {
+  display: none;
+}
+.tk-assignee {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.tk-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.tk-muted {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.tk-error {
+  margin-top: var(--space-3);
+  color: var(--danger-text);
+  font-size: var(--fs-sm);
+}
+.tk-section-title {
+  margin-bottom: var(--space-3);
+  font-size: var(--fs-md);
+}
+
+/* ---- Board ---- */
+.tk-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(260px, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+  overflow-x: auto;
+  padding-bottom: var(--space-2);
+  scroll-snap-type: x proximity;
+}
+.tk-column {
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+  scroll-snap-align: start;
+}
+.tk-column[data-over] {
+  border-color: var(--accent);
+  outline: 2px dashed var(--accent);
+  outline-offset: -4px;
+}
+.tk-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 48px;
+}
+.tk-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.tk-card[draggable="true"] {
+  cursor: grab;
+}
+.tk-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.tk-card-top .ui-check-row {
+  margin-top: 2px;
+}
+.tk-column-empty {
+  padding: var(--space-3);
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+/* ---- Calendar ---- */
+.tk-cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.tk-cal-head h2 {
+  font-size: var(--fs-lg);
+}
+.tk-cal-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.tk-cal-grid {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+.tk-cal-weekdays,
+.tk-cal-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+.tk-cal-weekdays {
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.tk-cal-weekdays span {
+  padding: var(--space-2);
+  text-align: center;
+}
+.tk-cal-week + .tk-cal-week {
+  border-top: 1px solid var(--border);
+}
+.tk-cal-day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  min-height: 104px;
+  padding: var(--space-1);
+}
+.tk-cal-day + .tk-cal-day {
+  border-left: 1px solid var(--border);
+}
+.tk-cal-day[data-outside] {
+  background: var(--surface-2);
+  color: var(--text-3);
+}
+.tk-cal-day[data-selected] {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.tk-cal-num {
+  align-self: flex-start;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: none;
+  color: inherit;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.tk-cal-num:hover {
+  background: var(--hover);
+}
+.tk-cal-day[data-today] .tk-cal-num {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
+}
+.tk-cal-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tk-cal-task {
+  display: block;
+  width: 100%;
+  padding: 1px 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: var(--fs-xs);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.tk-cal-task[data-done] {
+  background: var(--hover);
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+.tk-cal-time {
+  margin-right: 4px;
+  font-weight: 700;
+}
+.tk-cal-more {
+  align-self: flex-start;
+  padding: 0 6px;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+.tk-cal-dots {
+  display: none;
+}
+.tk-cal-day-panel {
+  margin-top: var(--space-5);
+}
+.tk-cal-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+.tk-cal-day-head h2 {
+  font-size: var(--fs-md);
+}
+
+/* ---- Task sheet ---- */
+.tk-form,
+.tk-sheet-loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.tk-grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.tk-grid2 > .tk-muted {
+  grid-column: 1 / -1;
+}
+.tk-waiting {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  background: var(--warning-soft);
+  color: var(--warning-text);
+  font-size: var(--fs-sm);
+}
+.tk-waiting svg {
+  flex: none;
+  margin-top: 2px;
+}
+.tk-delete {
+  margin-right: auto;
+}
+.tk-repeat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.tk-repeat-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.tk-custom {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.tk-custom-row {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.tk-custom-row > label {
+  align-self: center;
+  color: var(--text-2);
+}
+.tk-custom-row .ui-field {
+  flex: 1 1 120px;
+}
+.tk-custom-row .tk-num,
+.tk-num {
+  width: 5rem;
+}
+.tk-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.tk-wd {
+  min-width: 44px;
+  min-height: var(--control-h-sm);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.tk-wd[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+.tk-linked {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-h);
+}
+.tk-linked-kind {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  text-transform: capitalize;
+}
+.tk-found {
+  margin: 0;
+  padding: var(--space-1);
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.tk-found button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--control-h-sm);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.tk-found button:hover {
+  background: var(--hover);
+}
+
+/* ---- My Day ---- */
+.tk-hello {
+  margin-bottom: var(--space-5);
+}
+.tk-hello h2 {
+  font-size: var(--fs-2xl);
+}
+.tk-hello p {
+  min-height: 1.45em;
+  margin-top: 2px;
+  color: var(--text-2);
+}
+.tk-day {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+.tk-day-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.tk-soon {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--text-2);
+}
+.tk-soon h2 {
+  color: var(--text);
+  font-size: var(--fs-md);
+}
+.tk-soon p {
+  margin-top: var(--space-1);
+  font-size: var(--fs-sm);
+}
+.tk-soon-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius);
+  background: var(--hover);
+  color: var(--text-2);
+}
+@media (min-width: 1024px) {
+  .tk-day {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+}
+
+/* ---- Notification settings ---- */
+.tk-prefs {
+  margin: var(--space-3) 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.tk-pref {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-6);
+  padding: var(--space-4);
+}
+.tk-pref + .tk-pref {
+  border-top: 1px solid var(--border);
+}
+.tk-pref-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-5);
+}
+.tk-pref-controls .ui-field {
+  width: 250px;
+  max-width: 100%;
+}
+.tk-quiet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 420px;
+}
+
+/* ---- Phone ---- */
+@media (max-width: 767px) {
+  .tk-page .sh-page-actions {
+    width: 100%;
+  }
+  .tk-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .tk-chips {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+  .tk-fact-text {
+    max-width: 22ch;
+  }
+  .tk-board {
+    grid-template-columns: repeat(3, 82%);
+  }
+  .tk-cal-day {
+    min-height: 56px;
+    align-items: center;
+  }
+  .tk-cal-num {
+    align-self: center;
+  }
+  .tk-cal-tasks,
+  .tk-cal-more {
+    display: none;
+  }
+  .tk-cal-dots {
+    display: inline-block;
+    min-width: 18px;
+    height: 18px;
+    border-radius: var(--radius-full);
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+  }
+  .tk-assignee-name {
+    display: none;
+  }
+}

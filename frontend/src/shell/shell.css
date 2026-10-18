@@ -199,8 +199,95 @@
   gap: var(--space-1);
   margin-left: auto;
 }
+.sh-bell {
+  position: relative;
+}
+.sh-bell-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-full);
+  background: var(--danger-solid);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.ui-menu.sh-notify {
+  width: min(380px, calc(100vw - var(--space-4)));
+  max-height: min(560px, 80dvh);
+  overflow: auto;
+  padding: 0;
+}
+.sh-notify-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-1) var(--space-1);
+}
+.sh-notify-head .ui-menu-label {
+  padding: 0 var(--space-2);
+}
+.sh-notify-all {
+  flex: none;
+  width: auto;
+  gap: var(--space-1);
+  color: var(--accent-text);
+  font-size: var(--fs-sm);
+}
+.sh-notify-list {
+  display: flex;
+  flex-direction: column;
+  padding: 0 var(--space-1);
+}
+.ui-item.sh-notify-item {
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  height: auto;
+  white-space: normal;
+}
+.sh-notify-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: transparent;
+}
+.sh-notify-item[data-unread] .sh-notify-dot {
+  background: var(--accent);
+}
+.sh-notify-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+.sh-notify-title {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.sh-notify-item[data-unread] .sh-notify-title {
+  font-weight: 600;
+}
+.sh-notify-body {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+.sh-notify-time {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
 .sh-notify-empty {
-  padding: var(--space-1) var(--space-3) var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-4);
   color: var(--text-2);
   font-size: var(--fs-sm);
 }

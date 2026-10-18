@@ -50,6 +50,7 @@ export type Http = {
   get: <T>(path: string) => Promise<T>;
   post: <T = void>(path: string, body?: unknown) => Promise<T>;
   patch: <T>(path: string, body: unknown) => Promise<T>;
+  put: <T>(path: string, body: unknown) => Promise<T>;
   del: (path: string) => Promise<void>;
 };
 
@@ -57,6 +58,7 @@ export const httpOf = (send: Send): Http => ({
   get: (path) => send("GET", path),
   post: (path, body) => send("POST", path, body),
   patch: (path, body) => send("PATCH", path, body),
+  put: (path, body) => send("PUT", path, body),
   del: (path) => send("DELETE", path),
 });
 
