@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "consent.changed",
+  "description": "A contact's consent for one channel kind changed: STOP, START, an unsubscribe or complaint, or do not disturb switched by staff (status `none` when cleared). Subject: the contact.",
+  "type": "object",
+  "properties": {
+    "contact_id": {"type": "string", "format": "uuid"},
+    "kind": {"type": "string"},
+    "status": {"type": "string"},
+    "source": {"type": "string"},
+    "reason": {"type": ["string", "null"]}
+  },
+  "required": ["contact_id", "kind", "status", "source", "reason"],
+  "additionalProperties": false
+}

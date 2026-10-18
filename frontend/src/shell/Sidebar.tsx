@@ -1,6 +1,6 @@
 import { NavLink, useLocation } from "react-router";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { APPS_NAV, inArea, MY_DAY_NAV, SETTINGS_NAV, sidebarPrefs, visibleCore, type NavItem } from "../lib/nav";
+import { APPS_NAV, appsOn, enabledApps, inArea, MY_DAY_NAV, SETTINGS_NAV, sidebarPrefs, visibleCore, type NavItem } from "../lib/nav";
 import { sidebarCollapsed } from "../lib/prefs";
 import { useStore } from "../lib/store";
 import { Button, Tooltip } from "../ui";
@@ -19,7 +19,7 @@ function Item({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
 
 export function Sidebar() {
   const collapsed = useStore(sidebarCollapsed);
-  const items = visibleCore(useStore(sidebarPrefs));
+  const items = [...visibleCore(useStore(sidebarPrefs)), ...enabledApps(useStore(appsOn))];
   return (
     <aside className="sh-sidebar" data-collapsed={collapsed || undefined}>
       <div className="sh-brand">

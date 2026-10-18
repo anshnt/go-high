@@ -57,12 +57,22 @@ def post(url: str, *, json: object = None, form: list[tuple[str, str]] | None = 
         ctype, body = multipart(form or [], files)
     else:
         ctype, body = "application/x-www-form-urlencoded", urlencode(form or []).encode()
+    return call("POST", url, body, {"Content-Type": ctype, **(headers or {})}, retry_codes, timeout)
+
+
+def get(url: str, *, headers: dict[str, str] | None = None, timeout: float = TIMEOUT) -> dict:
+    """GETs and returns the JSON answer, with the same errors as `post` (for connection checks)."""
+    return call("GET", url, None, headers or {}, frozenset(), timeout)
+
+
+def call(method: str, url: str, body: bytes | None, headers: dict[str, str], retry_codes: frozenset[str],
+         timeout: float) -> dict:
     u = urlsplit(url)
     connection = http.client.HTTPSConnection if u.scheme == "https" else http.client.HTTPConnection
     conn = connection(u.hostname, u.port, timeout=timeout)
     try:
-        out = {"Content-Type": ctype, "Accept": "application/json", "User-Agent": "go-high/1", **(headers or {})}
-        conn.request("POST", u.path + (f"?{u.query}" if u.query else ""), body, out)
+        out = {"Accept": "application/json", "User-Agent": "go-high/1", **headers}
+        conn.request(method, u.path + (f"?{u.query}" if u.query else ""), body, out)
         response = conn.getresponse()
         status, raw = response.status, response.read(MAX_RESPONSE)
     except (OSError, http.client.HTTPException) as e:  # TimeoutError and ConnectionError are OSErrors

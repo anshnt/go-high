@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "calendar.created",
+  "description": "A calendar was created. Subject: the calendar.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"},
+    "slug": {"type": "string"},
+    "kind": {"type": "string", "enum": ["personal", "round_robin", "collective", "class", "service"]},
+    "status": {"type": "string", "enum": ["active", "paused", "archived"]}
+  },
+  "required": ["id", "name", "slug", "kind", "status"],
+  "additionalProperties": false
+}

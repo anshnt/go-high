@@ -1,4 +1,6 @@
 """go-high HTTP API. Serves /api/* and, in production, the built web app."""
+import asyncio
+import contextlib
 import logging
 import time
 import uuid
@@ -11,7 +13,14 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from . import api, audit, auth, config, roles, simulator, teams, webhooks, workspaces
+from .calendars import availability, bookings, public, reminders  # noqa: F401  (reminders registers its job)
+from .calendars import routes as calendars
 from .db import get_db
+from .forms import admin as forms
+from .forms import analytics as form_analytics
+from .forms import public as form_public
+from .forms import responses as form_responses
+from .inbox import channels, chat, consent, conversations, inbound, outbound, stream
 from .logs import setup_logging, trace_id
 from .notifications import routes as notifications
 from .records import associations, board, forecast, objects, pipelines, tags, timeline, views
@@ -40,7 +49,13 @@ async def lifespan(_: FastAPI):
     # ponytail: migrations on startup; run `alembic upgrade head` as a release step
     # once there is more than one API replica.
     migrate()
-    yield
+    listener = asyncio.create_task(stream.listen())  # the process's one LISTEN connection (realtime)
+    try:
+        yield
+    finally:
+        listener.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await listener
 
 
 app = FastAPI(title="go-high API", version=config.VERSION, lifespan=lifespan, docs_url="/api/docs",
@@ -51,14 +66,20 @@ api.install(app)
 @app.middleware("http")
 async def csrf(request: Request, call_next):
     """Cookie-authenticated writes from a browser page on another origin are refused. Requests without an
-    Origin header (curl, server to server) carry no ambient browser credentials worth defending."""
+    Origin header (curl, server to server) carry no ambient browser credentials worth defending. The public chat
+    endpoints take no cookie, so they are exempt (a widget on a sibling domain may still be sent one)."""
     origin = request.headers.get("origin")
     if (request.method in UNSAFE and COOKIE in request.cookies and origin is not None
-            and origin.rstrip("/") not in config.ALLOWED_ORIGINS):
+            and origin.rstrip("/") not in config.ALLOWED_ORIGINS and not request.url.path.startswith("/api/public/")):
         if api.is_v1(request):
             return api.error_response(403, "forbidden", "Origin not allowed")
         return JSONResponse({"detail": "Origin not allowed"}, status_code=403)
     return await call_next(request)
+
+
+app.middleware("http")(chat.cors)
+app.middleware("http")(form_public.cors)
+app.middleware("http")(public.cors)
 
 
 @app.middleware("http")
@@ -90,8 +111,12 @@ app.include_router(auth.router)
 app.include_router(workspaces.router)
 app.include_router(webhooks.router)
 for module in (objects, records, associations, tags, views, timeline, pipelines, board, forecast, roles, teams,
-               simulator, audit, tasks, day, notifications):
+               simulator, audit, tasks, day, notifications, channels, conversations, outbound,
+               consent, inbound, stream, chat,
+               forms, form_responses, form_analytics, form_public, calendars, availability, bookings, public):
     app.include_router(module.router)
+app.include_router(form_public.pages)  # /f/{key} and /embed.js, before the catch-all below
+app.include_router(public.pages)
 
 
 @app.get("/{path:path}", include_in_schema=False)

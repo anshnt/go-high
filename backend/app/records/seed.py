@@ -26,6 +26,8 @@ def choices(*items: tuple[str, str, str]) -> dict:
     return {"choices": [{"id": id_, "label": label, "color": color} for id_, label, color in items]}
 
 
+SOURCES = (("manual", "Manual"), ("import", "Import"), ("form", "Form"), ("webchat", "Webchat"), ("sms", "SMS"),
+           ("email", "Email"), ("whatsapp", "WhatsApp"), ("api", "API"))
 # object key: (singular, plural, icon, primary fields, [(field key, label, type, options, rules)])
 SYSTEM_OBJECTS = {
     "contact": ("Contact", "Contacts", "user", ["first_name", "last_name"], [
@@ -37,6 +39,9 @@ SYSTEM_OBJECTS = {
             ("lead", "Lead", "blue"), ("qualified", "Qualified", "amber"), ("customer", "Customer", "green"),
             ("churned", "Churned", "red"), ("other", "Other", "gray")), {}),
         ("company", "Company", "record", {"object": "company"}, {}),
+        ("source", "Source", "select", choices(  # where the contact came from; the inbox sets it on a new contact
+            *((i, label, "gray") for i, label in SOURCES)), {}),
+        ("timezone", "Time zone", "text", {}, {"timezone": True}),  # an IANA name; quiet hours use it
     ]),
     "company": ("Company", "Companies", "building", ["name"], [
         ("name", "Name", "text", {}, {"required": True}),

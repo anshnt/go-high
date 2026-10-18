@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "form.restored",
+  "description": "A form was brought back from the trash. Subject: the form.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"}
+  },
+  "required": ["id", "name"],
+  "additionalProperties": false
+}

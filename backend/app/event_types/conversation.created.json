@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "conversation.created",
+  "description": "A contact's conversation was started. Subject: the conversation.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "contact_id": {"type": "string", "format": "uuid"},
+    "status": {"type": "string"},
+    "assignee_id": {"type": ["string", "null"], "format": "uuid"},
+    "team_id": {"type": ["string", "null"], "format": "uuid"},
+    "snooze_until": {"type": ["string", "null"], "format": "date-time"}
+  },
+  "required": ["id", "contact_id", "status", "assignee_id", "team_id", "snooze_until"],
+  "additionalProperties": false
+}

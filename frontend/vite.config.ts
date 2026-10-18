@@ -8,5 +8,6 @@ export default defineConfig({
   plugins: [react()],
   // The public demo is served from GitHub Pages under /go-high/.
   base: process.env.VITE_DEMO === "1" ? "/go-high/" : "/",
-  server: { port: 5173, proxy: { "/api": api } },
+  // /f/KEY (the hosted form page) and /embed.js (the form runtime, from the API's built web app) also come from the API.
+  server: { port: 5173, proxy: { "/api": api, "^/f/.*": api, "/embed.js": api } },
 });

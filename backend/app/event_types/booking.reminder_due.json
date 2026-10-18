@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "booking.reminder_due",
+  "description": "A reminder of a booking came due, `offset_minutes` before its start. Recorded once per booking and offset; whatever sends reminders (the inbox, a workflow) consumes it. Subject: the booking.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "calendar_id": {"type": "string", "format": "uuid"},
+    "calendar": {"type": "string"},
+    "host_user_id": {"type": ["string", "null"], "format": "uuid"},
+    "host_ids": {"type": "array", "items": {"type": "string", "format": "uuid"}},
+    "contact_id": {"type": ["string", "null"], "format": "uuid"},
+    "starts_at": {"type": "string", "format": "date-time"},
+    "ends_at": {"type": "string", "format": "date-time"},
+    "time_zone": {"type": "string"},
+    "status": {"type": "string", "enum": ["booked", "confirmed", "cancelled", "rescheduled", "no_show", "showed"]},
+    "source": {"type": "string"},
+    "offset_minutes": {"type": "integer"}
+  },
+  "required": ["id", "calendar_id", "calendar", "host_user_id", "host_ids", "contact_id", "starts_at", "ends_at", "time_zone", "status", "source", "offset_minutes"],
+  "additionalProperties": false
+}

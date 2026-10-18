@@ -4,8 +4,10 @@ own settings. Operators say which filter operations a type supports (see filters
 import math
 import re
 import uuid
+import zoneinfo
 from collections.abc import Callable
 from datetime import UTC, date, datetime
+from functools import lru_cache
 from typing import NamedTuple
 from urllib.parse import urlsplit
 
@@ -52,6 +54,22 @@ def text_field(cap: int, fix: Callable[[str], str] = str.strip) -> Callable:
             raise ValueError(f"must be at least {field.rules['min_length']} characters")
         return value
     return check
+
+
+@lru_cache
+def zone_names() -> dict[str, str]:
+    return {z.lower(): z for z in zoneinfo.available_timezones()}
+
+
+def plain_text(field, value):
+    """Text; with the rule `timezone`, an IANA zone name such as America/New_York, stored in its canonical spelling."""
+    value = text_field(TEXT_CAP)(field, value)
+    if field.rules.get("timezone"):
+        zone = zone_names().get(value.lower())
+        if zone is None:
+            raise ValueError("is not a time zone (an IANA name like America/New_York)")
+        return zone
+    return value
 
 
 def email(field, value):
@@ -185,7 +203,7 @@ class Kind(NamedTuple):
 # A `stage` value is the id of a stage (module 10); that it exists in this workspace is checked by the write path, which
 # has the database, like the people and records a `user` or `record` value names.
 TYPES: dict[str, Kind] = {
-    "text": Kind(text_field(TEXT_CAP), TEXTY, frozenset({"min_length", "max_length"})),
+    "text": Kind(plain_text, TEXTY, frozenset({"min_length", "max_length", "timezone"})),
     "long_text": Kind(text_field(LONG_TEXT_CAP), TEXTY, frozenset({"min_length", "max_length"})),
     "number": Kind(number, NUMBERY, frozenset({"min", "max", "integer"})),
     "money": Kind(money, NUMBERY, frozenset({"min", "max"}), frozenset({"currency"})),
@@ -274,8 +292,9 @@ def check_rules(type_: str, rules) -> dict:
     if unknown := sorted(set(rules) - TYPES[type_].rules - {"required"}):
         raise ValueError(f"{type_} fields have no rule {unknown[0]!r}")
     for name, value in rules.items():
-        if name in ("required", "integer") and not isinstance(value, bool):
+        if name in ("required", "integer", "timezone") and not isinstance(value, bool):
             raise ValueError(f"{name} must be true or false")
-        if name not in ("required", "integer") and (isinstance(value, bool) or not isinstance(value, int | float)):
+        if name not in ("required", "integer", "timezone") and (
+                isinstance(value, bool) or not isinstance(value, int | float)):
             raise ValueError(f"{name} must be a number")
     return dict(rules)

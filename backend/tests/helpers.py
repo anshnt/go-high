@@ -103,11 +103,15 @@ def context(conn, **ctx) -> None:
         conn.execute(text("SELECT set_config(:k, :v, true)"), {"k": f"app.{key}", "v": str(ctx.get(key, ""))})
 
 
-def v1_routes() -> list[tuple[str, str, object]]:
-    """(method, path, route) of every /api/v1 route of the app."""
+STREAMS = {"/api/v1/stream"}  # Server-Sent Events: a route that never ends, which a test client cannot call
+
+
+def v1_routes(streams: bool = True) -> list[tuple[str, str, object]]:
+    """(method, path, route) of every /api/v1 route of the app. A test that calls the routes passes `streams=False`:
+    the stream is read against a live server in test_inbox_stream."""
     from app.main import app
     return [(m, r.path, r) for r in iter_route_contexts(app.routes) if (r.path or "").startswith("/api/v1")
-            for m in sorted(r.methods - {"HEAD", "OPTIONS"})]
+            and (streams or r.path not in STREAMS) for m in sorted(r.methods - {"HEAD", "OPTIONS"})]
 
 
 def declared(dependant) -> list[str]:
@@ -211,7 +215,7 @@ class Receiver:
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
                 body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
-                outer.requests.append({"path": self.path, "body": body,
+                outer.requests.append({"path": self.path, "body": body, "method": self.command,
                                        "headers": {k.lower(): v for k, v in self.headers.items()}})
                 try:
                     if outer.trickle:
@@ -231,6 +235,8 @@ class Receiver:
                     self.wfile.write(payload)
                 except OSError:
                     pass  # the client gave up
+
+            do_GET = do_POST  # connection checks read; the same replies apply
 
             def log_message(self, *args):
                 pass

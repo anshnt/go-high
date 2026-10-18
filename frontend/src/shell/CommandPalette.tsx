@@ -2,7 +2,7 @@ import * as RDialog from "@radix-ui/react-dialog";
 import { ArrowRightLeft, Keyboard, LogOut, Moon, Rows3, Search, SlidersHorizontal, Sun, SquareDashed, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import { APPS_NAV, CORE, MY_DAY_NAV, SETTINGS, SETTINGS_NAV } from "../lib/nav";
+import { APPS_NAV, CORE, MY_DAY_NAV, SETTINGS, SETTINGS_NAV, appsOn, enabledApps } from "../lib/nav";
 import { fuzzy, rank } from "../lib/fuzzy";
 import { workspaceId } from "../lib/api";
 import { density, theme, toggleDensity, toggleTheme } from "../lib/prefs";
@@ -21,6 +21,8 @@ export function CommandPalette({ open, onOpenChange, onCustomize, onShortcuts }:
   const compact = useStore(density) === "compact";
   const me = useMe();
   const currentWorkspace = useStore(workspaceId);
+  const on = useStore(appsOn);
+  const apps = useMemo(() => enabledApps(on), [on]);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
@@ -28,7 +30,7 @@ export function CommandPalette({ open, onOpenChange, onCustomize, onShortcuts }:
   const commands = useMemo<Cmd[]>(() => {
     const go = (path: string) => () => navigate(path);
     return [
-      ...[MY_DAY_NAV, ...CORE, APPS_NAV, SETTINGS_NAV].map((i) => ({
+      ...[MY_DAY_NAV, ...CORE, ...apps, APPS_NAV, SETTINGS_NAV].map((i) => ({
         id: `go-${i.id}`, group: "Go to", label: i.label, icon: i.icon, run: go(i.path), keys: i.gKey ? ["G", i.gKey.toUpperCase()] : undefined,
       })),
       { id: "go-ui", group: "Go to", label: "UI gallery", keywords: "components design system dev", icon: SquareDashed, run: go("/dev/ui") },
@@ -42,7 +44,7 @@ export function CommandPalette({ open, onOpenChange, onCustomize, onShortcuts }:
         .map((w) => ({ id: `ws-${w.id}`, group: "Actions", label: `Switch workspace: ${w.name}`, keywords: "change team account", icon: ArrowRightLeft, run: () => selectWorkspace(w.id) })),
       { id: "act-signout", group: "Actions", label: "Sign out", keywords: "log out logout exit", icon: LogOut, run: () => void signOut() },
     ];
-  }, [navigate, dark, compact, me, currentWorkspace, onCustomize, onShortcuts]);
+  }, [navigate, dark, compact, me, currentWorkspace, apps, onCustomize, onShortcuts]);
 
   const results = useMemo(() => {
     const scored = rank(commands, (c) => {

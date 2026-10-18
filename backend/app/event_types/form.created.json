@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "form.created",
+  "description": "A form, survey or quiz was created. Subject: the form.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"},
+    "kind": {"type": "string"},
+    "slug": {"type": "string"},
+    "status": {"type": "string"}
+  },
+  "required": ["id", "name", "kind", "slug", "status"],
+  "additionalProperties": false
+}

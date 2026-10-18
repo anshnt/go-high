@@ -36,8 +36,21 @@ CATALOG = [
     ("Tasks", "tasks.read", "See tasks and My Day"),
     ("Tasks", "tasks.write", "Create, change, finish and assign tasks"),
     ("Tasks", "tasks.delete", "Delete tasks"),
+    ("Forms", "forms.read", "See forms, their versions and how they perform"),
+    ("Forms", "forms.write", "Create and edit forms and save drafts"),
+    ("Forms", "forms.publish", "Publish, close and reopen forms, and change the settings of a live one"),
+    ("Forms", "forms.delete", "Move forms to the trash and restore them"),
+    ("Forms", "responses.read", "See the responses to forms"),
+    ("Forms", "responses.export", "Export responses as CSV"),
+    ("Calendars", "calendars.read", "See calendars, availability and bookings"),
+    ("Calendars", "calendars.write", "Cancel, move and mark bookings, and keep your own availability"),
+    ("Calendars", "calendars.manage", "Create and change calendars, hosts, resources and other people's availability"),
     ("Workflows", "workflows.publish", "Publish and turn off workflows"),
     ("Messaging", "messages.send", "Send messages to contacts"),
+    ("Messaging", "conversations.read", "See conversations and their messages, and the channels to send on"),
+    ("Messaging", "conversations.write", "Assign, snooze, close and reopen conversations, and add internal notes"),
+    ("Messaging", "consents.manage", "Switch do not disturb on and off for a contact"),
+    ("Messaging", "channels.manage", "Add, change, disable and test messaging channels and their credentials"),
     ("Billing", "billing.manage", "Change the plan, the wallet and payment methods"),
     ("Developer", "webhooks.manage", "Manage webhooks and replay their deliveries"),
     ("People", "members.read", "See members, teams and roles"),
@@ -259,6 +272,8 @@ def redact_event(ctx: Ctx, obj, data: dict, type_: str = "") -> dict | None:
     if type_ in STAGE_EVENTS and "stage" in hide:
         return None
     out = {k: v for k, v in data.items() if k not in hide}
+    if type_ == "form.submitted":  # its answers are keyed by question, not by field: a role that hides fields gets none
+        out["answers"] = {}
     for key in ("values", "changes"):
         if isinstance(out.get(key), dict):
             out[key] = {k: v for k, v in out[key].items() if k not in hide}

@@ -84,6 +84,121 @@ Row level security separates tenants; what a user may do inside a workspace is `
 - Request handlers (`gohigh_app`) can append to the event log and the job queue but cannot read the queue or
   change or delete events; only the worker (owner role) records delivery attempts.
 
+## Inbound webhooks (messaging)
+
+- `/api/hooks/<provider>/<channel id>` is public, so nothing but the provider's signature lets a request in. The
+  adapter verifies it on the raw body before the body is parsed, with a constant-time comparison: Twilio
+  `X-Twilio-Signature` (HMAC-SHA1 over the URL as configured in the console and the parameters), Telnyx Ed25519 over
+  `timestamp|body`, Mailgun HMAC-SHA256 over `timestamp + token`, Meta `X-Hub-Signature-256` (HMAC-SHA256). Where the
+  provider sends a timestamp, one more than 5 minutes off is refused. Unsigned, wrongly signed, stale or tampered
+  requests are a 401 and a log line that names the channel and carries neither the body nor any secret. An SMTP channel
+  has no webhook, so every call to it is refused.
+- The channel is found by its unguessable id in the system scope (a read-only policy on `channels`); the request moves
+  into the channel's workspace only after the signature verified. An unknown, disabled or other provider's channel
+  is a 404. Meta's handshake echoes the challenge only when the verify token matches and the challenge is a plain token.
+- A replayed webhook (Mailgun's token is not remembered) changes nothing: a message is unique per channel and provider
+  message id, and a delivery report only moves a message forward.
+- STOP, START and HELP are handled before the inbox. An opt-out (STOP, an email unsubscribe or complaint) blocks sends on
+  that channel kind until the contact's own START, and staff cannot clear it. Consent is checked when a reply is queued
+  and again when the worker sends it.
+
+## Secrets at rest
+
+- A channel's API keys and passwords are encrypted with AES-256-GCM under a key derived (HKDF-SHA256) from `SECRET_KEY`,
+  with the row and workspace as associated data, so a ciphertext copied to another row does not open. They are never in
+  a channel's `config`, which refuses settings it does not know.
+- Request handlers (`gohigh_app`) can write the `secrets` table but have no `SELECT` on its ciphertext column, so a bug in
+  a route cannot return one. Only the worker and the code that verifies a webhook, sends or tests a channel decrypt, on
+  the owner role. No API response, event, job payload or log line carries a secret; the API says only whether a channel
+  has any.
+- Set `SECRET_KEY` in production, to the same value on every replica and the worker. Changing it makes stored secrets
+  unreadable until they are re-encrypted (there is no rotation job yet). The signing secrets of webhook endpoints
+  (above) are still stored readable.
+
+## Webchat and realtime
+
+- The public chat endpoints take no cookie. A visitor is a token signed with `SECRET_KEY` for one widget key and 30 days;
+  it reads only its own conversation and never internal notes. Any origin may call them because there is no ambient
+  credential to abuse. Requests are limited per minute per IP and per widget key in Postgres (refused calls from one IP do
+  not use up the widget's budget), and a hidden field that only a bot fills in is dropped silently. The widget renders
+  text with `textContent` only. A widget key is public by design: it opens a chat, nothing else.
+- `GET /api/v1/stream` carries ids only and no content, so permissions apply when the client refetches. A stream ends
+  after 30 minutes, which is when a revoked session stops it.
+
+## Public forms
+
+- The public endpoints (`/api/public/forms/...`, the hosted page `/f/{key}` and `/embed.js`) need no session. A request
+  starts in a narrow system scope that can only read `forms` (the one policy that scope has; every other table shows it
+  nothing), finds the form by its public key (a random URL-safe string, never the internal id) and then moves to that
+  form's workspace, so every later query is confined by row level security like any other. A guessed id, another
+  workspace's key, a response id of another form or a resume token used on another form is a 404; a draft or trashed
+  form is a 404 and a closed one a 410. Every public answer is `Cache-Control: no-store`.
+- CORS: any origin may call these endpoints (`Access-Control-Allow-Origin: *`) and `Access-Control-Allow-Credentials` is
+  never sent; the runtime calls with `credentials: "omit"`. The admin API (`/api/v1/forms`) is not opened up.
+- Spam protection is on by default. A filled honeypot field is told it worked and nothing is stored. A response completed
+  faster than `FORM_MIN_FILL_SECONDS` (3) after the page was opened is refused (429); the time comes from a signed
+  token (HMAC under `SECRET_KEY`, bound to the form, valid for 7 days), so it cannot be forged or moved to another
+  form, though one token may be reused inside its week: the rate limit bounds that. Requests are limited per form,
+  visitor and minute by a Postgres counter, and every form has a body size limit that is enforced while the body streams
+  in (413). The visitor is a keyed hash of the client address, so counters and consent evidence never hold a raw address;
+  behind a proxy set `FORWARDED_ALLOW_IPS` or every visitor looks like the proxy.
+- A response in progress is addressed by its resume token: random, stored only as a SHA-256, returned once when the
+  response starts. Whoever holds the link can read the answers saved so far and complete that response, so treat resume
+  links as secrets. A completed response can no longer be resumed or changed, and completing it twice does nothing.
+- A public form writes to contacts, so it is a way for anyone to change data. It can only write the contact fields its
+  questions map to (checked when a version is saved and validated by the record engine's own types), an empty answer
+  never clears a field, and `settings.contact.existing` defaults to `fill_empty`, which adds to a known contact without
+  overwriting anything. Someone who knows a contact's email can still submit a form and, in the explicit `update` mode,
+  change those mapped fields; choose `update` only for forms people fill in about themselves.
+  `settings.double_submission = block` stops one contact from answering twice. The contact is written as the
+  organization's Automation role, so what a form may do to contacts is what that role may do, and removing
+  `contacts.write` from it stops forms from writing contacts.
+- Forms are governed by `forms.read`, `forms.write`, `forms.publish`, `forms.delete`, `responses.read` and
+  `responses.export`. Changing the status of a form or the settings of a live one needs `forms.publish`, so a Member
+  cannot redirect or reopen a live form. Responses and the timeline show a role only what its record permissions allow of
+  the contact (hidden fields, out of scope contacts).
+- Quiz right answers, points and the contact mapping are not in the public definition, and scores are computed on the
+  server. The runtime builds its page from text nodes (nothing in a definition or an answer is ever markup), refuses a
+  redirect that is not http or https (the server refuses to save one too) and the hosted page carries a strict
+  Content-Security-Policy.
+- Consent boxes are stored as evidence of opt-in (the words shown, when, the form and the visitor hash); the hash is not
+  put in events or sent to webhooks.
+- CSV export neutralizes spreadsheet formula injection: any text cell or header that starts with `=`, `+`, `-`, `@`, a
+  tab, a carriage return or a line feed gets a leading apostrophe (numbers are written as they are), so a response
+  cannot run a formula when someone opens the file.
+- Form versions are immutable: `gohigh_app` can insert but not update or delete them, nor delete forms, responses or
+  views (a form goes to the trash); only the per-minute rate counters are deleted by requests.
+
+## Public booking endpoints
+
+`/api/public/calendars`, `/api/public/bookings` and `/api/public/feeds` need no sign in (calendars and booking, module
+16), so they are kept narrow.
+
+- The workspace comes from the link and nothing else: the handler resolves the workspace handle in the pre-auth scope,
+  then narrows the session to that workspace, so row level security confines every later query. A visitor can reach
+  only what a link names: a calendar's public settings (its name, description, lengths, locations, questions, host
+  names for personal, collective and class calendars) and its open times.
+- A booking's link carries a 256 bit secret after the workspace id, and a private feed link carries one too. Only their
+  SHA-256 is stored, so a database read does not give out working links; a feed link is shown once and a new one
+  replaces it. Looking a link up needs the secret: a token with the right workspace and a wrong secret, or another
+  workspace's id, is a 404, the same as no booking.
+- Booking requests are held back by a honeypot field (a filled one gets a believable 201 and stores nothing) and a rate
+  limit per calendar and visitor, with a ceiling per calendar. The visitor is a SHA-256 of their address keyed with
+  `SECRET_KEY`, so the table that counts attempts holds no addresses. Refused and failed attempts count too.
+- Writes by a visitor run as the workspace's Automation role, with no user, so the contact a booking makes or fills in
+  is bound by that role's permissions and appears in the audit log as written by the system. An existing contact is
+  filled in where a field is blank and never overwritten.
+- Two bookings for one time are serialized by row locks taken before anyone reads who is free, and a test books the same
+  time from eight threads at once. Cancel and reschedule links stop working inside the calendar's cutoff and after the
+  meeting.
+- The routes answer any origin (`Access-Control-Allow-Origin: *`) because the booking widget is embedded in other
+  people's sites without an iframe. They set no cookies and read none, so the open origin exposes nothing a link does
+  not, and responses are `Cache-Control: no-store`. Booking events carry ids, times and the calendar name, never the
+  invitee's name, email or phone, which belong to the contact.
+- Inside the app a booking shows the invitee's name, email and phone to anyone with `calendars.read`, as the person
+  who made it gave them for that meeting; the link to the contact record is shown only when the caller's record scope
+  lets them see that contact, and hidden fields stay hidden there.
+
 ## Repository
 
 - `main` is protected: changes arrive by pull request with passing CI; force pushes and deletion are blocked.
