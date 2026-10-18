@@ -279,6 +279,21 @@ def test_a_bad_drop_is_refused_and_changes_nothing(sales, db):
     assert positions(db, [a["id"], b["id"], elsewhere["id"]]) == snapshot
 
 
+def test_a_drop_between_two_cards_that_share_a_position_renumbers_the_stage(sales, db):
+    """Two drops that raced before stages were locked could leave a tie, with no room between the two cards."""
+    client, ws, pipeline, s = sales
+    cards = {n: make_deal(client, ws, n, s["lead"]) for n in "ABC"}
+    db.execute(text("UPDATE records SET board_position = 5 WHERE id IN (:a, :b)"),
+               {"a": cards["A"]["id"], "b": cards["B"]["id"]})
+    db.commit()
+    first, second = [n for n in order(client, ws, pipeline, "Lead") if n != "C"]  # the tie, as the board shows it
+    r = move(client, ws, cards["C"]["id"], s["lead"], after_id=cards[first]["id"], before_id=cards[second]["id"])
+    assert r.status_code == 200, r.text
+    assert order(client, ws, pipeline, "Lead") == [first, "C", second]
+    spots = positions(db, [cards[first]["id"], cards["C"]["id"], cards[second]["id"]])
+    assert spots[0] < spots[1] < spots[2]
+
+
 def test_many_drops_between_the_same_two_cards_stay_in_order(sales, db):
     """Halving a gap sixty times would run a double out of digits; a position is an exact number."""
     client, ws, pipeline, s = sales
