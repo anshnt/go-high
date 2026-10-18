@@ -117,6 +117,8 @@ def list_views(object: str | None = None, counts: bool = False, limit: int = Que
         stmt = stmt.where(SavedView.object_id == cat.need(object).id)
     rows, next_cursor = paginate(c.db, stmt, SavedView, limit, cursor)
     keys = object_keys(c)
+    # ponytail: views a role cannot use are dropped after the page is cut, so a page can hold fewer than `limit`
+    # (the cursor still walks them all); filter in SQL when roles with hidden fields meet many shared views.
     return {"data": [view_json(v, keys, count_of(cat, v) if counts else None) for (v,) in rows
                      if not uses_hidden(cat, v)], "next_cursor": next_cursor}
 

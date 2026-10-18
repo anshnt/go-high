@@ -20,8 +20,8 @@ Row level security separates tenants; what a user may do inside a workspace is `
 
 - Every `/api/v1` route declares the capability it needs and refuses a role without it with a 403 that names it. A
   test walks the route table and fails on a route that declares none, and calls each route as a Viewer. The record
-  engine checks again where the data is (writes, deletes, every query), so workflows and AI tools, which run as a
-  named actor with a role (`Automation`), cannot reach further than the role says.
+  engine checks again where the data is (writes, deletes, every query), so workflows and AI tools, which will run as
+  a named actor with a role (`Automation`), cannot reach further than the role says.
 - A record outside a role's scope is a 404 on every path (reads, lists, counts, search, saved views, expansion,
   association filters, trash, tag counts, timeline), never a 403, so its existence does not leak. Out of scope is
   also the default: a role with no rule for an object sees none of its records.

@@ -150,8 +150,9 @@ def requires_trash(action: str):
 
 def requires_records(action: str):
     """For routes that start from a record id (`/records/{id}/...`): the record's object is not known until it is
-    found, and a record out of scope must be a 404 before it can be a 403, so the handler asks `require_object` once
-    it has the record. This only turns away roles that could not do the action on any kind of record."""
+    found, and a record out of scope must be a 404 before it can be a 403. A read is then decided by the scope (no
+    read capability means scope `none`), a write by the handler calling `require_object` once it has the record.
+    This only turns away roles that could not do the action on any kind of record."""
     def dependency(c: Ctx = Depends(in_workspace)) -> Ctx:
         held = grants(c).capabilities
         if not any(f"{f}.{action}" in held for f in (*FAMILIES.values(), CUSTOM)):

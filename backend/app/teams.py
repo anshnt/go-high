@@ -78,7 +78,8 @@ def name_taken(name: str) -> ApiError:
 
 @router.get("/teams")
 def list_teams(c: Ctx = Depends(requires("members.read"))):
-    """Every team of the workspace with its member count. A workspace has few."""
+    """Every team of the workspace with its member count.
+    ponytail: not paged, a workspace has dozens of teams; add the cursor when one has thousands."""
     counts = dict(c.db.execute(select(TeamMember.team_id, func.count()).group_by(TeamMember.team_id)).all())
     teams = c.db.scalars(select(Team).order_by(func.lower(Team.name), Team.id))
     return {"data": [team_json(t, counts.get(t.id, 0)) for t in teams], "next_cursor": None}
@@ -171,7 +172,8 @@ def role_ref(role: Role) -> dict:
 @router.get("/members")
 def list_members(c: Ctx = Depends(requires("members.read"))):
     """The people who can act in this workspace: its members with their role, and the owners and admins of its
-    organization, who are admins of every workspace. Nobody else is visible. A workspace has tens of people."""
+    organization, who are admins of every workspace. Nobody else is visible.
+    ponytail: not paged, a workspace has tens of people; page by user id when an agency workspace has thousands."""
     people = select(User.id, User.name, User.email, Role)
     explicit = people.join(WorkspaceMember, WorkspaceMember.user_id == User.id).join(
         Role, Role.id == WorkspaceMember.role_id).where(WorkspaceMember.workspace_id == c.workspace.id)

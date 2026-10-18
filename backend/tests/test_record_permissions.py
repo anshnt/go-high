@@ -550,3 +550,15 @@ def test_no_route_shows_a_restricted_member_what_is_out_of_scope_or_hidden(world
     assert calls > 100
     own = rex.get(f"{R}/{mine['id']}", headers={H: ws}).json()
     assert own["values"] == {"first_name": "Rex"} and own["display_name"] == "Rex"  # and what is theirs does come back
+
+
+def test_an_idempotency_key_replays_only_for_the_user_who_made_it(redacted):
+    """A stored response was written for what its user may see, so another user is never handed it."""
+    w, rae, ws = redacted, redacted.client["rae"], redacted.ws
+    body = {"values": {"first_name": "Twice", "email": "twice@hidden-mail.example"}}
+    key = {H: ws, "Idempotency-Key": "k1"}
+    assert w.admin.post(R, json=body, headers=key).status_code == 201
+    r = rae.post(R, json=body, headers=key)
+    assert r.status_code == 409 and r.json()["error"]["code"] == "idempotency_key_reused"
+    assert "hidden-mail" not in r.text
+    assert w.admin.post(R, json=body, headers=key).headers["idempotent-replayed"] == "true"

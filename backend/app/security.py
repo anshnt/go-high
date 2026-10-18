@@ -144,7 +144,9 @@ def in_workspace(c: Ctx = Depends(user), x_workspace_id: str | None = Header(def
 
 
 def workspace_admin(c: Ctx = Depends(in_workspace)) -> Ctx:
-    """`in_workspace` for routes only workspace admins (and org owners and admins) may call."""
+    """`in_workspace` for routes only workspace admins (and org owners and admins) may call. Prefer
+    `permissions.requires(capability)`: a route that depends on this declares no capability, and the route walk in
+    tests/test_permissions.py fails on it."""
     if c.workspace_role != "admin":
         raise HTTPException(403, "Workspace admins only")
     return c

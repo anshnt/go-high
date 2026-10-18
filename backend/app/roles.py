@@ -93,7 +93,8 @@ def state(role: Role, rules: list[RoleObjectRule]) -> dict:
 
 @router.get("")
 def list_roles(c: Ctx = Depends(requires("members.read"))):
-    """Every role of the organization: the system roles first. An organization has few."""
+    """Every role of the organization: the system roles first.
+    ponytail: not paged, an organization has dozens of roles; add the cursor when one has hundreds."""
     roles = c.db.scalars(select(Role).order_by(Role.is_system.desc(), Role.name, Role.id)).all()
     rules: dict[uuid.UUID, list[RoleObjectRule]] = {r.id: [] for r in roles}
     for rule in c.db.scalars(select(RoleObjectRule)):

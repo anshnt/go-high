@@ -48,7 +48,9 @@ def timeline(record_id: uuid.UUID, limit: int = Query(50, ge=1, le=200), cursor:
 
 def whole_links(cat: Catalog, page: list[Event]) -> set[int]:
     """The events of the page that may be shown: all but a link to a record the caller may not see, which would give
-    that record's id away. A page can come out shorter than its limit; the cursor goes on."""
+    that record's id away.
+    ponytail: a page can come out shorter than its limit (the cursor still walks the rest); filter in SQL if a
+    record gets thousands of links to records its readers cannot see."""
     links = [e for e in page if e.type.startswith("association.")]
     ends = {uuid.UUID(e.data[end]) for e in links for end in ("from_record_id", "to_record_id")}
     seen = set(cat.db.scalars(select(Record.id).where(Record.id.in_(ends), store.anywhere(cat)))) if ends else set()
