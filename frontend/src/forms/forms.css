@@ -816,3 +816,15 @@
     flex-wrap: wrap;
   }
 }
+@media (max-width: 480px) {
+  /* the Save draft button already shows whether there is something to save; the words stay for screen readers */
+  .fm-saved {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
