@@ -1,4 +1,4 @@
-import { Filter as FilterIcon, LockKeyhole, UserRound, MoreHorizontal, Plus, Search, SearchX, Tag as TagIcon, Trash2, TriangleAlert, X } from "lucide-react";
+import { Filter as FilterIcon, LockKeyhole, PencilLine, UserRound, MoreHorizontal, Plus, Search, SearchX, Tag as TagIcon, Trash2, TriangleAlert, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, useNavigate, useParams, useSearchParams } from "react-router";
 import { cn } from "../lib/cn";
@@ -9,6 +9,8 @@ import { TYPING } from "../shell/useShortcuts";
 import { Button, DropdownMenu, EmptyState, Input, Kbd, MenuItem, Skeleton, Table, useToast, type Sort } from "../ui";
 import { Popover } from "../ui/Popover";
 import { Combobox } from "../ui/Combobox";
+import { BulkEditDialog } from "./BulkEditDialog";
+import { bulkError, undoGroups, withChange } from "./bulkEdit.ts";
 import { buildColumns, DEFAULT_SORT, defaultColumns } from "./columns";
 import { errorMessage, errorStatus } from "./errors.ts";
 import { FilterBuilder, FilterChips } from "./FilterBuilder";
@@ -179,6 +181,7 @@ function Loaded({ client, def }: { client: RecordsClient; def: ObjectDef }) {
   const [deleting, setDeleting] = useState<RecordRow[] | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteView, setDeleteView] = useState(false);
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
 
   const rail = !!openId;
   const open = useCallback(
@@ -387,6 +390,43 @@ function Loaded({ client, def }: { client: RecordsClient; def: ObjectDef }) {
     }
   };
 
+  const editSelected = async (field: FieldDef, value: unknown): Promise<string | null> => {
+    const before = selectedRows;
+    const ids = before.map((r) => r.id);
+    const many = `${ids.length} ${ids.length === 1 ? lower(def.singular) : noun}`;
+    for (const r of before) list.patchRow(withChange(r, def, field.key, value));
+    try {
+      await client.updateMany(def.key, ids, { [field.key]: value ?? null });
+      toast({
+        title: `${value === undefined ? "Cleared" : "Updated"} ${lower(field.label)} on ${many}`,
+        tone: "success",
+        duration: 8000,
+        action: {
+          label: "Undo",
+          onClick: () => {
+            const back = async () => {
+              for (const g of undoGroups(before, field.key)) await client.updateMany(def.key, g.ids, { [field.key]: g.value ?? null });
+            };
+            back().then(
+              () => {
+                before.forEach((r) => list.patchRow(r));
+                toast({ title: `Put ${lower(field.label)} back on ${many}`, tone: "success" });
+              },
+              (e) => {
+                list.reload();
+                toast({ title: `Could not put ${lower(field.label)} back`, description: errorMessage(e), tone: "danger" });
+              },
+            );
+          },
+        },
+      });
+      return null;
+    } catch (e) {
+      before.forEach((r) => list.patchRow(r));
+      return bulkError(e, field.key);
+    }
+  };
+
   const onChanged = useCallback(
     (row: RecordRow) => {
       list.patchRow(row);
@@ -573,6 +613,9 @@ function Loaded({ client, def }: { client: RecordsClient; def: ObjectDef }) {
               </Button>
             }
           />
+          <Button size="sm" onClick={() => setBulkEditOpen(true)}>
+            <PencilLine size={14} aria-hidden /> Edit fields
+          </Button>
           <Button size="sm" onClick={() => setDeleting(selectedRows)}>
             <Trash2 size={14} aria-hidden /> Delete
           </Button>
@@ -644,6 +687,7 @@ function Loaded({ client, def }: { client: RecordsClient; def: ObjectDef }) {
           if (!another) open(row.id);
         }}
       />
+      <BulkEditDialog def={def} fields={fields} count={selectedRows.length} open={bulkEditOpen && selectedRows.length > 0} onOpenChange={setBulkEditOpen} onApply={editSelected} />
       <SaveViewDialog open={saveOpen} onOpenChange={setSaveOpen} onSave={(n, s) => void saveNew(n, s)} busy={saving} error={saveError} />
       <ConfirmDialog
         open={deleting !== null}

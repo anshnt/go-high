@@ -3,6 +3,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type Keyboard
 import { Avatar, Button, EmptyState, Skeleton, Switch, useToast } from "../ui";
 import { Combobox } from "../ui/Combobox";
 import { Associations } from "./Associations";
+import { withChange } from "./bulkEdit.ts";
 import type { RecordsClient } from "./client.ts";
 import { errorMessage, errorStatus, RecordsError } from "./errors.ts";
 import { FieldEditor } from "./fields/FieldEditor";
@@ -10,7 +11,7 @@ import { FieldValue, TagBadge } from "./fields/FieldValue";
 import { relativeTime } from "./format.ts";
 import { canonical } from "./filter.ts";
 import { primeRefs, useMeta } from "./meta.tsx";
-import { isComputed, isReadOnly, nameOf, readValue, valueType } from "./schema.ts";
+import { isComputed, isReadOnly, readValue, valueType } from "./schema.ts";
 import { Timeline } from "./Timeline";
 import type { FieldDef, ObjectDef, RecordRow } from "./types.ts";
 import { isEmptyValue, normalizeText, validateValue } from "./validate.ts";
@@ -19,14 +20,6 @@ type Save = (key: string, value: unknown) => Promise<string | null>;
 
 const TEXTLIKE = ["text", "long_text", "email", "phone", "url", "number", "money", "date", "datetime"];
 const POPOVER = ["select", "stage", "multi_select", "user"];
-
-const withChange = (row: RecordRow, def: ObjectDef, key: string, value: unknown): RecordRow => {
-  if (key === "owner_id") return { ...row, owner_id: (value as string | undefined) ?? null };
-  const values = { ...row.values };
-  if (value === undefined) delete values[key];
-  else values[key] = value;
-  return { ...row, values, display_name: def.primary_fields.includes(key) ? nameOf(def, values) : row.display_name };
-};
 
 /** One field: its value, and the right way to change it. Saves go through `save`, which is optimistic and reports a message if it had to roll back. */
 function PropertyRow({ field, row, save }: { field: FieldDef; row: RecordRow; save: Save }) {
