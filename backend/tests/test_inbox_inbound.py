@@ -68,7 +68,8 @@ def test_a_signed_sms_creates_the_contact_and_a_conversation(crm, db):
     assert (conv["status"], conv["unread"], conv["preview"]) == ("open", True, "Hello there")
     assert conv["channel_kind"] == "sms"
     contacts = listing(client, ws)["data"]
-    assert [c["values"] for c in contacts] == [{"phone": ALICE}] and contacts[0]["id"] == conv["contact"]["id"]
+    assert [c["values"] for c in contacts] == [{"phone": ALICE, "source": "sms"}]
+    assert contacts[0]["id"] == conv["contact"]["id"]
     messages = conversation(client, ws, conv["id"])["messages"]["data"]
     assert [(m["direction"], m["kind"], m["status"], m["body"], m["seq"]) for m in messages] == [
         ("in", "message", "received", "Hello there", 1)]
@@ -131,13 +132,26 @@ def test_an_existing_contact_is_found_by_phone_or_email_in_any_spelling(crm, db)
     assert len(conversations_of(client, ws)["data"]) == 2
 
 
+def test_a_contact_made_by_a_channel_records_which_channel_and_a_known_one_keeps_its_source(crm):
+    client, ws, _ = crm
+    sms, mail, meta = add_channel(client, ws), add_channel(client, ws, "mailgun"), add_channel(client, ws, "meta")
+    sms_in(anonymous, sms, "+14155550111", "hi")
+    mailgun_in(anonymous, mail, "pat@example.com", "Hi", "hello")
+    meta_hook(anonymous, meta, meta_in("16505551234", "hola"))
+    known = make_record(client, ws, first_name="Known", phone="+14155550199", source="form")
+    sms_in(anonymous, sms, "+14155550199", "I am already a contact")
+    by_name = {c["display_name"]: c["values"].get("source") for c in listing(client, ws)["data"]}
+    assert by_name == {"+14155550111": "sms", "pat@example.com": "email", "+16505551234": "whatsapp", "Known": "form"}
+    assert known["values"]["source"] == "form"
+
+
 def test_a_deleted_contact_is_not_matched_and_a_new_one_is_made(crm):
     client, ws, _ = crm
     old = make_record(client, ws, first_name="Old", phone=ALICE)
     assert client.delete(f"/api/v1/objects/contact/records/{old['id']}", headers={H: ws}).status_code == 204
     sms_in(anonymous, add_channel(client, ws), ALICE, "hello")
     [fresh] = listing(client, ws)["data"]
-    assert fresh["id"] != old["id"] and fresh["values"] == {"phone": ALICE}
+    assert fresh["id"] != old["id"] and fresh["values"] == {"phone": ALICE, "source": "sms"}
 
 
 def test_unsigned_wrongly_signed_or_tampered_webhooks_are_refused_and_store_nothing(crm, db, caplog):

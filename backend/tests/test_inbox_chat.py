@@ -131,7 +131,7 @@ def test_a_visitor_becomes_a_contact_when_they_leave_their_details(widget, db):
                                "email": "pat@example.com", "phone": "+14155550199"}
     record = client.get(f"/api/v1/objects/contact/records/{conv['contact']['id']}", headers={H: ws}).json()
     assert record["values"] == {"first_name": "Pat", "last_name": "Smith", "email": "pat@example.com",
-                                "phone": "+14155550199"}
+                                "phone": "+14155550199", "source": "webchat"}
     assert [r[0] for r in sql(db, "SELECT actor_type FROM events WHERE type = 'record.updated'")] == ["system"]
     bad = anonymous.post(f"{base(key)}/identify", json={"email": "not an email"}, headers=auth(token))
     assert bad.status_code == 422 and "email" in str(bad.json())

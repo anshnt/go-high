@@ -6,7 +6,7 @@ from sqlalchemy import or_, select, text
 from sqlalchemy.orm import Session
 
 from ..api import ApiError
-from ..records import store
+from ..records import store, types
 from ..records.models import ObjectDef, Record
 from ..records.schema import Catalog
 
@@ -32,10 +32,9 @@ def find(cat: Catalog, obj: ObjectDef, *, email: str | None = None, phone: str |
 
 
 def create(cat: Catalog, obj: ObjectDef, values: dict, source: str) -> Record:
-    """A contact from what the channel knows. `source` fills the contact's `source` field when the workspace has
-    one (the system objects do not define it yet)."""
+    """A contact from what the channel knows. `source` (the channel kind) fills the contact's `source` field."""
     field = cat.fields(obj).get("source")
-    if field is not None and field.type == "text":
+    if field is not None and field.type == "select" and source in types.choice_ids(field):
         values = {**values, "source": source}
     try:
         return store.create(cat, obj, values, None)

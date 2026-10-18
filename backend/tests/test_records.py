@@ -39,10 +39,13 @@ def test_every_workspace_starts_with_contacts_companies_and_deals(make_user, crm
         assert contact["primary_fields"] == ["first_name", "last_name"]
         assert [(f["key"], f["type"]) for f in contact["fields"]] == [
             ("first_name", "text"), ("last_name", "text"), ("email", "email"), ("phone", "phone"),
-            ("lifecycle", "select"), ("company", "record")]
+            ("lifecycle", "select"), ("company", "record"), ("source", "select"), ("timezone", "text")]
         assert [c["id"] for c in contact["fields"][4]["options"]["choices"]] == [
             "lead", "qualified", "customer", "churned", "other"]
         assert contact["fields"][5]["options"] == {"object": "company"}
+        assert [c["id"] for c in contact["fields"][6]["options"]["choices"]] == [
+            "manual", "import", "form", "webchat", "sms", "email", "whatsapp", "api"]
+        assert contact["fields"][7]["rules"] == {"timezone": True}
         company = get(client, workspace, f"{OBJECTS}/company").json()
         assert [(f["key"], f["type"]) for f in company["fields"]] == [
             ("name", "text"), ("domain", "text"), ("industry", "text"), ("size", "select")]
@@ -349,7 +352,7 @@ def test_fields_are_added_changed_and_archived_without_losing_values(crm, db):
     fields = f"{OBJECTS}/contact/fields"
     made = client.post(fields, json={"key": "score", "label": "Score", "type": "number",
                                      "rules": {"min": 0, "max": 100, "integer": True}}, headers={H: ws})
-    assert made.status_code == 201 and made.json()["position"] == 6  # after the six built in
+    assert made.status_code == 201 and made.json()["position"] == 8  # after the eight built in
     assert made.json()["options"] == {} and made.json()["is_system"] is False
     ada = make_record(client, ws, first_name="Ada", score=90)
     assert client.post(R, json={"values": {"first_name": "B", "score": 101}}, headers={H: ws}).status_code == 422
@@ -416,7 +419,7 @@ def test_a_field_is_created_with_checked_options_rules_and_a_unique_key(crm, mon
     # a computed field cannot be written, and is listed
     r = client.post(R, json={"values": {"first_name": "A", "calc": 2}}, headers={H: ws})
     assert r.json()["error"]["fields"] == {"values.calc": "L is computed and read-only"}
-    monkeypatch.setattr(objects, "MAX_FIELDS", 10)
+    monkeypatch.setattr(objects, "MAX_FIELDS", 12)  # the eight built in, owner, parent and calc make eleven
     assert make(key="extra1", type="text").status_code == 201
     assert make(key="extra2", type="text").status_code == 409  # the ceiling
 

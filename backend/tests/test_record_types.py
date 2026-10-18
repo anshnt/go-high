@@ -157,6 +157,24 @@ def test_a_possible_number_in_a_range_the_metadata_may_not_know_yet_is_kept():
         types.validate(field("phone"), "+1 415 555")  # too short to be any number
 
 
+def test_a_text_field_with_the_timezone_rule_takes_only_iana_zones_in_their_canonical_spelling():
+    zone = field("text", rules={"timezone": True})
+    for given, stored in [("America/Los_Angeles", "America/Los_Angeles"), ("  europe/london ", "Europe/London"),
+                          ("UTC", "UTC"), ("Asia/Kolkata", "Asia/Kolkata"), ("AUSTRALIA/SYDNEY", "Australia/Sydney")]:
+        assert types.validate(zone, given) == stored
+    assert types.validate(zone, "  ") is None and types.validate(zone, None) is None  # empty clears, as for any text
+    for bad in ("Pacific Time", "PST", "America", "America/Nowhere", "../etc/passwd", "UTC+2", "Mars/Base", 5, True):
+        with pytest.raises(ValueError):
+            types.validate(zone, bad)
+    assert types.validate(field("text"), "Pacific Time") == "Pacific Time"  # the rule is per field
+    assert types.check_rules("text", {"timezone": True}) == {"timezone": True}
+    for rules in ({"timezone": 1}, {"timezone": "yes"}):
+        with pytest.raises(ValueError, match="true or false"):
+            types.check_rules("text", rules)
+    with pytest.raises(ValueError, match="no rule 'timezone'"):
+        types.check_rules("email", {"timezone": True})
+
+
 def test_every_type_declares_operators_and_the_registry_matches_the_database_check():
     assert set(types.TYPES) == {"text", "long_text", "number", "money", "date", "datetime", "boolean", "select",
                                 "multi_select", "email", "phone", "url", "user", "record", "stage", "formula",

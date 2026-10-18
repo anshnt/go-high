@@ -1,15 +1,17 @@
-"""inbox: channels, secrets, conversations, messages, read marks, consent, webchat rate counters
+"""inbox: channels, secrets, conversations, messages, read marks, consent, webchat counters; contact source and zone
 
 Revision ID: 0006
-Revises: 0004
+Revises: 0007
 Create Date: 2026-10-17
 """
+import json
+
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "0006"
-down_revision = "0004"
+down_revision = "0007"
 branch_labels = None
 depends_on = None
 
@@ -19,6 +21,12 @@ EMPTY_OBJECT = sa.text("'{}'::jsonb")
 # frozen: the values this migration knew
 KINDS = ("sms", "email", "webchat", "whatsapp", "messenger", "instagram", "voice")
 PROVIDERS = ("twilio", "telnyx", "ses", "mailgun", "smtp", "gmail", "microsoft", "meta", "internal")
+# frozen: the two fields every contact object gets (key, label, type, options, rules)
+SOURCES = ("manual", "import", "form", "webchat", "sms", "email", "whatsapp", "api")
+CONTACT_FIELDS = (
+    ("source", "Source", "select", {"choices": [{"id": i, "label": label, "color": "gray"} for i, label in zip(
+        SOURCES, ("Manual", "Import", "Form", "Webchat", "SMS", "Email", "WhatsApp", "API"), strict=True)]}, {}),
+    ("timezone", "Time zone", "text", {}, {"timezone": True}))
 
 
 def col(name: str, type_, *args, **kw) -> sa.Column:
@@ -151,8 +159,23 @@ RLS = {
 }
 
 
+def backfill(connection) -> None:
+    """The source and time zone fields for contact objects that exist already (a new workspace gets them from the
+    seed). A workspace that has a field with that key keeps its own."""
+    for key, label, type_, options, rules in CONTACT_FIELDS:
+        connection.execute(sa.text(
+            "INSERT INTO fields (id, workspace_id, object_id, key, label, type, options, rules, is_system, position) "
+            "SELECT gen_random_uuid(), o.workspace_id, o.id, :key, :label, :type, CAST(:options AS jsonb), "
+            "CAST(:rules AS jsonb), true, "
+            "coalesce((SELECT max(f.position) FROM fields f WHERE f.object_id = o.id), -1) + 1 "
+            "FROM objects o WHERE o.key = 'contact' AND o.is_system "
+            "ON CONFLICT (object_id, key) DO NOTHING"),
+            {"key": key, "label": label, "type": type_, "options": json.dumps(options), "rules": json.dumps(rules)})
+
+
 def upgrade() -> None:
     tables()
+    backfill(op.get_bind())  # the owner role writes: row level security is not switched on for the new tables yet
     for table, (privileges, policies) in RLS.items():
         op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
         op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")
@@ -163,5 +186,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute("DELETE FROM fields f USING objects o WHERE o.id = f.object_id AND o.key = 'contact' AND f.is_system "
+               "AND f.key IN ('source', 'timezone')")
     for table in reversed(RLS):
         op.execute(f"DROP TABLE {table} CASCADE")

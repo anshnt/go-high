@@ -214,6 +214,22 @@ def test_quiet_hours_follow_the_contacts_time_zone_unless_they_wrote_recently(cr
     assert reply(client, ws, talking).status_code == 201
 
 
+def test_the_contacts_time_zone_field_decides_before_the_phone_number_does(crm, monkeypatch):
+    client, ws, _ = crm
+    channel = add_channel(client, ws)
+    night = at(monkeypatch, 5)  # 22:00 in Los Angeles, 16:00 in Sydney
+    _, here = start(client, ws, channel, first_name="LA number, Sydney zone", timezone="australia/sydney")
+    _, there = start(client, ws, channel, first_name="Sydney number, LA zone", phone="+61412345678",
+                     timezone="America/Los_Angeles")
+    assert reply(client, ws, here).status_code == 201  # the zone field says it is the afternoon
+    e = error(reply(client, ws, there))
+    assert e["code"] == "quiet_hours" and "America/Los_Angeles" in e["message"]
+    assert datetime.fromisoformat(e["fields"]["retry_at"]) == compliance.quiet_until(night, "America/Los_Angeles")
+    r = client.post("/api/v1/objects/contact/records", json={"values": {"first_name": "X", "timezone": "Pacific"}},
+                    headers={H: ws})
+    assert r.status_code == 422 and "values.timezone" in r.json()["error"]["fields"]  # only a real zone is stored
+
+
 def test_email_has_no_quiet_hours(crm, monkeypatch):
     client, ws, _ = crm
     channel = add_channel(client, ws, "mailgun")
