@@ -20,8 +20,9 @@ export const router = createBrowserRouter([
       { index: true, loader: () => redirect(HOME) }, // My Day; the demo opens where its data is, on contacts
       { path: "my-day", lazy: async () => ({ Component: (await import("./tasks/MyDay")).MyDay }) },
       { path: "tasks", lazy: async () => ({ Component: (await import("./tasks/TasksPage")).TasksPage }) },
+      { path: "calendar", lazy: async () => ({ Component: (await import("./calendar/CalendarPage")).CalendarPage }) },
       // Contacts is the records area: /contacts, /companies, /deals and custom objects, all one screen (src/records).
-      ...CORE.filter((item) => item.id !== "contacts" && item.id !== "tasks").map((item) => ({ path: item.path.slice(1), element: <ModulePage item={item} /> })),
+      ...CORE.filter((item) => !["contacts", "tasks", "calendar"].includes(item.id)).map((item) => ({ path: item.path.slice(1), element: <ModulePage item={item} /> })),
       { path: "contacts/:id?", lazy: async () => ({ Component: (await import("./pages/RecordPages")).ContactsPage }) },
       { path: "companies/:id?", lazy: async () => ({ Component: (await import("./pages/RecordPages")).CompaniesPage }) },
       { path: "deals/:id?", lazy: async () => ({ Component: (await import("./pages/RecordPages")).DealsPage }) },

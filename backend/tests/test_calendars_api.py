@@ -206,6 +206,22 @@ def test_the_booking_pages_are_served_and_the_public_api_may_be_called_from_any_
     assert visitor.get(f"/api/public/calendars/{cal['public_path'].split('/')[2]}/none").status_code == 404
 
 
+def test_the_booking_script_is_served_from_the_web_build_or_says_how_to_build_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "FRONTEND_DIST", tmp_path)
+    visitor = public_client()
+    for path in ("/book/book.js", "/book/acme/intro-call", "/booking/abc.def"):
+        r = visitor.get(path)
+        assert r.status_code == 404 and "npm run build" in r.json()["detail"], path
+    (tmp_path / "book").mkdir()
+    (tmp_path / "book" / "book.js").write_text("(function(){})();", encoding="utf-8")
+    (tmp_path / "book" / "page.html").write_text("<!doctype html><title>Book</title>", encoding="utf-8")
+    r = visitor.get("/book/book.js")
+    assert r.status_code == 200 and r.text == "(function(){})();"
+    assert r.headers["content-type"].startswith("text/javascript") and "max-age=300" in r.headers["cache-control"]
+    r = visitor.get("/booking/abc.def")
+    assert r.headers["referrer-policy"] == "no-referrer" and "script-src 'self'" in r.headers["content-security-policy"]
+
+
 def test_a_workspace_gets_a_public_handle_and_two_of_one_name_get_different_ones(make_user, db):
     a, a_ids = make_user("a@example.com", "Acme Plumbing")
     b, b_ids = make_user("b@example.com", "Acme Plumbing")

@@ -1,4 +1,5 @@
 import { ApiError } from "./api";
+import { demoCalendars } from "./demoCalendars";
 import { DemoMiss, demoTasks } from "./demoTasks";
 import type { Me, Workspace } from "./session";
 
@@ -63,6 +64,8 @@ export async function demoRequest<T>(method: string, path: string, body?: unknow
     return answer(undefined);
   }
   try {
+    const booked = demoCalendars(method, path, body);
+    if (booked !== undefined) return answer(booked); // calendars and bookings: in memory (demoCalendars.ts)
     const mine = demoTasks(method, path, body, { id: me.user.id, name: me.user.name, email: me.user.email });
     if (mine !== undefined) return answer(mine); // tasks, My Day, notifications and people: in memory (demoTasks.ts)
   } catch (e) {
