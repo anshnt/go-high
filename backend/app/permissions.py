@@ -237,11 +237,24 @@ def redact(ctx: Ctx, obj, values: dict) -> dict:
     return {k: v for k, v in values.items() if k not in hide} if hide else values
 
 
-def redact_event(ctx: Ctx, obj, data: dict) -> dict:
-    """Event data (a record's new state and its changes) without what `ctx` may not read."""
+STAGE_EVENTS = {"deal.stage_changed"}  # about a deal's stage alone: there is nothing left of them without it
+
+
+def need_visible(ctx: Ctx, obj, *keys: str) -> None:
+    """403 when the role may not read a field that an endpoint is built from (a board is made of stages)."""
+    if gone := [k for k in keys if k in hidden(ctx, obj)]:
+        raise ApiError(403, "forbidden", f"Your role cannot read the {', '.join(gone)} of {obj.plural.lower()}, "
+                                         "which this is made from")
+
+
+def redact_event(ctx: Ctx, obj, data: dict, type_: str = "") -> dict | None:
+    """Event data (a record's new state and its changes) without what `ctx` may not read; None for an event that is
+    only about something it may not read."""
     hide = hidden(ctx, obj)
     if not hide:
         return data
+    if type_ in STAGE_EVENTS and "stage" in hide:
+        return None
     out = {k: v for k, v in data.items() if k not in hide}
     for key in ("values", "changes"):
         if isinstance(out.get(key), dict):

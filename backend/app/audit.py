@@ -62,11 +62,12 @@ def select_events(c: Ctx, f: dict):
     return stmt
 
 
-def shown(c: Ctx, e: Event, cat: Catalog) -> dict:
-    """The event data without the fields the caller's role hides (events about records name their object)."""
+def shown(c: Ctx, e: Event, cat: Catalog) -> dict | None:
+    """The event data without the fields the caller's role hides (events about records name their object); None
+    for an event that is only about one of them."""
     key = e.data.get("object") if permissions.restricted(c) else None
     obj = cat.object(key) if isinstance(key, str) else None
-    return permissions.redact_event(c, obj, e.data) if obj else e.data
+    return permissions.redact_event(c, obj, e.data, e.type) if obj else e.data
 
 
 @router.get("")
@@ -74,7 +75,8 @@ def list_audit(limit: int = Query(50, ge=1, le=200), cursor: str | None = None, 
                c: Ctx = Depends(requires("audit.read"))):
     page, next_cursor = newest_first(c.db, select_events(c, f), limit, cursor)
     cat = Catalog(c)
-    return {"data": [event_json(e, shown(c, e, cat)) for e in page], "next_cursor": next_cursor}
+    both = [(e, shown(c, e, cat)) for e in page]
+    return {"data": [event_json(e, data) for e, data in both if data is not None], "next_cursor": next_cursor}
 
 
 @router.get("/export")
@@ -87,8 +89,9 @@ def export_audit(f: dict = Depends(filters), c: Ctx = Depends(requires("audit.re
     writer = csv.writer(out)
     writer.writerow(COLUMNS)
     for e in rows:
-        writer.writerow([e.id, e.occurred_at.isoformat(), e.type, e.subject_type, e.subject_id, e.actor_type,
-                         e.actor_id or "", json.dumps(jsonable_encoder(shown(c, e, cat)), sort_keys=True)])
+        if (data := shown(c, e, cat)) is not None:
+            writer.writerow([e.id, e.occurred_at.isoformat(), e.type, e.subject_type, e.subject_id, e.actor_type,
+                             e.actor_id or "", json.dumps(jsonable_encoder(data), sort_keys=True)])
     events.emit(c.db, "audit.exported", "workspace", c.workspace.id,
                 {"rows": len(rows), "truncated": truncated, "filters": jsonable_encoder(f)}, actor=("user", c.user_id))
     c.db.commit()

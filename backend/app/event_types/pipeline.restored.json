@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pipeline.restored",
+  "description": "An archived pipeline was brought back. Subject: the pipeline.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"}
+  },
+  "required": ["id", "name"],
+  "additionalProperties": false
+}

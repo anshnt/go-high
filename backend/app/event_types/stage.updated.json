@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "stage.updated",
+  "description": "A stage changed (name, kind, probability, rotting days, exit rules, color or position); `changes` maps each to its old and new value. Subject: the stage.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "pipeline_id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"},
+    "changes": {"type": "object"}
+  },
+  "required": ["id", "pipeline_id", "name", "changes"],
+  "additionalProperties": false
+}

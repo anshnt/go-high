@@ -159,7 +159,9 @@ class Compiler:
         if "." not in key:
             return self.condition(entity, self.field(obj, key, f"{path}.field"), op, n.get("value"), path)
         head, _, rest = key.partition(".")
-        if (staged := self.cat.fields(obj).get(head)) is not None and staged.type == "stage":
+        staged = self.cat.fields(obj).get(head)
+        if staged is not None and staged.type == "stage" and (self.trusted or head not in permissions.hidden(
+                self.cat.c, obj)):
             return self.stage_path(entity, staged, rest, op, n.get("value"), path)
         other = self.cat.object(head)
         if other is None or "." in rest:

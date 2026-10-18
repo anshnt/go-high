@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pipeline.created",
+  "description": "A pipeline was created. Subject: the pipeline.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"},
+    "position": {"type": "integer"}
+  },
+  "required": ["id", "name", "position"],
+  "additionalProperties": false
+}

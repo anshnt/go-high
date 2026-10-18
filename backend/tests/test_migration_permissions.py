@@ -114,7 +114,7 @@ def test_existing_people_get_the_system_roles_and_the_migration_reverses():
                                       "'{contacts.read}') RETURNING id"), {"o": org})
             conn.execute(text("UPDATE workspace_members SET role_id = :r WHERE user_id = :u"),
                          {"r": custom, "u": who["wsadmin"]})
-        alembic(url, "downgrade", "0004")
+        alembic(url, "downgrade", "0007")
         with engine.begin() as conn:
             assert conn.scalar(text("SELECT count(*) FROM pg_tables WHERE tablename IN ('roles', 'teams')")) == 0
             org_roles = conn.execute(text("SELECT u.name, m.role FROM org_members m JOIN users u ON u.id = m.user_id "

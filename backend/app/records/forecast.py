@@ -8,7 +8,9 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import BigInteger, Date, DateTime, cast, func, select
 
-from ..security import Ctx, in_workspace
+from .. import permissions
+from ..permissions import requires
+from ..security import Ctx
 from . import stages, store
 from .models import Record, Stage
 from .pipelines import pipeline_or_404
@@ -57,14 +59,15 @@ def done(bucket: dict) -> dict:
 @router.get("/pipelines/{pipeline_id}/forecast")
 def forecast(pipeline_id: uuid.UUID, period: Literal["month", "quarter"] = "month",
              start: date | None = Query(None, alias="from"), end: date | None = Query(None, alias="to"),
-             c: Ctx = Depends(in_workspace)):
+             c: Ctx = Depends(requires("deals.read"))):
     """Per month or quarter of the deals' `close_date` (`from` and `to` limit the dates), with `pipeline` (open deals),
     `best_case` (open deals in stages of probability 50 or more), `commit` (80 or more), `weighted` (open deals,
     amount times probability) and `won`, each as an amount per currency, and the same per owner. Lost deals, deals
-    with no close date and deals with no amount are left out.
-    ponytail: like the board, it reads `amount` whatever `permissions.redact` hides."""
+    with no close date and deals with no amount are left out. A role that cannot read the stage, amount or close
+    date of deals gets a 403: the forecast is made of them."""
     cat = Catalog(c)
     obj, pipeline = cat.need(stages.DEAL), pipeline_or_404(c, pipeline_id)
+    permissions.need_visible(c, obj, stages.STAGE, "amount", "close_date")
     close = cast(Record.values["close_date"].astext, Date)
     currency = Record.values["amount"]["currency"].astext
     amount = cast(Record.values["amount"]["amount"].astext, BigInteger)

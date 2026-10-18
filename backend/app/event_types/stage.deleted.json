@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "stage.deleted",
+  "description": "A stage with no deals was deleted. Subject: the stage.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "pipeline_id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"}
+  },
+  "required": ["id", "pipeline_id", "name"],
+  "additionalProperties": false
+}

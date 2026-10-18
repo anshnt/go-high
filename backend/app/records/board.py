@@ -11,9 +11,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import BigInteger, cast, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from .. import permissions
 from ..api import ApiError, seal
 from ..events import Event
-from ..security import Ctx, in_workspace
+from ..permissions import requires
+from ..security import Ctx
 from . import query, stages, store
 from .filters import BUILTIN
 from .models import BoardLayout, EventRecord, Record, Stage
@@ -68,7 +70,7 @@ def cards(cat: Catalog, obj, rows: list[tuple[Record, Stage]]) -> list[dict]:
     out = []
     for rec, stage in rows:
         values, days = store.visible_values(cat, obj, rec), (now - entered[rec.id]).days
-        out.append({"id": rec.id, "display_name": rec.display_name, "amount": values.get("amount"),
+        out.append({"id": rec.id, "display_name": store.shown_name(cat, obj, rec), "amount": values.get("amount"),
                     "close_date": values.get("close_date"), "owner_id": rec.owner_id,
                     "board_position": number(rec.board_position), "stage_id": stage.id,
                     "stage_entered_at": entered[rec.id], "days_in_stage": days,
@@ -86,13 +88,16 @@ def totals(cat: Catalog, obj, columns: list[Stage]) -> dict[uuid.UUID, dict]:
     minor units, one entry per currency. One query for the whole board.
     ponytail: the sums read the amount of every deal in the stages (about 100 ms for 36 000 deals in one stage); keep
     them in a rollup table when a workspace has hundreds of thousands of open deals.
-    ponytail: sums read `amount` whatever `permissions.redact` hides; ADR 0004 must scope them for a caller who may
-    not read it."""
-    currency = Record.values["amount"]["currency"].astext
-    amount = cast(Record.values["amount"]["amount"].astext, BigInteger)
-    rows = cat.db.execute(
-        select(Record.stage_id, currency.label("cur"), func.count(), func.sum(amount))
-        .where(*store.live(cat, obj), Record.stage_id.in_([s.id for s in columns])).group_by(Record.stage_id, "cur"))
+    A role that cannot read `amount` gets the counts and no sums, which would give it away."""
+    where = [*store.live(cat, obj), Record.stage_id.in_([s.id for s in columns])]
+    if "amount" in permissions.hidden(cat.c, obj):
+        rows = [(stage_id, None, n, None) for stage_id, n in cat.db.execute(
+            select(Record.stage_id, func.count()).where(*where).group_by(Record.stage_id))]
+    else:
+        currency = Record.values["amount"]["currency"].astext
+        amount = cast(Record.values["amount"]["amount"].astext, BigInteger)
+        rows = cat.db.execute(select(Record.stage_id, currency.label("cur"), func.count(), func.sum(amount))
+                              .where(*where).group_by(Record.stage_id, "cur"))
     by_id = {s.id: s for s in columns}
     out = {s.id: {"count": 0, "amount": {}, "weighted": {}} for s in columns}
     for stage_id, cur, n, total in rows:
@@ -120,11 +125,12 @@ def column(cat: Catalog, obj, stage: Stage, limit: int, cursor: str | None) -> t
 
 @router.get("/pipelines/{pipeline_id}/board")
 def board(pipeline_id: uuid.UUID, limit: int = Query(25, ge=1, le=100), stage: uuid.UUID | None = None,
-          cursor: str | None = None, c: Ctx = Depends(in_workspace)):
+          cursor: str | None = None, c: Ctx = Depends(requires("deals.read"))):
     """The pipeline with, per stage: `count`, `amount` and `weighted` by currency, the first `limit` deals as cards
     and `next_cursor`. Send `stage` and that stage's `next_cursor` for its next page (that column only)."""
     cat = Catalog(c)
     obj, pipeline = cat.need(stages.DEAL), pipeline_or_404(c, pipeline_id)
+    permissions.need_visible(c, obj, stages.STAGE)  # the columns are the stage field
     columns = stages_of(c, pipeline)
     if stage:
         columns = [s for s in columns if s.id == stage]
@@ -153,10 +159,11 @@ def neighbour(cat: Catalog, obj, stage: Stage, deal: Record, other_id: uuid.UUID
 
 
 @router.post("/deals/{deal_id}/move")
-def move_deal(deal_id: uuid.UUID, body: Move, c: Ctx = Depends(in_workspace)):
+def move_deal(deal_id: uuid.UUID, body: Move, c: Ctx = Depends(requires("deals.write"))):
     """Moves a deal to a stage and a place in it, in one write. The stage it leaves may refuse (422, with a field
     error for each thing that is missing), a lost stage needs `lost_reason`, and a change of stage emits
-    `deal.stage_changed`. Answers with the deal's card."""
+    `deal.stage_changed`. Answers with the deal's card. It is a write of the deal's stage, so it needs `deals.write`
+    and a stage that the role may read and change."""
     cat = Catalog(c)
     obj = cat.need(stages.DEAL)
     target = c.db.get(Stage, body.stage_id)
@@ -189,7 +196,7 @@ def layout_json(pipeline_id: uuid.UUID, row: BoardLayout | None, known: set[uuid
 
 
 @router.get("/pipelines/{pipeline_id}/layout")
-def get_layout(pipeline_id: uuid.UUID, c: Ctx = Depends(in_workspace)):
+def get_layout(pipeline_id: uuid.UUID, c: Ctx = Depends(requires("deals.read"))):
     """The caller's own layout of this board: which stages are collapsed and which fields the cards show."""
     pipeline = pipeline_or_404(c, pipeline_id)
     row = c.db.get(BoardLayout, (pipeline.id, c.user_id))  # row level security: the caller's rows only
@@ -197,10 +204,11 @@ def get_layout(pipeline_id: uuid.UUID, c: Ctx = Depends(in_workspace)):
 
 
 @router.put("/pipelines/{pipeline_id}/layout")
-def save_layout(pipeline_id: uuid.UUID, body: Layout, c: Ctx = Depends(in_workspace)):
+def save_layout(pipeline_id: uuid.UUID, body: Layout, c: Ctx = Depends(requires("deals.read"))):
     cat = Catalog(c)
-    pipeline = pipeline_or_404(c, pipeline_id)
-    known, fields = {s.id for s in stages_of(c, pipeline)}, cat.fields(cat.need(stages.DEAL)) | BUILTIN
+    pipeline, deal = pipeline_or_404(c, pipeline_id), cat.need(stages.DEAL)
+    known = {s.id for s in stages_of(c, pipeline)}
+    fields = (cat.fields(deal) | BUILTIN).keys() - permissions.hidden(c, deal)  # a hidden field is not one to show
     errors = {f"collapsed.{i}": "is not a stage of this pipeline" for i, s in enumerate(body.collapsed)
               if s not in known}
     errors |= {f"card_fields.{i}": f"unknown field {k!r}" for i, k in enumerate(body.card_fields) if k not in fields}

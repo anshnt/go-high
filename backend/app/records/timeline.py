@@ -42,8 +42,8 @@ def timeline(record_id: uuid.UUID, limit: int = Query(50, ge=1, le=200), cursor:
     page, next_cursor = newest_first(c.db, stmt, limit, cursor)
     whole = whole_links(cat, page)
     page = [e for e in page if e.id in whole]
-    return {"data": [event_json(e, permissions.redact_event(c, obj, e.data)) for e in page],
-            "next_cursor": next_cursor}
+    shown = [(e, permissions.redact_event(c, obj, e.data, e.type)) for e in page]
+    return {"data": [event_json(e, data) for e, data in shown if data is not None], "next_cursor": next_cursor}
 
 
 def whole_links(cat: Catalog, page: list[Event]) -> set[int]:

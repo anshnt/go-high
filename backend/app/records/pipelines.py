@@ -1,7 +1,7 @@
-"""Pipelines and their stages (ADR 0002, module 10): the columns of the deal board. Reading is for everyone in the
-workspace, changing is for workspace admins. A stage has a kind (open, won or lost), a probability, a number of days
-after which a deal in it is rotting, a color and exit rules: a filter on the deal that must hold before it may leave.
-A pipeline that has deals is archived instead of deleted."""
+"""Pipelines and their stages (ADR 0002, module 10): the columns of the deal board. Reading is `schema.read`, changing
+is `pipelines.manage`, and every change is an event. A stage has a kind (open, won or lost), a probability, a number
+of days after which a deal in it is rotting, a color and exit rules: a filter on the deal that must hold before it may
+leave. A pipeline that has deals is archived instead of deleted."""
 import uuid
 from collections import defaultdict
 from typing import Annotated, Literal
@@ -10,8 +10,10 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import func, select
 
+from .. import events
 from ..api import ApiError, Idem, idempotency
-from ..security import Ctx, in_workspace, workspace_admin
+from ..permissions import requires
+from ..security import Ctx
 from . import query, seed
 from .models import Pipeline, Record, Stage
 from .objects import invalid
@@ -59,6 +61,26 @@ class PatchPipeline(BaseModel):
 
 class Order(BaseModel):
     stage_ids: list[uuid.UUID] = Field(max_length=MAX_STAGES)
+
+
+def pipeline_state(p: Pipeline) -> dict:
+    return {"name": p.name, "position": p.position}
+
+
+def stage_state(s: Stage) -> dict:
+    return {"name": s.name, "kind": s.kind, "probability": s.probability, "rotting_days": s.rotting_days,
+            "exit_rules": s.exit_rules, "color": s.color, "position": s.position}
+
+
+def audit_pipeline(c: Ctx, p: Pipeline, before: dict, was_archived: bool) -> None:
+    """The events of a change to a pipeline: what changed, and whether it was archived or brought back."""
+    actor, data = ("user", c.user_id), {"id": p.id, "name": p.name}
+    if changed := events.changes(before, pipeline_state(p)):
+        events.emit(c.db, "pipeline.updated", "pipeline", p.id, {**data, "changes": changed}, actor=actor)
+    if p.archived_at is not None and not was_archived:
+        events.emit(c.db, "pipeline.archived", "pipeline", p.id, data, actor=actor)
+    elif p.archived_at is None and was_archived:
+        events.emit(c.db, "pipeline.restored", "pipeline", p.id, data, actor=actor)
 
 
 def stage_json(s: Stage) -> dict:
@@ -118,7 +140,7 @@ def nulls(sent: dict, allowed: tuple[str, ...]) -> None:
 
 
 @router.get("")
-def list_pipelines(archived: bool = False, c: Ctx = Depends(in_workspace)):
+def list_pipelines(archived: bool = False, c: Ctx = Depends(requires("schema.read"))):
     """Every pipeline with its stages in order (a workspace has a handful)."""
     rows = list(c.db.scalars(select(Pipeline).where(
         Pipeline.archived_at.is_not(None) if archived else Pipeline.archived_at.is_(None))
@@ -131,7 +153,8 @@ def list_pipelines(archived: bool = False, c: Ctx = Depends(in_workspace)):
 
 
 @router.post("", status_code=201)
-def create_pipeline(body: NewPipeline, c: Ctx = Depends(workspace_admin), idem: Idem = Depends(idempotency)):
+def create_pipeline(body: NewPipeline, c: Ctx = Depends(requires("pipelines.manage")),
+                    idem: Idem = Depends(idempotency)):
     cat = Catalog(c)
     specs = body.stages if body.stages is not None else [
         NewStage(name=name, kind=kind, probability=probability, rotting_days=rotting, color=color)
@@ -146,19 +169,22 @@ def create_pipeline(body: NewPipeline, c: Ctx = Depends(workspace_admin), idem: 
             for i, (s, p) in enumerate(zip(specs, odds, strict=True))]
     c.db.add_all(rows)
     c.db.flush()
+    events.emit(c.db, "pipeline.created", "pipeline", pipeline.id,
+                {"id": pipeline.id, "name": pipeline.name, "position": pipeline.position}, actor=("user", c.user_id))
     return idem.commit(201, pipeline_json(pipeline, rows))
 
 
 @router.get("/{pipeline_id}")
-def get_pipeline(pipeline_id: uuid.UUID, c: Ctx = Depends(in_workspace)):
+def get_pipeline(pipeline_id: uuid.UUID, c: Ctx = Depends(requires("schema.read"))):
     pipeline = pipeline_or_404(c, pipeline_id)
     return pipeline_json(pipeline, stages_of(c, pipeline))
 
 
 @router.patch("/{pipeline_id}")
-def update_pipeline(pipeline_id: uuid.UUID, body: PatchPipeline, c: Ctx = Depends(workspace_admin)):
+def update_pipeline(pipeline_id: uuid.UUID, body: PatchPipeline, c: Ctx = Depends(requires("pipelines.manage"))):
     """`archived: true` hides a pipeline from lists and from new deals and keeps its deals; `false` brings it back."""
     pipeline, sent = pipeline_or_404(c, pipeline_id), body.model_dump(exclude_unset=True)
+    before, was_archived = pipeline_state(pipeline), pipeline.archived_at is not None
     nulls(sent, ())
     if "archived" in sent:
         if sent.pop("archived"):
@@ -171,12 +197,13 @@ def update_pipeline(pipeline_id: uuid.UUID, body: PatchPipeline, c: Ctx = Depend
         setattr(pipeline, name, value)
     c.db.flush()
     c.db.refresh(pipeline, ["archived_at"])
+    audit_pipeline(c, pipeline, before, was_archived)
     c.db.commit()
     return pipeline_json(pipeline, stages_of(c, pipeline))
 
 
 @router.delete("/{pipeline_id}", responses={204: {"description": "Deleted"}, 200: {"description": "Archived"}})
-def delete_pipeline(pipeline_id: uuid.UUID, c: Ctx = Depends(workspace_admin)):
+def delete_pipeline(pipeline_id: uuid.UUID, c: Ctx = Depends(requires("pipelines.manage"))):
     """Deletes a pipeline that has no deals (204). One that has deals is archived instead and comes back as it now
     is (200), so no deal is left without its stage."""
     pipeline = pipeline_or_404(c, pipeline_id)
@@ -184,18 +211,22 @@ def delete_pipeline(pipeline_id: uuid.UUID, c: Ctx = Depends(workspace_admin)):
     if pipeline.archived_at is None and live_count(c) == 1:
         raise ApiError(409, "conflict", "A workspace needs at least one pipeline that is not archived")
     if stages and deals_in(c, [s.id for s in stages]):
+        was_archived = pipeline.archived_at is not None
         pipeline.archived_at = pipeline.archived_at or func.now()
         c.db.flush()
         c.db.refresh(pipeline, ["archived_at"])
+        audit_pipeline(c, pipeline, pipeline_state(pipeline), was_archived)
         c.db.commit()
         return pipeline_json(pipeline, stages)
+    events.emit(c.db, "pipeline.deleted", "pipeline", pipeline.id, {"id": pipeline.id, "name": pipeline.name},
+                actor=("user", c.user_id))
     c.db.delete(pipeline)  # its stages and saved layouts go with it (foreign key cascade)
     c.db.commit()
     return Response(status_code=204)
 
 
 @router.post("/{pipeline_id}/stages", status_code=201)
-def create_stage(pipeline_id: uuid.UUID, body: NewStage, c: Ctx = Depends(workspace_admin),
+def create_stage(pipeline_id: uuid.UUID, body: NewStage, c: Ctx = Depends(requires("pipelines.manage")),
                  idem: Idem = Depends(idempotency)):
     cat, pipeline = Catalog(c), pipeline_or_404(c, pipeline_id)
     count, last = c.db.execute(select(func.count(), func.max(Stage.position)).where(
@@ -208,14 +239,20 @@ def create_stage(pipeline_id: uuid.UUID, body: NewStage, c: Ctx = Depends(worksp
                   position=body.position if body.position is not None else 0 if last is None else last + 1)
     c.db.add(stage)
     c.db.flush()
+    events.emit(c.db, "stage.created", "stage", stage.id,
+                {"id": stage.id, "pipeline_id": pipeline.id, "name": stage.name, "kind": stage.kind,
+                 "probability": stage.probability, "rotting_days": stage.rotting_days, "position": stage.position},
+                actor=("user", c.user_id))
     return idem.commit(201, stage_json(stage))
 
 
 @router.patch("/{pipeline_id}/stages/{stage_id}")
-def update_stage(pipeline_id: uuid.UUID, stage_id: uuid.UUID, body: PatchStage, c: Ctx = Depends(workspace_admin)):
+def update_stage(pipeline_id: uuid.UUID, stage_id: uuid.UUID, body: PatchStage,
+                 c: Ctx = Depends(requires("pipelines.manage"))):
     """A won stage has probability 100 and a lost one 0; changing the kind without a probability resets it."""
     cat, pipeline = Catalog(c), pipeline_or_404(c, pipeline_id)
     stage, sent = stage_or_404(c, pipeline, stage_id), body.model_dump(exclude_unset=True)
+    before = stage_state(stage)
     nulls(sent, ("rotting_days", "color"))
     kind = sent.get("kind", stage.kind)
     if {"kind", "probability", "exit_rules"} & sent.keys():
@@ -223,28 +260,38 @@ def update_stage(pipeline_id: uuid.UUID, stage_id: uuid.UUID, body: PatchStage, 
         sent["probability"] = probability_of(cat, kind, odds, sent.get("exit_rules"))
     for name, value in sent.items():
         setattr(stage, name, value)
+    if changed := events.changes(before, stage_state(stage)):
+        events.emit(c.db, "stage.updated", "stage", stage.id,
+                    {"id": stage.id, "pipeline_id": pipeline.id, "name": stage.name, "changes": changed},
+                    actor=("user", c.user_id))
     c.db.commit()
     return stage_json(stage)
 
 
 @router.delete("/{pipeline_id}/stages/{stage_id}", status_code=204)
-def delete_stage(pipeline_id: uuid.UUID, stage_id: uuid.UUID, c: Ctx = Depends(workspace_admin)):
+def delete_stage(pipeline_id: uuid.UUID, stage_id: uuid.UUID, c: Ctx = Depends(requires("pipelines.manage"))):
     stage = stage_or_404(c, pipeline_or_404(c, pipeline_id), stage_id)
     if n := deals_in(c, [stage.id]):
         raise ApiError(409, "conflict", f"Move the {n} deal{'s' * (n != 1)} in {stage.name} to another stage first")
+    events.emit(c.db, "stage.deleted", "stage", stage.id,
+                {"id": stage.id, "pipeline_id": stage.pipeline_id, "name": stage.name}, actor=("user", c.user_id))
     c.db.delete(stage)
     c.db.commit()
 
 
 @router.post("/{pipeline_id}/stages/reorder")
-def reorder_stages(pipeline_id: uuid.UUID, body: Order, c: Ctx = Depends(workspace_admin)):
+def reorder_stages(pipeline_id: uuid.UUID, body: Order, c: Ctx = Depends(requires("pipelines.manage"))):
     """The whole order in one call: every stage of the pipeline once, first to last."""
     pipeline = pipeline_or_404(c, pipeline_id)
     stages = stages_of(c, pipeline)
     if sorted(body.stage_ids) != sorted(s.id for s in stages):
         raise invalid(stage_ids="must list every stage of the pipeline exactly once")
     by_id = {s.id: s for s in stages}
+    moved = [s.id for s in stages] != body.stage_ids
     for position, stage_id in enumerate(body.stage_ids):
         by_id[stage_id].position = position
+    if moved:
+        events.emit(c.db, "stages.reordered", "pipeline", pipeline.id,
+                    {"pipeline_id": pipeline.id, "stage_ids": body.stage_ids}, actor=("user", c.user_id))
     c.db.commit()
     return pipeline_json(pipeline, [by_id[i] for i in body.stage_ids])

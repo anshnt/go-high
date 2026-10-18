@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pipeline.archived",
+  "description": "A pipeline was archived: hidden from lists and new deals, its deals kept. Subject: the pipeline.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"}
+  },
+  "required": ["id", "name"],
+  "additionalProperties": false
+}
