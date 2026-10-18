@@ -131,26 +131,29 @@ def test_a_response_writes_its_contact_as_the_automation_role(site, db):
 
 
 def test_a_new_contact_gets_source_form_and_a_known_one_keeps_its_own(site):
-    field = site.client.post("/api/v1/objects/contact/fields", headers={H: site.ws}, json={
-        "key": "source", "label": "Source", "type": "select",
-        "options": {"choices": [{"id": "web", "label": "Web"}, {"id": "form", "label": "Form"}]}})
-    assert field.status_code == 201, field.text
+    # every workspace's contacts have a `source` select with a `form` choice (seeded with the inbox)
     made = site.live(settings={"contact": {"existing": "update"}})
     site.submit(made, {"first_name": "New", "email": "new@example.com"})
-    known = make_record(site.client, site.ws, first_name="Old", email="old@example.com", source="web")
+    known = make_record(site.client, site.ws, first_name="Old", email="old@example.com", source="manual")
     bare = make_record(site.client, site.ws, first_name="Bare", email="bare@example.com")
     site.submit(made, {"first_name": "Changed", "email": "old@example.com"})
     site.submit(made, {"first_name": "Changed too", "email": "bare@example.com"})
     by_email = {c["values"]["email"]: c for c in site.records()}
     assert by_email["new@example.com"]["values"]["source"] == "form"
-    assert by_email["old@example.com"]["values"] == {**known["values"], "first_name": "Changed"}  # still web
+    assert by_email["old@example.com"]["values"] == {**known["values"], "first_name": "Changed"}  # still manual
     assert by_email["bare@example.com"]["values"].get("source") is None  # never set on a known contact
     assert bare["id"] == by_email["bare@example.com"]["id"]
 
 
-def test_without_a_source_field_there_is_nothing_to_set(site):
-    site.submit(site.live(), ANSWERS)
-    assert "source" not in site.records()[0]["values"]
+def test_without_a_form_choice_there_is_nothing_to_set():
+    # every contact object has the seeded `source` select now; a renamed or edited one may lack the choice
+    from types import SimpleNamespace
+
+    from app.forms.contact import form_source
+    select = lambda *ids: SimpleNamespace(type="select", options={"choices": [{"id": i, "label": i} for i in ids]})  # noqa: E731
+    assert form_source({}) is None and form_source({"source": select("manual", "api")}) is None
+    assert form_source({"source": SimpleNamespace(type="text", options={})}) is None
+    assert form_source({"source": select("manual", "form")}) == "form"
 
 
 # --- what a role may see of a response ----------------------------------------------------------------------
