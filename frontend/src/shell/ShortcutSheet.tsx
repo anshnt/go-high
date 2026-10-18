@@ -1,4 +1,4 @@
-import { CORE } from "../lib/nav";
+import { CORE, MY_DAY_NAV } from "../lib/nav";
 import { MOD } from "../lib/platform";
 import { Kbd, Sheet } from "../ui";
 
@@ -15,7 +15,14 @@ const LISTS: { keys: string[]; label: string }[] = [
   { keys: ["Enter"], label: "Open the row" },
   { keys: ["Esc"], label: "Close the open record, or clear the selection" },
 ];
-const GO = CORE.filter((c) => c.gKey).map((c) => ({ keys: ["G", c.gKey!.toUpperCase()], label: `Go to ${c.label}` }));
+const TASKS: typeof GENERAL = [
+  { keys: ["J"], label: "Next task" },
+  { keys: ["K"], label: "Previous task" },
+  { keys: ["X"], label: "Complete or reopen the task" },
+  { keys: ["E"], label: "Edit the task" },
+  { keys: ["N"], label: "Add a task" },
+];
+const GO = [MY_DAY_NAV, ...CORE].filter((c) => c.gKey).map((c) => ({ keys: ["G", c.gKey!.toUpperCase()], label: `Go to ${c.label}` }));
 
 function Group({ title, rows }: { title: string; rows: typeof GENERAL }) {
   return (
@@ -46,6 +53,7 @@ export function ShortcutSheet({ open, onOpenChange }: { open: boolean; onOpenCha
       <Group title="General" rows={GENERAL} />
       <Group title="Navigation" rows={GO} />
       <Group title="Lists and records" rows={LISTS} />
+      <Group title="Tasks" rows={TASKS} />
     </Sheet>
   );
 }

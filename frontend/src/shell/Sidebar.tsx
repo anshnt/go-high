@@ -1,6 +1,6 @@
 import { NavLink, useLocation } from "react-router";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { APPS_NAV, inArea, SETTINGS_NAV, sidebarPrefs, visibleCore, type NavItem } from "../lib/nav";
+import { APPS_NAV, inArea, MY_DAY_NAV, SETTINGS_NAV, sidebarPrefs, visibleCore, type NavItem } from "../lib/nav";
 import { sidebarCollapsed } from "../lib/prefs";
 import { useStore } from "../lib/store";
 import { Button, Tooltip } from "../ui";
@@ -30,6 +30,7 @@ export function Sidebar() {
       </div>
       <nav aria-label="Primary" className="sh-nav">
         <ul>
+          <Item item={MY_DAY_NAV} collapsed={collapsed} />
           {items.map((i) => (
             <Item key={i.id} item={i} collapsed={collapsed} />
           ))}

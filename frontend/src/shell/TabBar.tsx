@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { NavLink, useLocation } from "react-router";
 import { Ellipsis, Keyboard, Moon, Sun } from "lucide-react";
-import { APPS_NAV, CORE, inArea, SETTINGS_NAV } from "../lib/nav";
+import { APPS_NAV, CORE, inArea, MY_DAY_NAV, SETTINGS_NAV } from "../lib/nav";
 import { theme, toggleTheme } from "../lib/prefs";
 import { useStore } from "../lib/store";
 import { Sheet } from "../ui";
 import { HealthDot } from "./HealthDot";
 
-const TABS = ["inbox", "contacts", "calendar", "pipeline"].map((id) => CORE.find((c) => c.id === id)!);
-const MORE = [...CORE.filter((c) => !TABS.includes(c)), APPS_NAV, SETTINGS_NAV];
+const TABS = ["inbox", "contacts", "calendar", "tasks"].map((id) => CORE.find((c) => c.id === id)!);
+const MORE = [MY_DAY_NAV, ...CORE.filter((c) => !TABS.includes(c)), APPS_NAV, SETTINGS_NAV];
 
 /** Phone navigation: bottom tabs, with the rest in a bottom sheet. Hidden on desktop by CSS. */
 export function TabBar({ onShortcuts }: { onShortcuts: () => void }) {

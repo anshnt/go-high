@@ -211,8 +211,9 @@ def test_listing_filters_by_status_record_and_completion(board):
     assert titles(mine, ws, status="open") == ["late", "yesterday", "today", "soon", "someday", "free"]
     assert titles(mine, ws, record_id=ada["id"]) == ["soon"]
     assert titles(mine, ws, record_id=str(uuid.uuid4())) == []
-    assert titles(mine, ws, status="done", completed_after=iso(NOW - timedelta(minutes=5))) == ["finished"]
-    assert titles(mine, ws, status="done", completed_after=iso(NOW + timedelta(minutes=5))) == []
+    fresh = datetime.now(UTC)  # not NOW: a long test run starts this test long after the module was imported
+    assert titles(mine, ws, status="done", completed_after=iso(fresh - timedelta(minutes=5))) == ["finished"]
+    assert titles(mine, ws, status="done", completed_after=iso(fresh + timedelta(minutes=5))) == []
     assert titles(mine, ws, assignee="me", status="open") == ["late", "yesterday", "today"]
 
 
