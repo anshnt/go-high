@@ -1,7 +1,7 @@
-"""Channels API (ADR 0005): the messaging accounts of a workspace. Workspace admins create, edit, disable and test
-them; any member lists them to pick a sender. Settings are public (`config`); API keys and passwords are `secrets`,
-which can be written but are never returned (see `vault`). `webhook_url` is what to paste into the provider's
-console."""
+"""Channels API (ADR 0005): the messaging accounts of a workspace. Roles with `channels.manage` create, edit, disable
+and test them; anyone who can read conversations lists them to pick a sender. Settings are public (`config`); API
+keys and passwords are `secrets`, which can be written but are never returned (see `vault`). `webhook_url` is what to
+paste into the provider's console."""
 import re
 import secrets as token
 import uuid
@@ -17,11 +17,13 @@ from sqlalchemy import func, select
 from .. import compliance, config, events
 from ..api import ApiError, Idem, idempotency, paginate
 from ..channels.base import ChannelError
-from ..security import Ctx, in_workspace, workspace_admin
+from ..permissions import grants, requires
+from ..security import Ctx
 from . import gateway, vault
 from .models import Channel
 
 router = APIRouter(prefix="/api/v1/channels")
+manage, read = requires("channels.manage"), requires("conversations.read")
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 # provider: (kind, settings, required settings, secrets, required secrets); every secret is write-only
 SPECS = {
@@ -144,6 +146,11 @@ def event_data(ch: Channel) -> dict:
             "status": ch.status}
 
 
+def can_manage(c: Ctx) -> bool:
+    """Settings, the webhook URL and the embed snippet are for roles that manage channels; the rest see a sender."""
+    return "channels.manage" in grants(c).capabilities
+
+
 def channel_or_404(c: Ctx, channel_id: uuid.UUID) -> Channel:
     ch = c.db.get(Channel, channel_id)  # row level security: this workspace's channels only
     if ch is None:
@@ -152,7 +159,7 @@ def channel_or_404(c: Ctx, channel_id: uuid.UUID) -> Channel:
 
 
 @router.post("", status_code=201)
-def create_channel(body: NewChannel, c: Ctx = Depends(workspace_admin), idem: Idem = Depends(idempotency)):
+def create_channel(body: NewChannel, c: Ctx = Depends(manage), idem: Idem = Depends(idempotency)):
     given = {k: v for k, v in body.secrets.items() if v is not None}
     webchat = body.kind == "webchat"
     address = f"wk_{token.token_urlsafe(16)}" if webchat else body.address
@@ -169,22 +176,22 @@ def create_channel(body: NewChannel, c: Ctx = Depends(workspace_admin), idem: Id
 
 @router.get("")
 def list_channels(status: Literal["active", "pending", "failing", "disabled"] | None = None,
-                  limit: int = Query(50, ge=1, le=200), cursor: str | None = None, c: Ctx = Depends(in_workspace)):
+                  limit: int = Query(50, ge=1, le=200), cursor: str | None = None, c: Ctx = Depends(read)):
     stmt = select(Channel)
     if status:
         stmt = stmt.where(Channel.status == status)
     rows, next_cursor = paginate(c.db, stmt, Channel, limit, cursor)
-    admin = c.workspace_role == "admin"
+    admin = can_manage(c)
     return {"data": [channel_json(row[0], admin) for row in rows], "next_cursor": next_cursor}
 
 
 @router.get("/{channel_id}")
-def get_channel(channel_id: uuid.UUID, c: Ctx = Depends(in_workspace)):
-    return channel_json(channel_or_404(c, channel_id), c.workspace_role == "admin")
+def get_channel(channel_id: uuid.UUID, c: Ctx = Depends(read)):
+    return channel_json(channel_or_404(c, channel_id), can_manage(c))
 
 
 @router.patch("/{channel_id}")
-def update_channel(channel_id: uuid.UUID, body: PatchChannel, c: Ctx = Depends(workspace_admin)):
+def update_channel(channel_id: uuid.UUID, body: PatchChannel, c: Ctx = Depends(manage)):
     ch = channel_or_404(c, channel_id)
     sent = body.model_fields_set
     settings = {k: v for k, v in {**ch.config, **(body.config or {})}.items() if v is not None}
@@ -221,7 +228,7 @@ def update_channel(channel_id: uuid.UUID, body: PatchChannel, c: Ctx = Depends(w
 
 
 @router.post("/{channel_id}/test")
-def test_channel(channel_id: uuid.UUID, c: Ctx = Depends(workspace_admin)):
+def test_channel(channel_id: uuid.UUID, c: Ctx = Depends(manage)):
     """Asks the provider to accept the saved credentials, where its adapter can check them. A refusal marks the
     channel failing; an acceptance makes it active. The answer is `{"ok": bool, "detail": text}`."""
     ch = channel_or_404(c, channel_id)
@@ -239,6 +246,6 @@ def test_channel(channel_id: uuid.UUID, c: Ctx = Depends(workspace_admin)):
 
 
 @router.post("/{channel_id}/estimate")
-def estimate_message(channel_id: uuid.UUID, body: Estimate, c: Ctx = Depends(in_workspace)):
+def estimate_message(channel_id: uuid.UUID, body: Estimate, c: Ctx = Depends(read)):
     """Segments and estimated cost of a text, for the composer while typing."""
     return estimate(channel_or_404(c, channel_id), body.body)

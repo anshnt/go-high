@@ -8,22 +8,25 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, StringConstraints
-from sqlalchemy import and_, cast, false, func, select
+from sqlalchemy import and_, cast, false, func, or_, select
 from sqlalchemy.dialects.postgresql import TSQUERY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, aliased
 
 from .. import events, jobs, permissions
 from ..api import ApiError, Idem, idempotency, paginate, seal, unseal
+from ..models import Team
+from ..permissions import requires
 from ..records import store
 from ..records.filters import search_terms
 from ..records.models import ObjectDef, Record
 from ..records.schema import Catalog
-from ..security import Ctx, in_workspace
+from ..security import Ctx
 from . import threads
 from .models import Channel, Conversation, ConversationRead, Message
 
 router = APIRouter(prefix="/api/v1/conversations")
+reads, writes = requires("conversations.read"), requires("conversations.write")
 Views = Literal["mine", "unassigned", "open", "snoozed", "closed", "unread"]
 MAX_SNOOZE = timedelta(days=365)
 
@@ -52,7 +55,8 @@ class EditNote(BaseModel):
 def conversation_json(c: Ctx, conv: Conversation, rec: Record, obj: ObjectDef, unread: bool,
                       channel_kind: str | None) -> dict:
     shown = permissions.redact(c, obj, {"email": rec.email_norm, "phone": rec.phone_e164})
-    return {"id": conv.id, "contact": {"id": rec.id, "display_name": rec.display_name, "email": shown.get("email"),
+    name = None if "display_name" in permissions.hidden(c, obj) else rec.display_name
+    return {"id": conv.id, "contact": {"id": rec.id, "display_name": name, "email": shown.get("email"),
                                        "phone": shown.get("phone")},
             "status": conv.status, "assignee_id": conv.assignee_id, "team_id": conv.team_id,
             "snooze_until": conv.snooze_until, "last_message_at": conv.last_message_at,
@@ -73,12 +77,20 @@ def describe(c: Ctx, conv: Conversation, rec: Record, obj: ObjectDef) -> dict:
             "last_read_seq": mark}
 
 
+def visible(c: Ctx, cat: Catalog, obj: ObjectDef):
+    """Conversations the caller may see: those of a contact in their record scope (ADR 0004), and those assigned to
+    them or to one of their teams, whatever the contact's scope."""
+    teams = [uuid.UUID(t) for t in permissions.team_ids(c)]
+    return or_(store.scope(cat, obj), Conversation.assignee_id == c.user_id,
+               Conversation.team_id.in_(teams) if teams else false())
+
+
 def conversation_or_404(c: Ctx, conversation_id: uuid.UUID, *, lock: bool = False) -> tuple[Conversation, Record]:
     """The conversation and its contact, when the caller may see the contact; anything else is a 404."""
     cat = Catalog(c)
     stmt = (select(Conversation, Record).join(Record, Record.id == Conversation.contact_id)
             .where(Conversation.id == conversation_id, Conversation.workspace_id == c.workspace.id,
-                   Record.deleted_at.is_(None), store.scope(cat, cat.need("contact"))))
+                   Record.deleted_at.is_(None), visible(c, cat, cat.need("contact"))))
     row = c.db.execute(stmt.with_for_update(of=Conversation) if lock else stmt).one_or_none()
     if row is None:
         raise HTTPException(404, "Conversation not found")
@@ -111,7 +123,7 @@ def counts(c: Ctx, cat: Catalog, obj: ObjectDef) -> dict:
     """Every view's size, and the open conversations per channel, for the sidebar: two statements."""
     read = aliased(ConversationRead)
     unread = Conversation.last_inbound_seq > func.coalesce(read.last_read_seq, 0)
-    mine = (Conversation.workspace_id == c.workspace.id, Record.deleted_at.is_(None), store.scope(cat, obj))
+    mine = (Conversation.workspace_id == c.workspace.id, Record.deleted_at.is_(None), visible(c, cat, obj))
     row = c.db.execute(
         select(*[func.count().filter(view_condition(v, c.user_id, unread)).label(v) for v in Views.__args__])
         .select_from(Conversation).join(Record, Record.id == Conversation.contact_id)
@@ -126,7 +138,7 @@ def counts(c: Ctx, cat: Catalog, obj: ObjectDef) -> dict:
 @router.get("")
 def list_conversations(view: Views = "open", channel_id: uuid.UUID | None = None,
                        q: Annotated[str | None, Query(max_length=200)] = None, limit: int = Query(50, ge=1, le=200),
-                       cursor: str | None = None, c: Ctx = Depends(in_workspace)):
+                       cursor: str | None = None, c: Ctx = Depends(reads)):
     """Conversations of one view, most recently active first, with `counts` for every view on the first page.
     `channel_id` narrows to conversations whose last message used that channel; `q` searches message text and
     the contact's name, email and phone."""
@@ -138,7 +150,7 @@ def list_conversations(view: Views = "open", channel_id: uuid.UUID | None = None
             .join(Record, Record.id == Conversation.contact_id)
             .outerjoin(Channel, Channel.id == Conversation.last_channel_id)
             .outerjoin(read, and_(read.conversation_id == Conversation.id, read.user_id == c.user_id))
-            .where(Conversation.workspace_id == c.workspace.id, Record.deleted_at.is_(None), store.scope(cat, obj),
+            .where(Conversation.workspace_id == c.workspace.id, Record.deleted_at.is_(None), visible(c, cat, obj),
                    view_condition(view, c.user_id, unread)))
     if channel_id:
         stmt = stmt.where(Conversation.last_channel_id == channel_id)
@@ -156,7 +168,7 @@ def list_conversations(view: Views = "open", channel_id: uuid.UUID | None = None
 
 
 @router.post("", status_code=201)
-def start_conversation(body: StartConversation, c: Ctx = Depends(in_workspace), idem: Idem = Depends(idempotency)):
+def start_conversation(body: StartConversation, c: Ctx = Depends(writes), idem: Idem = Depends(idempotency)):
     """The contact's conversation, made if they have none (answers 200 when it exists): the place to compose a
     first message to a contact who never wrote."""
     cat = Catalog(c)
@@ -168,7 +180,7 @@ def start_conversation(body: StartConversation, c: Ctx = Depends(in_workspace), 
 
 
 @router.get("/{conversation_id}")
-def get_conversation(conversation_id: uuid.UUID, limit: int = Query(50, ge=1, le=200), c: Ctx = Depends(in_workspace)):
+def get_conversation(conversation_id: uuid.UUID, limit: int = Query(50, ge=1, le=200), c: Ctx = Depends(reads)):
     """The conversation and its newest messages (`messages.data`, newest first; page back with `next_cursor`)."""
     conv, rec = conversation_or_404(c, conversation_id)
     shown = describe(c, conv, rec, Catalog(c).need("contact"))
@@ -195,7 +207,7 @@ def message_page(db: Session, conv: Conversation, limit: int, cursor: str | None
 
 @router.get("/{conversation_id}/messages")
 def list_messages(conversation_id: uuid.UUID, q: Annotated[str | None, Query(max_length=200)] = None,
-                  limit: int = Query(50, ge=1, le=200), cursor: str | None = None, c: Ctx = Depends(in_workspace)):
+                  limit: int = Query(50, ge=1, le=200), cursor: str | None = None, c: Ctx = Depends(reads)):
     """Messages by `seq`, newest first, optionally only those that contain every word of `q`."""
     conv, _ = conversation_or_404(c, conversation_id)
     return message_page(c.db, conv, limit, cursor, q)
@@ -208,9 +220,9 @@ def changed(c: Ctx, conv: Conversation, rec: Record, **changes) -> dict:
 
 
 @router.post("/{conversation_id}/assign")
-def assign(conversation_id: uuid.UUID, body: Assign, c: Ctx = Depends(in_workspace)):
-    """Assigns to a member of the workspace and/or a team; send null to unassign. Keys left out stay as they are.
-    ponytail: a team id is stored as given until teams exist (module 03)."""
+def assign(conversation_id: uuid.UUID, body: Assign, c: Ctx = Depends(writes)):
+    """Assigns to a member of the workspace and/or a team; send null to unassign. Keys left out stay as they are. A
+    conversation assigned to someone, or to a team they are in, is theirs to see whatever the scope on its contact."""
     conv, rec = conversation_or_404(c, conversation_id, lock=True)
     changes = {}
     if "user_id" in body.model_fields_set:
@@ -219,12 +231,15 @@ def assign(conversation_id: uuid.UUID, body: Assign, c: Ctx = Depends(in_workspa
                            {"user_id": "is not a member of this workspace"})
         changes["assignee_id"] = body.user_id
     if "team_id" in body.model_fields_set:
+        if body.team_id and c.db.get(Team, body.team_id) is None:
+            raise ApiError(422, "validation_failed", "The team is not valid",
+                           {"team_id": "is not a team of this workspace"})
         changes["team_id"] = body.team_id
     return changed(c, conv, rec, **changes)
 
 
 @router.post("/{conversation_id}/snooze")
-def snooze(conversation_id: uuid.UUID, body: Snooze, c: Ctx = Depends(in_workspace)):
+def snooze(conversation_id: uuid.UUID, body: Snooze, c: Ctx = Depends(writes)):
     """Hides the conversation until `until` (an aware time up to a year ahead); it comes back by itself, as open,
     and a message from the contact brings it back sooner."""
     if body.until.tzinfo is None:
@@ -238,19 +253,19 @@ def snooze(conversation_id: uuid.UUID, body: Snooze, c: Ctx = Depends(in_workspa
 
 
 @router.post("/{conversation_id}/close")
-def close(conversation_id: uuid.UUID, c: Ctx = Depends(in_workspace)):
+def close(conversation_id: uuid.UUID, c: Ctx = Depends(writes)):
     conv, rec = conversation_or_404(c, conversation_id, lock=True)
     return changed(c, conv, rec, status="closed", snooze_until=None)
 
 
 @router.post("/{conversation_id}/reopen")
-def reopen(conversation_id: uuid.UUID, c: Ctx = Depends(in_workspace)):
+def reopen(conversation_id: uuid.UUID, c: Ctx = Depends(writes)):
     conv, rec = conversation_or_404(c, conversation_id, lock=True)
     return changed(c, conv, rec, status="open", snooze_until=None)
 
 
 @router.post("/{conversation_id}/read")
-def read(conversation_id: uuid.UUID, body: Read | None = None, c: Ctx = Depends(in_workspace)):
+def read(conversation_id: uuid.UUID, body: Read | None = None, c: Ctx = Depends(reads)):
     """Marks messages up to `seq` (default: all) as read by the caller. Returns the new read mark."""
     conv, _ = conversation_or_404(c, conversation_id)
     seq = conv.last_seq if body is None or body.seq is None else min(body.seq, conv.last_seq)
@@ -260,7 +275,7 @@ def read(conversation_id: uuid.UUID, body: Read | None = None, c: Ctx = Depends(
 
 
 @router.patch("/{conversation_id}/messages/{message_id}")
-def edit_note(conversation_id: uuid.UUID, message_id: uuid.UUID, body: EditNote, c: Ctx = Depends(in_workspace)):
+def edit_note(conversation_id: uuid.UUID, message_id: uuid.UUID, body: EditNote, c: Ctx = Depends(writes)):
     """An internal note's text, changed by its author only."""
     conv, _ = conversation_or_404(c, conversation_id)
     msg = c.db.scalar(select(Message).where(Message.id == message_id, Message.conversation_id == conv.id)

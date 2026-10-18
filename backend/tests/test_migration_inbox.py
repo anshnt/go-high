@@ -30,7 +30,7 @@ def old_database():
             for name in ("One", "Two"):
                 conn.execute(text("INSERT INTO workspaces (org_id, brand_id, name) VALUES (:o, :b, :n)"),
                              {"o": org, "b": brand, "n": name})
-        alembic(url, "upgrade", "0007")
+        alembic(url, "upgrade", "0005")
         with engine.begin() as conn:  # make the contacts look like those before the inbox: six fields
             conn.execute(text("DELETE FROM fields WHERE key IN ('source', 'timezone')"))
             one = conn.scalar(text("SELECT o.id FROM objects o JOIN workspaces w ON w.id = o.workspace_id "
@@ -76,7 +76,7 @@ def test_contacts_get_a_source_and_a_time_zone_and_a_field_of_the_same_key_is_ke
 def test_the_migration_reverses_and_runs_again(old_database):
     url, engine = old_database
     alembic(url, "upgrade", "head")
-    alembic(url, "downgrade", "0007")
+    alembic(url, "downgrade", "0005")
     with engine.begin() as conn:
         assert conn.scalar(text("SELECT count(*) FROM pg_tables WHERE tablename IN ('channels', 'secrets', "
                                 "'conversations', 'messages', 'consents', 'chat_limits', 'conversation_reads')")) == 0

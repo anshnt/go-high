@@ -189,7 +189,12 @@ def test_assign_to_a_member_a_team_or_nobody(crm, db, make_user):
     w = World(client, ws, ids, db)
     other, other_ids = make_user("b@example.com")
     other_user = other.get("/api/me").json()["user"]["id"]
-    team = "00000000-0000-0000-0000-0000000000aa"
+    team = client.post("/api/v1/teams", json={"name": "Support"}, headers={H: ws}).json()["id"]
+    foreign = other.post("/api/v1/teams", json={"name": "Theirs"}, headers={H: other_ids["workspace_id"]}).json()["id"]
+    for unknown in (foreign, "00000000-0000-0000-0000-0000000000aa"):  # another workspace's team, or none at all
+        bad = act(client, ws, w.zed["id"], "assign", {"team_id": unknown})
+        assert bad.status_code == 422 and bad.json()["error"]["fields"] == {
+            "team_id": "is not a team of this workspace"}
     r = act(client, ws, w.zed["id"], "assign", {"user_id": w.member_id, "team_id": team})
     assert r.status_code == 200 and (r.json()["assignee_id"], r.json()["team_id"]) == (w.member_id, team)
     assert act(client, ws, w.zed["id"], "assign", {"team_id": None}).json()["assignee_id"] == w.member_id  # kept

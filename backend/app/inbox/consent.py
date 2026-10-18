@@ -1,6 +1,7 @@
 """Consent before every send (ADR 0005, module 14): who opted out of which channel, and the verdict
 `compliance.can_send` gives for one message. STOP, unsubscribes and complaints are recorded by the inbound path;
-staff can switch do not disturb on and off but can never undo an opt-out: only the contact's own START does."""
+roles with `consents.manage` can switch do not disturb on and off but can never undo an opt-out: only the contact's
+own START does."""
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -11,13 +12,15 @@ from sqlalchemy.orm import Session
 
 from .. import compliance, events
 from ..api import ApiError
+from ..permissions import requires
 from ..records import store
 from ..records.models import Record
 from ..records.schema import Catalog
-from ..security import Ctx, in_workspace
+from ..security import Ctx
 from .models import KINDS, Channel, Consent, Conversation, Message
 
 router = APIRouter(prefix="/api/v1/contacts")
+read, manage = requires("conversations.read"), requires("consents.manage")
 DEFAULT_CAP = {"sms": (10, 24), "whatsapp": (10, 24)}  # messages per hours; email and chat have none unless set
 
 
@@ -101,14 +104,14 @@ def contact_or_404(c: Ctx, contact_id: uuid.UUID) -> Record:
 
 
 @router.get("/{contact_id}/consents")
-def list_consents(contact_id: uuid.UUID, c: Ctx = Depends(in_workspace)):
+def list_consents(contact_id: uuid.UUID, c: Ctx = Depends(read)):
     contact_or_404(c, contact_id)
     rows = c.db.scalars(select(Consent).where(Consent.contact_id == contact_id).order_by(Consent.kind))
     return {"data": [consent_json(r) for r in rows]}
 
 
 @router.put("/{contact_id}/consents/{kind}")
-def set_dnd(contact_id: uuid.UUID, kind: str, body: Dnd, c: Ctx = Depends(in_workspace)):
+def set_dnd(contact_id: uuid.UUID, kind: str, body: Dnd, c: Ctx = Depends(manage)):
     """Do not disturb on or off for one channel kind. An opt-out stays until the contact opts back in."""
     contact_or_404(c, contact_id)
     if kind not in KINDS:

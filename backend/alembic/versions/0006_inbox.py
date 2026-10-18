@@ -1,7 +1,7 @@
 """inbox: channels, secrets, conversations, messages, read marks, consent, webchat counters; contact source and zone
 
 Revision ID: 0006
-Revises: 0007
+Revises: 0005
 Create Date: 2026-10-17
 """
 import json
@@ -11,7 +11,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "0006"
-down_revision = "0007"
+down_revision = "0005"
 branch_labels = None
 depends_on = None
 
@@ -159,6 +159,13 @@ RLS = {
 }
 
 
+# frozen: what the system roles of every organization gain (ADR 0004: a module grants its own in its migration)
+INBOX = ("conversations.read", "conversations.write", "consents.manage", "channels.manage")
+AGENT = ("conversations.read", "conversations.write", "consents.manage")
+GRANTS = {"owner": INBOX, "admin": INBOX, "manager": AGENT, "member": AGENT, "viewer": ("conversations.read",),
+          "automation": ("conversations.read", "conversations.write")}
+
+
 def backfill(connection) -> None:
     """The source and time zone fields for contact objects that exist already (a new workspace gets them from the
     seed). A workspace that has a field with that key keeps its own."""
@@ -171,6 +178,10 @@ def backfill(connection) -> None:
             "FROM objects o WHERE o.key = 'contact' AND o.is_system "
             "ON CONFLICT (object_id, key) DO NOTHING"),
             {"key": key, "label": label, "type": type_, "options": json.dumps(options), "rules": json.dumps(rules)})
+    for role, capabilities in GRANTS.items():  # custom roles are the organization's to edit
+        connection.execute(sa.text(
+            "UPDATE roles SET capabilities = capabilities || ARRAY(SELECT c FROM unnest(CAST(:caps AS text[])) c "
+            "WHERE c <> ALL(capabilities)) WHERE key = :key AND is_system"), {"key": role, "caps": list(capabilities)})
 
 
 def upgrade() -> None:
@@ -186,6 +197,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.get_bind().execute(sa.text(
+        "UPDATE roles SET capabilities = "
+        "ARRAY(SELECT c FROM unnest(capabilities) c WHERE c <> ALL(CAST(:caps AS text[])))"), {"caps": list(INBOX)})
     op.execute("DELETE FROM fields f USING objects o WHERE o.id = f.object_id AND o.key = 'contact' AND f.is_system "
                "AND f.key IN ('source', 'timezone')")
     for table in reversed(RLS):

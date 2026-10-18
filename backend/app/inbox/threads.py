@@ -10,7 +10,7 @@ from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from .. import events
-from ..models import Workspace
+from ..models import Role, Workspace
 from ..security import Ctx
 from .models import Conversation, Message
 
@@ -20,9 +20,10 @@ LISTED = ("message", "call", "voicemail")  # kinds that move a conversation up t
 
 
 def system_ctx(db: Session, workspace: Workspace) -> Ctx:
-    """A context for work done by the platform itself (an inbound message creating its contact), not by a user.
-    ponytail: ADR 0004 must give this actor the Automation role; until then it sees everything."""
-    return Ctx(db, None, None, "", workspace, "admin")  # type: ignore[arg-type]
+    """A context for work done by the platform itself (an inbound message creating its contact), not by a user: it
+    acts as the organization's Automation role (ADR 0004), so what it may do is visible and editable like any role."""
+    role = db.scalar(select(Role).where(Role.org_id == workspace.org_id, Role.key == "automation"))
+    return Ctx(db, None, None, "", workspace, workspace_role="automation", role=role)  # type: ignore[arg-type]
 
 
 def clean(text: str | None, cap: int) -> str | None:

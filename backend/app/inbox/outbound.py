@@ -14,13 +14,15 @@ from sqlalchemy.orm import Session
 from .. import events, jobs
 from ..api import ApiError, Idem, idempotency
 from ..channels.base import ChannelError, Outbound
+from ..permissions import require, requires
 from ..records.models import Record
-from ..security import Ctx, in_workspace
+from ..security import Ctx
 from . import channels, consent, gateway, threads
 from .conversations import conversation_or_404, mark_read
 from .models import Channel, Conversation, Message
 
 router = APIRouter(prefix="/api/v1/conversations")
+send_messages = requires("messages.send")
 MAX_ATTEMPTS = 6  # a retryable provider error is tried this many times (10 s, 20 s, 40 s... between them)
 REFERENCES = 10  # earlier ids of the thread sent along with an email reply
 
@@ -75,7 +77,7 @@ def channel_for(c: Ctx, conv: Conversation, channel_id: uuid.UUID | None) -> Cha
 
 
 @router.post("/{conversation_id}/messages", status_code=201)
-def post_message(conversation_id: uuid.UUID, body: NewMessage, c: Ctx = Depends(in_workspace),
+def post_message(conversation_id: uuid.UUID, body: NewMessage, c: Ctx = Depends(send_messages),
                  idem: Idem = Depends(idempotency)):
     """Adds a reply or an internal note. A reply is refused with a reason (422, the error code names it: `opted_out`,
     `dnd`, `quiet_hours`, `frequency_cap`, `no_address`; `fields.retry_at` says when waiting helps) when consent or
@@ -87,6 +89,7 @@ def post_message(conversation_id: uuid.UUID, body: NewMessage, c: Ctx = Depends(
         raise ApiError(422, "validation_failed", "The message is empty", {"body": "is required"})
     actor, estimate, wire = ("user", c.user_id), None, {}
     if body.kind == "note":
+        require(c, "conversations.write")
         msg = threads.append(c.db, conv, direction="out", kind="note", status="sent", body=body.body, sent_by=c.user_id)
         events.emit(c.db, "message.note_added", "message", msg.id, threads.message_data(msg, contact.id), actor=actor)
     else:

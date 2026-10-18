@@ -8,7 +8,9 @@ A stream sends `: ping` every 25 seconds, ends after 30 minutes (EventSource rec
 again) and resumes from `Last-Event-ID` when that event is still in the process's recent buffer; otherwise it sends
 `stream.resync` and the client refetches what it shows. Browsers cannot set headers on EventSource, so the workspace
 may also be given as `?workspace_id=`.
-ponytail: every workspace member gets every id (the permission filter of ADR 0004 comes later), the buffer lives in
+ponytail: everyone who may read conversations gets every id of the workspace, and an id carries nothing a client
+could use without asking the API, which applies the scope (filtering here would cost a query per client per event);
+the buffer lives in
 the process's memory, and a slow client is cut loose with `stream.resync` instead of being buffered."""
 import asyncio
 import json
@@ -27,6 +29,7 @@ from sqlalchemy.orm import Session
 
 from .. import config, events
 from ..events import Event
+from ..permissions import require
 from ..security import Ctx, enter_workspace, user
 
 log = logging.getLogger("stream")
@@ -150,7 +153,12 @@ async def listen(hub: Hub = hub) -> None:
 
 def stream_workspace(c: Ctx = Depends(user), x_workspace_id: str | None = Header(default=None),
                      workspace_id: str | None = Query(default=None)) -> Ctx:
-    return enter_workspace(c, x_workspace_id or workspace_id)
+    c = enter_workspace(c, x_workspace_id or workspace_id)
+    require(c, "conversations.read")
+    return c
+
+
+stream_workspace.capability = "conversations.read"  # what tests/test_permissions.py reads, as for `requires`
 
 
 def frame(payload: dict) -> str:
