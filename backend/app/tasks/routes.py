@@ -84,7 +84,7 @@ def list_tasks(assignee: Annotated[str, Query(description="me, anyone, unassigne
     if status:
         stmt = stmt.where(Task.status == status)
     if due_bucket:
-        stmt = stmt.where(due.BUCKETS[due_bucket](zone.key))
+        stmt = stmt.where(due.BUCKETS[due_bucket](due.today(zone)))
     if due_after:
         stmt = stmt.where(Task.due_at >= due_after)
     if due_before:

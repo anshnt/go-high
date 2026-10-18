@@ -186,11 +186,11 @@ Milestones: **M0 Foundations**, **M1 Core CRM** (first sellable product), **M2 G
 - Tasks on contacts with due dates and assignment, notification bell, mobile push that users report as unreliable.
 
 **Better**
-- [ ] Tasks on any record; list, board and calendar views; recurring and dependent tasks
+- [x] Tasks on any record; list, board and calendar views; recurring and dependent tasks
 - [ ] Task playbooks per pipeline stage
-- [ ] Notification center with per-event, per-channel, per-scope rules, digests, quiet hours
-- [ ] Web push and email notifications; unread counts in the tab title
-- [ ] My Day view: tasks, appointments and assigned conversations in one list
+- [ ] Notification center with per-event, per-channel, per-scope rules, digests, quiet hours (in-app is done: a bell, three kinds of event, a rule per kind for who hears about it and whether the bell shows it, quiet hours that hold notifications until they end; the email channel and the digests are stored but not sent)
+- [ ] Web push and email notifications; unread counts in the tab title (the tab title shows the unread count; push and email wait for the email module and a service worker)
+- [ ] My Day view: tasks, appointments and assigned conversations in one list (the landing page lists my overdue and today's tasks; appointments and conversations have their place and join when calendars and the inbox exist)
 
 **Done when** a user gets exactly the notifications their rules say, on web push and email, and can work their day from one screen.
 

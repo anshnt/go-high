@@ -1,38 +1,58 @@
 """What "overdue", "today" and "upcoming" mean, as SQL conditions on `tasks`, for one reader's time zone. A timed task
-is overdue once its time has passed; an all-day task (due_at is midnight UTC of its date) once its date has."""
-from sqlalchemy import Date, and_, case, cast, func, or_
+is overdue once its time has passed; an all-day task (due_at is midnight UTC of its date) once its date has.
+The zone is applied here, in Python, to find where the reader's day starts and ends as instants: Postgres never sees a
+zone name, so a name it does not know (an old alias such as Asia/Calcutta) cannot break a query."""
+from datetime import UTC, date, datetime, time, timedelta
+from typing import NamedTuple
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import and_, case, func, or_
 
 from .models import Task
 
 
-def today(zone: str):
-    return cast(func.timezone(zone, func.now()), Date)
+class Today(NamedTuple):
+    date: date  # the reader's calendar date
+    start: datetime  # local midnight that begins it, as an instant
+    end: datetime  # local midnight that ends it
 
 
-def local_day(zone: str):
-    """The calendar day a task is due: its date for an all-day task, else the day in `zone`."""
-    return case((Task.all_day, cast(func.timezone("UTC", Task.due_at), Date)),
-                else_=cast(func.timezone(zone, Task.due_at), Date))
+def today(zone: ZoneInfo) -> Today:
+    day = datetime.now(zone).date()
+
+    def midnight(d: date) -> datetime:
+        return datetime.combine(d, time.min, zone).astimezone(UTC)
+
+    return Today(day, midnight(day), midnight(day + timedelta(days=1)))
 
 
-def late(zone: str):
-    return case((Task.all_day, local_day(zone) < today(zone)), else_=Task.due_at < func.now())
+def utc_midnight(day: date) -> datetime:
+    """How an all-day task due on `day` is stored."""
+    return datetime.combine(day, time.min, UTC)
 
 
-def overdue(zone: str):
-    return and_(Task.status == "open", Task.due_at.is_not(None), late(zone))
+def late(t: Today):
+    return case((Task.all_day, Task.due_at < utc_midnight(t.date)), else_=Task.due_at < func.now())
 
 
-def due_today(zone: str):
+def overdue(t: Today):
+    return and_(Task.status == "open", Task.due_at.is_not(None), late(t))
+
+
+def due_today(t: Today):
     """Due today and not overdue yet (a finished task counts whatever the time)."""
-    return and_(Task.due_at.is_not(None), local_day(zone) == today(zone), or_(Task.status == "done", ~late(zone)))
+    midnight, next_midnight = utc_midnight(t.date), utc_midnight(t.date + timedelta(days=1))
+    this_day = case((Task.all_day, and_(Task.due_at >= midnight, Task.due_at < next_midnight)),
+                    else_=and_(Task.due_at >= t.start, Task.due_at < t.end))
+    return and_(Task.due_at.is_not(None), this_day, or_(Task.status == "done", ~late(t)))
 
 
-def upcoming(zone: str):
-    return and_(Task.due_at.is_not(None), local_day(zone) > today(zone))
+def upcoming(t: Today):
+    return and_(Task.due_at.is_not(None), case((Task.all_day, Task.due_at >= utc_midnight(t.date + timedelta(days=1))),
+                                              else_=Task.due_at >= t.end))
 
 
-def no_date(zone: str):
+def no_date(t: Today):
     return Task.due_at.is_(None)
 
 

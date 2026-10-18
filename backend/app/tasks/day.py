@@ -6,7 +6,7 @@ from collections.abc import Callable
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import Date, cast, func, select
+from sqlalchemy import func, select
 
 from ..security import Ctx, in_workspace
 from . import due, store
@@ -29,14 +29,15 @@ def section(name: str):
 def my_tasks(c: Ctx, zone: ZoneInfo) -> dict:
     """My open tasks that are overdue (oldest first) and due today, and how many I finished today."""
     mine = (Task.workspace_id == c.workspace.id, Task.assignee_id == c.user_id)
+    day = due.today(zone)
 
     def open_tasks(condition):
-        stmt = select(Task).where(*mine, Task.status == "open", condition(zone.key))
+        stmt = select(Task).where(*mine, Task.status == "open", condition(day))
         return list(c.db.scalars(stmt.order_by(Task.due_at, Task.position, Task.id).limit(LIMIT)))
 
     late, soon = open_tasks(due.overdue), open_tasks(due.due_today)
     finished = c.db.scalar(select(func.count()).select_from(Task).where(
-        *mine, Task.status == "done", cast(func.timezone(zone.key, Task.completed_at), Date) == due.today(zone.key)))
+        *mine, Task.status == "done", Task.completed_at >= day.start, Task.completed_at < day.end))
     shown = store.decorate(c.db, late + soon)
     return {"overdue": shown[:len(late)], "today": shown[len(late):],
             "counts": {"overdue": len(late), "today": len(soon), "done_today": finished}}
@@ -44,5 +45,4 @@ def my_tasks(c: Ctx, zone: ZoneInfo) -> dict:
 
 @router.get("/my-day")
 def my_day(c: Ctx = Depends(in_workspace), zone: ZoneInfo = Depends(tz_param)):
-    today = c.db.scalar(select(due.today(zone.key)))
-    return {"date": today, "timezone": zone.key, **{name: fn(c, zone) for name, fn in SECTIONS.items()}}
+    return {"date": due.today(zone).date, "timezone": zone.key, **{name: fn(c, zone) for name, fn in SECTIONS.items()}}

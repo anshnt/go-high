@@ -18,9 +18,9 @@ export function DropdownMenu({ trigger, children, align = "end", label, onOpenCh
   );
 }
 
-export function MenuItem({ icon, children, ...rest }: ComponentProps<typeof RMenu.Item> & { icon?: ReactNode }) {
+export function MenuItem({ icon, children, className, ...rest }: ComponentProps<typeof RMenu.Item> & { icon?: ReactNode }) {
   return (
-    <RMenu.Item className="ui-item" {...rest}>
+    <RMenu.Item className={cn("ui-item", className)} {...rest}>
       {icon}
       {children}
     </RMenu.Item>

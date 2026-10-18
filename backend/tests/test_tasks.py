@@ -225,7 +225,7 @@ def test_listing_filters_by_due_bucket_in_the_readers_time_zone(board):
     assert titles(mine, ws, due="none") == ["someday", "free"]
     assert titles(mine, ws, due="overdue", assignee="me", status="open") == ["late", "yesterday"]
     # an all-day task is due on its date whoever looks, but which date is today depends on the reader's zone
-    for tz in ("Pacific/Kiritimati", "Pacific/Pago_Pago", "America/New_York"):
+    for tz in ("Pacific/Kiritimati", "Pacific/Pago_Pago", "America/New_York", "Asia/Calcutta"):  # an old alias, too
         local = datetime.now(ZoneInfo(tz)).date()
         for title, days in (("yesterday", -1), ("today", 0), ("soon", 2)):
             when = TODAY + timedelta(days=days)
@@ -518,6 +518,7 @@ def test_my_day_lists_my_overdue_and_todays_tasks_with_counts(board):
     other = theirs.get("/api/v1/my-day", headers={H: ws}).json()["tasks"]  # Ben's tasks have no dates
     assert other["overdue"] == [] and other["today"] == [] and other["counts"]["done_today"] == 0
     zoned = mine.get("/api/v1/my-day", params={"tz": "Pacific/Kiritimati"}, headers={H: ws}).json()
+    assert mine.get("/api/v1/my-day", params={"tz": "Asia/Calcutta"}, headers={H: ws}).status_code == 200
     assert zoned["timezone"] == "Pacific/Kiritimati"
     assert mine.get("/api/v1/my-day", params={"tz": "nope"}, headers={H: ws}).status_code == 422
 

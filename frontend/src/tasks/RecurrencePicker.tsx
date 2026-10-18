@@ -62,7 +62,7 @@ export function RecurrencePicker({ value, due, preset, onChange }: Props) {
           {rule.freq === "WEEKLY" && (
             <div role="group" aria-label="On these days" className="tk-days">
               {WEEKDAYS.map((d, i) => (
-                <button key={d} type="button" className="tk-day" aria-pressed={rule.byday.includes(d)} onClick={() => toggleDay(d)}>
+                <button key={d} type="button" className="tk-wd" aria-pressed={rule.byday.includes(d)} onClick={() => toggleDay(d)}>
                   {DAY_LABELS[i]}
                 </button>
               ))}

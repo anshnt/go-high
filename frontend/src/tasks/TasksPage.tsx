@@ -61,6 +61,11 @@ export function TasksPage() {
   const [selected, setSelected] = useState(() => startOfDay(new Date()));
   const [sheet, setSheet] = useState<Target | null>(null);
   const [active, setActive] = useState(0);
+  const [keys, setKeys] = useState(false); // the cursor shows once j or k has been used
+  const move = (i: number) => {
+    setKeys(true);
+    setActive(i);
+  };
   const [loaded, setLoaded] = useState<{ key: string; tasks: Task[] } | null>(null);
   const [error, setError] = useState<string>();
   const quick = useRef<HTMLInputElement>(null);
@@ -110,7 +115,7 @@ export function TasksPage() {
   useTaskKeys({
     tasks: inList ? flat : [],
     active,
-    setActive,
+    setActive: move,
     onToggle,
     onEdit: onOpen,
     onNew: () => (inList ? quick.current?.focus() : addNew()),
@@ -163,7 +168,7 @@ export function TasksPage() {
         flat.length === 0 ? (
           <EmptyState icon={ListChecks} title="No open tasks" text={EMPTY[show]} />
         ) : (
-          <TaskList groups={groups} members={members} now={now} active={active} onOpen={onOpen} onToggle={onToggle} />
+          <TaskList groups={groups} members={members} now={now} active={keys ? active : undefined} onOpen={onOpen} onToggle={onToggle} />
         )
       ) : view === "board" ? (
         <TaskBoard tasks={tasks} members={members} now={now} onOpen={onOpen} onToggle={onToggle} />

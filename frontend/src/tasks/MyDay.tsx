@@ -42,6 +42,11 @@ export function MyDay() {
   const [error, setError] = useState<string>();
   const [sheet, setSheet] = useState<Target | null>(null);
   const [active, setActive] = useState(0);
+  const [keys, setKeys] = useState(false); // the cursor shows once j or k has been used
+  const move = (i: number) => {
+    setKeys(true);
+    setActive(i);
+  };
   const now = new Date();
 
   useEffect(() => {
@@ -76,7 +81,7 @@ export function MyDay() {
   useTaskKeys({
     tasks: flat,
     active,
-    setActive,
+    setActive: move,
     onToggle,
     onEdit: onOpen,
     onNew: () => document.querySelector<HTMLInputElement>(".tk-quick input")?.focus(),
@@ -123,7 +128,7 @@ export function MyDay() {
               }
             />
           ) : (
-            <TaskList groups={groups} members={members} now={now} active={active} onOpen={onOpen} onToggle={onToggle} />
+            <TaskList groups={groups} members={members} now={now} active={keys ? active : undefined} onOpen={onOpen} onToggle={onToggle} />
           )}
         </div>
         <aside className="tk-day-side" aria-label="Also today">

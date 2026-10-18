@@ -528,7 +528,7 @@
   flex-wrap: wrap;
   gap: var(--space-1);
 }
-.tk-day {
+.tk-wd {
   min-width: 44px;
   min-height: var(--control-h-sm);
   padding: 0 var(--space-2);
@@ -538,7 +538,7 @@
   color: var(--text-2);
   cursor: pointer;
 }
-.tk-day[aria-pressed="true"] {
+.tk-wd[aria-pressed="true"] {
   border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--accent-text);
