@@ -317,6 +317,15 @@ def test_finishing_a_daily_task_creates_tomorrows_in_the_same_transaction(crm):
     assert due(third) == "2026-10-21T09:00:00Z" and third["parent_task_id"] == task["id"]  # the series root
 
 
+def test_finishing_a_reopened_recurring_task_again_returns_the_next_occurrence_it_already_made(crm):
+    client, ws, ids = crm
+    task = make(client, ws, "Stand up", due_at="2026-10-19T09:00:00Z", recurrence="FREQ=DAILY;COUNT=2")
+    following = complete(client, ws, task["id"])["next"]
+    assert client.post(f"{T}/{task['id']}/reopen", headers={H: ws}).status_code == 200
+    assert complete(client, ws, task["id"])["next"]["id"] == following["id"]
+    assert [due(t) for t in listing(client, ws, status="open")["data"]] == ["2026-10-20T09:00:00Z"]
+
+
 def test_a_task_that_fails_to_finish_leaves_no_next_occurrence_behind(crm):
     client, ws, ids = crm
     gate = make(client, ws, "Gate")
