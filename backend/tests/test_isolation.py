@@ -317,7 +317,7 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
             "answers": {"first_name": "Swept"}, "view_token": "swept", "resume_token": b_ids["resume_token"],
             "step": "s1", "hp": "",
             # calendars: B's calendar, resource, person and booking wherever a body names one
-            "calendar_id": b_ids["calendar_id"], "resource_id": b_ids["resource_id"], "user_id": b_ids["user_id"],
+            "calendar_id": b_ids["calendar_id"], "resource_id": b_ids["resource_id"],
             "hosts": [{"user_id": b_ids["user_id"]}], "start": at(b_ids["booking_day"], "10:00").isoformat(),
             "time_zone": "Asia/Tokyo", "weekly": {}, "hours": [], "durations": [30], "reason": "swept",
             "blocks": [{"start": at(b_ids["booking_day"], "10:00").isoformat(),
