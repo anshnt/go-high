@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import pytest
+from forms_helpers import form, pick, q, step
 
 from app.forms import answers, logic
 from app.forms.definition import (
@@ -56,18 +57,6 @@ def test_quizzes(case):
 
 
 # --- definitions ---------------------------------------------------------------------------------------------
-
-def form(*steps, logic_=None, **top):
-    return {"steps": list(steps), **({"logic": logic_} if logic_ is not None else {}), **top}
-
-
-def step(key, *fields):
-    return {"key": key, "title": key.title(), "fields": list(fields)}
-
-
-def q(key, type_="short_text", **extra):
-    return {"key": key, "type": type_, "label": key.title(), **extra}
-
 
 def rejected(defn, kind="form") -> dict:
     with pytest.raises(DefinitionError) as e:
@@ -264,7 +253,6 @@ def test_a_mapping_must_fit_a_contact_field():
         return validate_definition(form(step("s1", *fields)), "form")
 
     assert check_mapping(defn(q("a", "email", maps_to="email"), q("b", maps_to="first_name")), contact) == {}
-    pick = lambda *ids: {"options": [{"id": i, "label": i.title()} for i in ids]}  # noqa: E731
     assert check_mapping(defn(q("a", "select", **pick("lead", "customer"), maps_to="lifecycle")), contact) == {}
     assert check_mapping(defn(q("a", "select", **pick("a"), maps_to="first_name")), contact) == {}  # label goes in
     wrong = defn(q("a", "email", maps_to="nope"), q("b", "email", maps_to="phone"), q("c", maps_to="calc"),

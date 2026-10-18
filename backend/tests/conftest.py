@@ -163,3 +163,13 @@ def live():
     yield server.servers[0].sockets[0].getsockname()[1]
     server.should_exit = True
     thread.join(15)
+
+
+@pytest.fixture
+def site(crm, monkeypatch):
+    """The forms of a fresh workspace (see forms_helpers.Site). A form can be completed at once, without the minimum
+    fill time that spam protection asks of a person."""
+    from forms_helpers import Site
+    monkeypatch.setattr(config, "FORM_MIN_FILL_SECONDS", 0)
+    client, ws, _ = crm
+    return Site(client, ws)
