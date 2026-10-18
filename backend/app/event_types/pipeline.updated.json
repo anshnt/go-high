@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pipeline.updated",
+  "description": "A pipeline was renamed or moved in the list; `changes` maps each to its old and new value. Subject: the pipeline.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"},
+    "changes": {"type": "object"}
+  },
+  "required": ["id", "name", "changes"],
+  "additionalProperties": false
+}

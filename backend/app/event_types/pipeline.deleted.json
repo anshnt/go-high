@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pipeline.deleted",
+  "description": "A pipeline with no deals was deleted with its stages. Subject: the pipeline.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"}
+  },
+  "required": ["id", "name"],
+  "additionalProperties": false
+}

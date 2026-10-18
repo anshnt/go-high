@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "stages.reordered",
+  "description": "The stages of a pipeline were put in a new order, given as `stage_ids`. Subject: the pipeline.",
+  "type": "object",
+  "properties": {
+    "pipeline_id": {"type": "string", "format": "uuid"},
+    "stage_ids": {"type": "array", "items": {"type": "string", "format": "uuid"}}
+  },
+  "required": ["pipeline_id", "stage_ids"],
+  "additionalProperties": false
+}

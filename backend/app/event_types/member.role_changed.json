@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "member.role_changed",
+  "description": "A person was given a role in this workspace; `old_role` is null when they had no membership. Subject: the person.",
+  "type": "object",
+  "properties": {
+    "user_id": {"type": "string", "format": "uuid"},
+    "workspace_id": {"type": "string", "format": "uuid"},
+    "old_role": {"type": ["object", "null"]},
+    "new_role": {"type": "object"}
+  },
+  "required": ["user_id", "workspace_id", "old_role", "new_role"],
+  "additionalProperties": false
+}

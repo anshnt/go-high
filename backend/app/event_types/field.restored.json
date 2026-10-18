@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "field.restored",
+  "description": "An archived field was brought back with its values. Subject: the field.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "object": {"type": "string"},
+    "key": {"type": "string"}
+  },
+  "required": ["id", "object", "key"],
+  "additionalProperties": false
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "role.deleted",
+  "description": "A custom role was deleted. Subject: the role.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "key": {"type": "string"},
+    "name": {"type": "string"}
+  },
+  "required": ["id", "key", "name"],
+  "additionalProperties": false
+}

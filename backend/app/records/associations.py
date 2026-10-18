@@ -11,9 +11,10 @@ from sqlalchemy import and_, case, exists, false, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased
 
-from .. import events
+from .. import events, permissions
 from ..api import ApiError, Idem, idempotency, paginate
-from ..security import Ctx, in_workspace, workspace_admin
+from ..permissions import requires, requires_records
+from ..security import Ctx
 from . import store, timeline
 from .models import Association, AssociationType, ObjectDef, Record
 from .schema import Catalog, Label, object_keys
@@ -41,13 +42,17 @@ def type_json(t: AssociationType, keys: dict[uuid.UUID, str]) -> dict:
             "created_at": t.created_at}
 
 
+def type_data(t: AssociationType, keys: dict[uuid.UUID, str]) -> dict:
+    return {k: v for k, v in type_json(t, keys).items() if k not in ("is_system", "created_at")}
+
+
 def link_data(a: Association, t: AssociationType) -> dict:
     return {"id": a.id, "type_id": t.id, "from_record_id": a.from_record_id, "to_record_id": a.to_record_id,
             "label": t.label, "inverse_label": t.inverse_label}
 
 
 @router.get("/association-types")
-def list_types(object: str | None = None, c: Ctx = Depends(in_workspace)):
+def list_types(object: str | None = None, c: Ctx = Depends(requires("schema.read"))):
     """Every type, or those that start or end at one object (`?object=contact`). A workspace has few."""
     stmt = select(AssociationType).order_by(AssociationType.created_at, AssociationType.id)
     if object:
@@ -58,7 +63,7 @@ def list_types(object: str | None = None, c: Ctx = Depends(in_workspace)):
 
 
 @router.post("/association-types", status_code=201)
-def create_type(body: NewType, c: Ctx = Depends(workspace_admin), idem: Idem = Depends(idempotency)):
+def create_type(body: NewType, c: Ctx = Depends(requires("objects.manage")), idem: Idem = Depends(idempotency)):
     cat = Catalog(c)
     a, b = cat.need(body.from_object), cat.need(body.to_object)
     t = AssociationType(workspace_id=c.workspace.id, from_object_id=a.id, to_object_id=b.id, label=body.label,
@@ -68,11 +73,13 @@ def create_type(body: NewType, c: Ctx = Depends(workspace_admin), idem: Idem = D
             c.db.add(t)
     except IntegrityError:
         raise ApiError(409, "conflict", f"{a.key} to {b.key} already has a {body.label!r} association") from None
+    events.emit(c.db, "association_type.created", "association_type", t.id, type_data(t, {a.id: a.key, b.id: b.key}),
+                actor=("user", c.user_id))
     return idem.commit(201, type_json(t, {a.id: a.key, b.id: b.key}))
 
 
 @router.delete("/association-types/{type_id}", status_code=204)
-def delete_type(type_id: uuid.UUID, c: Ctx = Depends(workspace_admin)):
+def delete_type(type_id: uuid.UUID, c: Ctx = Depends(requires("objects.manage"))):
     t = c.db.get(AssociationType, type_id)
     if t is None:
         raise HTTPException(404, "Association type not found")
@@ -80,6 +87,8 @@ def delete_type(type_id: uuid.UUID, c: Ctx = Depends(workspace_admin)):
         raise ApiError(409, "conflict", "Built-in association types cannot be deleted")
     if c.db.scalar(select(func.count()).select_from(Association).where(Association.type_id == t.id)):
         raise ApiError(409, "conflict", "Remove the links of this type first")
+    events.emit(c.db, "association_type.deleted", "association_type", t.id, type_data(t, object_keys(c)),
+                actor=("user", c.user_id))
     c.db.delete(t)
     c.db.commit()
 
@@ -101,13 +110,13 @@ def expand(cat: Catalog, obj: ObjectDef, other: ObjectDef, ids: list[uuid.UUID])
         for record_id, link, record in cat.db.execute(stmt):
             t = types[link.type_id]
             out[record_id].append({"id": link.id, "type_id": t.id, "label": t.label if forward else t.inverse_label,
-                                   "record": store.brief(other, record)})
+                                   "record": store.glance(cat, other, record)})
     return out
 
 
 @router.get("/records/{record_id}/associations")
 def list_links(record_id: uuid.UUID, limit: int = Query(50, ge=1, le=200), cursor: str | None = None,
-               c: Ctx = Depends(in_workspace)):
+               c: Ctx = Depends(requires_records("read"))):
     """Links in both directions, newest first, each labeled as seen from this record."""
     cat = Catalog(c)
     rec, obj = store.find(cat, record_id)
@@ -133,7 +142,7 @@ def list_links(record_id: uuid.UUID, limit: int = Query(50, ge=1, le=200), curso
         t = types[lk.type_id]
         data.append({"id": lk.id, "type_id": t.id, "label": t.label if forward else t.inverse_label,
                      "direction": "forward" if forward else "inverse", "created_at": lk.created_at,
-                     "record": store.brief(others[other.object_id], other)})
+                     "record": store.glance(cat, others[other.object_id], other)})
     return {"data": data, "next_cursor": next_cursor}
 
 
@@ -150,10 +159,13 @@ def crowded(c: Ctx, t: AssociationType, a: Record, b: Record) -> bool:
 
 
 @router.post("/records/{record_id}/associations", status_code=201)
-def create_link(record_id: uuid.UUID, body: NewLink, c: Ctx = Depends(in_workspace), idem: Idem = Depends(idempotency)):
+def create_link(record_id: uuid.UUID, body: NewLink, c: Ctx = Depends(requires_records("write")),
+                idem: Idem = Depends(idempotency)):
     cat = Catalog(c)
     rec, obj = store.find(cat, record_id)
     other, other_obj = store.find(cat, body.other_id)
+    for each in (obj, other_obj):  # a link is a change to both records
+        permissions.require_object(c, each, "write")
     t = c.db.get(AssociationType, body.type_id)
     if t is None:
         raise HTTPException(404, "Association type not found")
@@ -182,13 +194,13 @@ def create_link(record_id: uuid.UUID, body: NewLink, c: Ctx = Depends(in_workspa
 
 
 @router.delete("/associations/{association_id}", status_code=204)
-def delete_link(association_id: uuid.UUID, c: Ctx = Depends(in_workspace)):
+def delete_link(association_id: uuid.UUID, c: Ctx = Depends(requires_records("write"))):
     cat = Catalog(c)
     link = c.db.get(Association, association_id)  # row level security: this workspace's links only
     if link is None:
         raise HTTPException(404, "Association not found")
     for end in (link.from_record_id, link.to_record_id):
-        store.find(cat, end, trashed=None)  # the caller must be allowed to see both ends
+        permissions.require_object(c, store.find(cat, end, trashed=None)[1], "write")  # and may see and change both
     t = c.db.get(AssociationType, link.type_id)
     timeline.link(c.db, events.emit(c.db, "association.deleted", "association", link.id, link_data(link, t),
                                     actor=store.actor(c)), [link.from_record_id, link.to_record_id])

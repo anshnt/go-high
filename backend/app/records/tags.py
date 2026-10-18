@@ -1,7 +1,7 @@
 """Tags (ADR 0002): named labels with a group, color and description, applied to records of any object. They have
-their own tables, so usage counts, rename and merge across thousands of records stay one statement. Anyone in the
-workspace may create and apply tags; renaming, merging and deleting change what everyone sees, so those are for
-workspace admins."""
+their own tables, so usage counts, rename and merge across thousands of records stay one statement. Creating and
+applying tags is the `tags.write` capability; renaming, merging and deleting change what everyone sees, so those are
+`tags.manage`. A tag's usage counts the records the caller may see."""
 import uuid
 from collections import defaultdict
 from typing import Annotated
@@ -15,7 +15,8 @@ from sqlalchemy.orm import Session
 
 from .. import events
 from ..api import ApiError, Idem, idempotency, paginate
-from ..security import Ctx, in_workspace, workspace_admin
+from ..permissions import requires
+from ..security import Ctx
 from . import store
 from .models import Record, RecordTag, Tag
 from .schema import Catalog
@@ -85,17 +86,16 @@ def of(db: Session, record_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[dict]]:
 
 
 def usage(c: Ctx, tag_id: uuid.UUID) -> int:
+    """How many live records with the tag the caller may see."""
     return c.db.scalar(select(func.count()).select_from(RecordTag).join(Record, Record.id == RecordTag.record_id)
-                       .where(RecordTag.tag_id == tag_id, Record.deleted_at.is_(None)))
+                       .where(RecordTag.tag_id == tag_id, Record.deleted_at.is_(None), store.anywhere(Catalog(c))))
 
 
 @router.get("/tags")
 def list_tags(q: Annotated[str | None, Query(max_length=100)] = None, limit: int = Query(50, ge=1, le=200),
-              cursor: str | None = None, c: Ctx = Depends(in_workspace)):
-    # ponytail: counts cover every live record of the workspace, not only those the caller may see; ADR 0004's scope
-    # rules need a per-object count here once they exist.
+              cursor: str | None = None, c: Ctx = Depends(requires("schema.read"))):
     counts = (select(RecordTag.tag_id, func.count().label("n")).join(Record, Record.id == RecordTag.record_id)
-              .where(Record.deleted_at.is_(None)).group_by(RecordTag.tag_id).subquery())
+              .where(Record.deleted_at.is_(None), store.anywhere(Catalog(c))).group_by(RecordTag.tag_id).subquery())
     stmt = select(Tag, func.coalesce(counts.c.n, 0)).outerjoin(counts, counts.c.tag_id == Tag.id)
     if q:
         stmt = stmt.where(func.lower(Tag.name).like(q.strip().lower().replace("%", r"\%").replace("_", r"\_") + "%",
@@ -105,7 +105,7 @@ def list_tags(q: Annotated[str | None, Query(max_length=100)] = None, limit: int
 
 
 @router.post("/tags", status_code=201)
-def create_tag(body: NewTag, c: Ctx = Depends(in_workspace), idem: Idem = Depends(idempotency)):
+def create_tag(body: NewTag, c: Ctx = Depends(requires("tags.write")), idem: Idem = Depends(idempotency)):
     tag = Tag(workspace_id=c.workspace.id, name=body.name, color=body.color, group_name=body.group,
               description=body.description)
     try:
@@ -118,7 +118,7 @@ def create_tag(body: NewTag, c: Ctx = Depends(in_workspace), idem: Idem = Depend
 
 
 @router.patch("/tags/{tag_id}")
-def update_tag(tag_id: uuid.UUID, body: PatchTag, c: Ctx = Depends(workspace_admin)):
+def update_tag(tag_id: uuid.UUID, body: PatchTag, c: Ctx = Depends(requires("tags.manage"))):
     tag = tag_or_404(c, tag_id)
     sent = body.model_dump(exclude_unset=True)
     if "name" in sent and sent["name"] is None:
@@ -138,7 +138,7 @@ def update_tag(tag_id: uuid.UUID, body: PatchTag, c: Ctx = Depends(workspace_adm
 
 
 @router.delete("/tags/{tag_id}", status_code=204)
-def delete_tag(tag_id: uuid.UUID, c: Ctx = Depends(workspace_admin)):
+def delete_tag(tag_id: uuid.UUID, c: Ctx = Depends(requires("tags.manage"))):
     tag = tag_or_404(c, tag_id)
     events.emit(c.db, "tag.deleted", "tag", tag.id, {**tag_data(tag), "records": usage(c, tag.id)},
                 actor=store.actor(c))
@@ -147,7 +147,8 @@ def delete_tag(tag_id: uuid.UUID, c: Ctx = Depends(workspace_admin)):
 
 
 @router.post("/tags/{tag_id}/merge")
-def merge_tag(tag_id: uuid.UUID, body: Merge, c: Ctx = Depends(workspace_admin), idem: Idem = Depends(idempotency)):
+def merge_tag(tag_id: uuid.UUID, body: Merge, c: Ctx = Depends(requires("tags.manage")),
+              idem: Idem = Depends(idempotency)):
     """Moves every record of this tag to another and deletes this one. `preview: true` only counts: how many live
     records have the tag, and how many of them do not have the other tag yet.
     ponytail: saved views that name the merged tag by name or id match nothing afterwards; edit them."""
@@ -208,12 +209,12 @@ def apply(cat: Catalog, record_ids: list[uuid.UUID], add: list[uuid.UUID], remov
 
 
 @router.post("/records/{record_id}/tags")
-def tag_record(record_id: uuid.UUID, body: Tagging, c: Ctx = Depends(in_workspace),
+def tag_record(record_id: uuid.UUID, body: Tagging, c: Ctx = Depends(requires("tags.write")),
                idem: Idem = Depends(idempotency)):
     return idem.commit(200, apply(Catalog(c), [record_id], body.add, body.remove))
 
 
 @router.post("/records/tags")
-def tag_records(body: BulkTagging, c: Ctx = Depends(in_workspace), idem: Idem = Depends(idempotency)):
+def tag_records(body: BulkTagging, c: Ctx = Depends(requires("tags.write")), idem: Idem = Depends(idempotency)):
     """Adds and removes tags on up to 1000 records in one transaction."""
     return idem.commit(200, apply(Catalog(c), body.record_ids, body.add, body.remove))

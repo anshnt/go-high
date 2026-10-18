@@ -29,6 +29,7 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 from sqlalchemy.types import UserDefinedType
 
 from . import jobs
+from .api import ApiError, seal, unseal
 from .db import Base
 from .jobs import Job
 
@@ -92,6 +93,19 @@ class UnknownEventType(ValueError):
     pass
 
 
+def newest_first(db: Session, stmt, limit: int, cursor: str | None) -> tuple[list[Event], str | None]:
+    """A page of `stmt` (a select of events), newest first, and the signed cursor of the next page (or None)."""
+    if cursor:
+        try:
+            at, last = unseal(cursor)
+            stmt = stmt.where(tuple_(Event.occurred_at, Event.id) < tuple_(datetime.fromisoformat(at), int(last)))
+        except (ValueError, TypeError):
+            raise ApiError(400, "invalid_cursor", "The cursor is not valid") from None
+    rows = list(db.scalars(stmt.order_by(Event.occurred_at.desc(), Event.id.desc()).limit(limit + 1)))
+    page = rows[:limit]
+    return page, seal([page[-1].occurred_at.isoformat(), page[-1].id]) if len(rows) > limit else None
+
+
 def build(db: Session, type: str, subject_type: str, subject_id: uuid.UUID, data: dict, *,
           actor: tuple[str, uuid.UUID] | None = None, workspace_id: uuid.UUID | None = None) -> Event:
     """The checked event row, not yet added to the session."""
@@ -112,6 +126,12 @@ def build(db: Session, type: str, subject_type: str, subject_id: uuid.UUID, data
     actor_type, actor_id = actor or ("system", None)
     return Event(workspace_id=workspace_id, type=type, subject_type=subject_type, subject_id=subject_id,
                  actor_type=actor_type, actor_id=actor_id, data=data)
+
+
+def changes(before: dict, after: dict) -> dict:
+    """What differs between two states, as the `changes` of an event: key to its old and new value."""
+    return {k: {"old": before.get(k), "new": after.get(k)} for k in before.keys() | after.keys()
+            if before.get(k) != after.get(k)}
 
 
 def emit(db: Session, type: str, subject_type: str, subject_id: uuid.UUID, data: dict, *,

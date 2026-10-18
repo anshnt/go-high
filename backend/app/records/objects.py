@@ -1,6 +1,7 @@
 """Objects and their fields (ADR 0002). Both are rows, so creating a custom object or a field is an API call and
 never a migration; there is no cap on objects. Archiving hides an object or a field everywhere and keeps its data.
-Reading is for everyone in the workspace; changing the schema is for workspace admins."""
+Reading is the `schema.read` capability, changing objects `objects.manage` and fields `fields.manage`; every
+change is an event. A field the caller's role hides is not listed."""
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -8,8 +9,10 @@ from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
+from .. import events, permissions
 from ..api import ApiError, Idem, idempotency, paginate
-from ..security import Ctx, in_workspace, workspace_admin
+from ..permissions import requires
+from ..security import Ctx
 from . import store, types
 from .models import FieldDef, ObjectDef
 from .schema import MAX_FIELDS, RESERVED, Catalog, FieldKey, Key, Label
@@ -59,6 +62,22 @@ def object_json(o: ObjectDef) -> dict:
             "created_at": o.created_at}
 
 
+def object_state(o: ObjectDef) -> dict:
+    return {"singular": o.singular, "plural": o.plural, "icon": o.icon, "primary_fields": list(o.primary_fields)}
+
+
+def object_data(o: ObjectDef) -> dict:
+    return {"id": o.id, "key": o.key, **object_state(o)}
+
+
+def field_data(obj: ObjectDef, f: FieldDef) -> dict:
+    return {"id": f.id, "object": obj.key, "key": f.key}
+
+
+def field_state(f: FieldDef) -> dict:
+    return {"label": f.label, "options": f.options, "rules": f.rules, "position": f.position}
+
+
 def field_json(f: FieldDef) -> dict:
     return {"id": f.id, "key": f.key, "label": f.label, "type": f.type, "options": f.options, "rules": f.rules,
             "is_system": f.is_system, "position": f.position, "archived_at": f.archived_at, "created_at": f.created_at}
@@ -99,14 +118,14 @@ def settings(cat: Catalog, type_: str, options: dict, rules: dict) -> tuple[dict
 
 @router.get("")
 def list_objects(archived: bool = False, limit: int = Query(50, ge=1, le=200), cursor: str | None = None,
-                 c: Ctx = Depends(in_workspace)):
+                 c: Ctx = Depends(requires("schema.read"))):
     stmt = select(ObjectDef).where(ObjectDef.archived_at.is_not(None) if archived else ObjectDef.archived_at.is_(None))
     rows, next_cursor = paginate(c.db, stmt, ObjectDef, limit, cursor)
     return {"data": [object_json(o) for (o,) in rows], "next_cursor": next_cursor}
 
 
 @router.post("", status_code=201)
-def create_object(body: NewObject, c: Ctx = Depends(workspace_admin), idem: Idem = Depends(idempotency)):
+def create_object(body: NewObject, c: Ctx = Depends(requires("objects.manage")), idem: Idem = Depends(idempotency)):
     """A new object starts with one required text field, `name`, that names its records."""
     if body.key in RESERVED_OBJECTS:
         raise invalid(key=f"{body.key!r} is reserved")
@@ -120,19 +139,22 @@ def create_object(body: NewObject, c: Ctx = Depends(workspace_admin), idem: Idem
     c.db.add(FieldDef(workspace_id=c.workspace.id, object_id=obj.id, key="name", label="Name", type="text",
                       rules={"required": True}, options={}))
     c.db.flush()
+    events.emit(c.db, "object.created", "object", obj.id, object_data(obj), actor=("user", c.user_id))
     return idem.commit(201, object_json(obj))
 
 
 @router.get("/{key}")
-def get_object(key: str, c: Ctx = Depends(in_workspace)):
+def get_object(key: str, c: Ctx = Depends(requires("schema.read"))):
     cat = Catalog(c)
     obj = cat.need(key)
-    return {**object_json(obj), "fields": [field_json(f) for f in cat.fields(obj).values()]}
+    hide = permissions.hidden(c, obj)
+    return {**object_json(obj), "fields": [field_json(f) for f in cat.fields(obj).values() if f.key not in hide]}
 
 
 @router.patch("/{key}")
-def update_object(key: str, body: PatchObject, c: Ctx = Depends(workspace_admin)):
+def update_object(key: str, body: PatchObject, c: Ctx = Depends(requires("objects.manage"))):
     cat, obj, sent = Catalog(c), object_any(c, key), body.model_dump(exclude_unset=True)
+    before, was_archived = object_state(obj), obj.archived_at is not None
     if nulls := [k for k, v in sent.items() if v is None]:
         raise invalid(**{k: "cannot be null" for k in nulls})
     if obj.archived_at is not None and sent.get("archived") is not False:
@@ -156,30 +178,48 @@ def update_object(key: str, body: PatchObject, c: Ctx = Depends(workspace_admin)
     if renamed:
         store.rename_all(cat, obj)
     c.db.refresh(obj, ["archived_at"])
+    audit_object(c, obj, before, was_archived)
     c.db.commit()
     return object_json(obj)
 
 
+def audit_object(c: Ctx, obj: ObjectDef, before: dict, was_archived: bool) -> None:
+    """The events of a change to an object: what changed, and whether it was archived or brought back."""
+    actor = ("user", c.user_id)
+    if changed := events.changes(before, object_state(obj)):
+        events.emit(c.db, "object.updated", "object", obj.id, {"id": obj.id, "key": obj.key, "changes": changed},
+                    actor=actor)
+    if obj.archived_at is not None and not was_archived:
+        events.emit(c.db, "object.archived", "object", obj.id, {"id": obj.id, "key": obj.key}, actor=actor)
+    elif obj.archived_at is None and was_archived:
+        events.emit(c.db, "object.restored", "object", obj.id, {"id": obj.id, "key": obj.key}, actor=actor)
+
+
 @router.delete("/{key}", status_code=204)
-def archive_object(key: str, c: Ctx = Depends(workspace_admin)):
+def archive_object(key: str, c: Ctx = Depends(requires("objects.manage"))):
     obj = Catalog(c).need(key)
     if obj.is_system:
         raise ApiError(409, "conflict", "Built-in objects cannot be archived")
     obj.archived_at = func.now()
+    c.db.flush()
+    c.db.refresh(obj, ["archived_at"])
+    audit_object(c, obj, object_state(obj), False)
     c.db.commit()
 
 
 @router.get("/{key}/fields")
-def list_fields(key: str, archived: bool = False, c: Ctx = Depends(in_workspace)):
+def list_fields(key: str, archived: bool = False, c: Ctx = Depends(requires("schema.read"))):
     """Every field of the object in display order (an object has at most 200)."""
     obj = Catalog(c).need(key)
+    hide = permissions.hidden(c, obj)
     stmt = select(FieldDef).where(FieldDef.object_id == obj.id, FieldDef.archived_at.is_not(None) if archived
                                   else FieldDef.archived_at.is_(None)).order_by(FieldDef.position, FieldDef.created_at)
-    return {"data": [field_json(f) for f in c.db.scalars(stmt)], "next_cursor": None}
+    return {"data": [field_json(f) for f in c.db.scalars(stmt) if f.key not in hide], "next_cursor": None}
 
 
 @router.post("/{key}/fields", status_code=201)
-def create_field(key: str, body: NewField, c: Ctx = Depends(workspace_admin), idem: Idem = Depends(idempotency)):
+def create_field(key: str, body: NewField, c: Ctx = Depends(requires("fields.manage")),
+                 idem: Idem = Depends(idempotency)):
     cat = Catalog(c)
     obj = cat.need(key)
     if body.key in RESERVED:
@@ -197,16 +237,20 @@ def create_field(key: str, body: NewField, c: Ctx = Depends(workspace_admin), id
             c.db.add(field)
     except IntegrityError:
         raise ApiError(409, "conflict", f"{obj.key} already has a field {body.key!r} (it may be archived)") from None
+    events.emit(c.db, "field.created", "field", field.id,
+                {**field_data(obj, field), "label": field.label, "type": field.type, "options": field.options,
+                 "rules": field.rules, "position": field.position}, actor=("user", c.user_id))
     return idem.commit(201, field_json(field))
 
 
 @router.patch("/{key}/fields/{field_key}")
-def update_field(key: str, field_key: str, body: PatchField, c: Ctx = Depends(workspace_admin)):
+def update_field(key: str, field_key: str, body: PatchField, c: Ctx = Depends(requires("fields.manage"))):
     """Label, options, rules and position change; key and type never do, because records hold values of that type.
     `archived: false` brings an archived field back with its values."""
     cat = Catalog(c)
     obj = cat.need(key)
     field, sent = field_any(c, obj, field_key), body.model_dump(exclude_unset=True)
+    before, was_archived = field_state(field), field.archived_at is not None
     if nulls := [k for k, v in sent.items() if v is None]:
         raise invalid(**{k: "cannot be null" for k in nulls})
     if "options" in sent or "rules" in sent:
@@ -223,11 +267,18 @@ def update_field(key: str, field_key: str, body: PatchField, c: Ctx = Depends(wo
         setattr(field, name, value)
     c.db.flush()
     c.db.refresh(field, ["archived_at"])
+    actor, data = ("user", c.user_id), field_data(obj, field)
+    if changed := events.changes(before, field_state(field)):
+        events.emit(c.db, "field.updated", "field", field.id, {**data, "changes": changed}, actor=actor)
+    if field.archived_at is not None and not was_archived:
+        events.emit(c.db, "field.archived", "field", field.id, data, actor=actor)
+    elif field.archived_at is None and was_archived:
+        events.emit(c.db, "field.restored", "field", field.id, data, actor=actor)
     c.db.commit()
     return field_json(field)
 
 
 @router.delete("/{key}/fields/{field_key}", status_code=204)
-def archive_field(key: str, field_key: str, c: Ctx = Depends(workspace_admin)):
+def archive_field(key: str, field_key: str, c: Ctx = Depends(requires("fields.manage"))):
     update_field(key, field_key, PatchField(archived=True), c)  # the same checks as PATCH, and no body back
 

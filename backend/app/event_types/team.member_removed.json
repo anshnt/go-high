@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "team.member_removed",
+  "description": "A person left a team. Subject: the team.",
+  "type": "object",
+  "properties": {
+    "team_id": {"type": "string", "format": "uuid"},
+    "user_id": {"type": "string", "format": "uuid"}
+  },
+  "required": ["team_id", "user_id"],
+  "additionalProperties": false
+}

@@ -38,4 +38,5 @@ package = false
 known-third-party = ["alembic"]
 
 [tool.ruff.lint.flake8-bugbear]
-extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "app.permissions.requires", "app.permissions.requires_object",
+                          "app.permissions.requires_records", "app.permissions.requires_trash"]

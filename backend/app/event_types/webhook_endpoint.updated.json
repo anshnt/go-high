@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "webhook_endpoint.updated",
+  "description": "A webhook endpoint changed. The URL is not part of the event (it may carry a token), only whether it changed. Subject: the endpoint.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "changes": {"type": "object"},
+    "url_changed": {"type": "boolean"}
+  },
+  "required": ["id", "changes", "url_changed"],
+  "additionalProperties": false
+}

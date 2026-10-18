@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "stage.created",
+  "description": "A stage was added to a pipeline. Subject: the stage.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "pipeline_id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"},
+    "kind": {"type": "string"},
+    "probability": {"type": "integer"},
+    "rotting_days": {"type": ["integer", "null"]},
+    "position": {"type": "integer"}
+  },
+  "required": ["id", "pipeline_id", "name", "kind", "probability", "rotting_days", "position"],
+  "additionalProperties": false
+}

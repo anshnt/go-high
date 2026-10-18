@@ -197,7 +197,10 @@ def idempotency(request: Request, c: Ctx = Depends(in_workspace), body: bytes = 
     """For POST routes in a workspace. List it after the role dependency of the route. A repeated key with the same
     request answers with the stored response (header `Idempotent-Replayed: true`); with a different request, 409.
     Keys live 24 hours; only successful responses are stored."""
-    digest = hashlib.sha256(f"{request.method} {request.url.path}?{request.url.query}\n".encode() + body).hexdigest()
+    # the user is part of the request: what a response holds depends on who asked (permissions), so a key replays
+    # only for the one who made it
+    head = f"{request.method} {request.url.path}?{request.url.query}\n{c.user_id}\n"
+    digest = hashlib.sha256(head.encode() + body).hexdigest()
     if idempotency_key and (stored := stored_for(c.db, c.workspace.id, idempotency_key)):
         replay_or_conflict(stored, digest)
     return Idem(c.db, c.workspace.id, idempotency_key, digest)

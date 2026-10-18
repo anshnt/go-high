@@ -38,6 +38,11 @@ class Catalog:
                                                                          ObjectDef.archived_at.is_(None)))
         return self._objects[key]
 
+    def objects(self) -> list[ObjectDef]:
+        """Every live object of the workspace."""
+        return list(self.db.scalars(select(ObjectDef).where(ObjectDef.archived_at.is_(None))
+                                    .order_by(ObjectDef.created_at, ObjectDef.key)))
+
     def by_id(self, object_id: uuid.UUID) -> ObjectDef | None:
         if object_id not in self._by_id:
             self._by_id[object_id] = self.db.scalar(select(ObjectDef).where(ObjectDef.id == object_id,

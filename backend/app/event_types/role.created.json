@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "role.created",
+  "description": "A custom role was created, as a copy of `copied_from` (a role key). Subject: the role.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "key": {"type": "string"},
+    "name": {"type": "string"},
+    "description": {"type": "string"},
+    "capabilities": {"type": "array", "items": {"type": "string"}},
+    "copied_from": {"type": "string"}
+  },
+  "required": ["id", "key", "name", "description", "capabilities", "copied_from"],
+  "additionalProperties": false
+}
