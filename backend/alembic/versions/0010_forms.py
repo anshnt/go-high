@@ -1,7 +1,7 @@
 """forms, surveys and quizzes: forms, immutable versions, submissions, view counters, rate counters
 
 Revision ID: 0010
-Revises: 0005
+Revises: 0006
 Create Date: 2026-10-18
 """
 import sqlalchemy as sa
@@ -9,7 +9,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "0010"
-down_revision = "0005"
+down_revision = "0006"
 branch_labels = None
 depends_on = None
 

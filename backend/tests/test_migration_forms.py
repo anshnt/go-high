@@ -34,7 +34,7 @@ def test_existing_roles_get_the_form_capabilities_and_the_migration_reverses():
         conn.execute(text(f'DROP DATABASE IF EXISTS "{NAME}" WITH (FORCE)'))
         conn.execute(text(f'CREATE DATABASE "{NAME}"'))
     try:
-        alembic(url, "upgrade", "0005")
+        alembic(url, "upgrade", "0006")
         engine = create_engine(url)
         with engine.begin() as conn:  # an organization seeded by a release that knew nothing of forms
             org = conn.scalar(text("INSERT INTO organizations (name) VALUES ('Old') RETURNING id"))
@@ -57,7 +57,7 @@ def test_existing_roles_get_the_form_capabilities_and_the_migration_reverses():
             assert conn.scalar(text("SELECT count(*) FROM roles WHERE cardinality(capabilities) <> "
                                     "(SELECT count(DISTINCT c) FROM unnest(capabilities) c)")) == 0  # no duplicates
 
-        alembic(url, "downgrade", "0005")
+        alembic(url, "downgrade", "0006")
         assert not any(set(FORMS) & caps for caps in capabilities(engine).values())
         with engine.connect() as conn:
             assert conn.scalar(text("SELECT to_regclass('form_submissions')")) is None
