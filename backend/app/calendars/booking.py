@@ -41,6 +41,13 @@ def new_token(workspace_id: uuid.UUID) -> tuple[str, str]:
     return token, token_hash(token)
 
 
+def near(cal: Calendar, start: datetime, now: datetime) -> None:
+    """A 409 for a time far outside the booking window, before anything is read: the rules would refuse it anyway
+    (too soon, too far), and a date at either end of the calendar would overflow on the way there."""
+    if not now - timedelta(days=1) <= start <= now + timedelta(days=cal.window_days + 1):
+        raise taken()
+
+
 def token_workspace(token: str) -> uuid.UUID | None:
     """The workspace named by the first part of a link's token (untrusted: the lookup that follows decides)."""
     head, dot, tail = token.partition(".")
@@ -119,6 +126,7 @@ def plan_reminders(c: Ctx, b: Booking, offsets: list[int], now: datetime) -> Non
 def create(c: Ctx, cal: Calendar, *, start: datetime, duration: int, who: contacts.Invitee, answers: dict,
            location: str | None, time_zone: str, source: str, now: datetime) -> tuple[Booking, str]:
     """The booking and the secret of its link, or a 409 when the time is gone. The caller commits."""
+    near(cal, start, now)
     cat = Catalog(c)
     who = contacts.clean(cat, who)
     needs = dict(c.db.execute(select(CalendarResource.resource_id, CalendarResource.quantity)
@@ -151,6 +159,7 @@ def create(c: Ctx, cal: Calendar, *, start: datetime, duration: int, who: contac
 
 def reschedule(c: Ctx, b: Booking, cal: Calendar, *, start: datetime, time_zone: str, now: datetime) -> None:
     """Moves a booking to another time with the same host(s), after the same checks as a new one. The caller commits."""
+    near(cal, start, now)
     duration = int((b.ends_at - b.starts_at).total_seconds() // 60)
     lock(c, cal, list(c.db.scalars(select(BookingResource.resource_id).where(BookingResource.booking_id == b.id))))
     snap = slots.load(c.db, cal, start, start + timedelta(minutes=duration), now, ignore=b.id)
@@ -162,8 +171,10 @@ def reschedule(c: Ctx, b: Booking, cal: Calendar, *, start: datetime, time_zone:
     b.starts_at, b.ends_at, b.time_zone = start, start + timedelta(minutes=duration), time_zone
     b.status, b.reschedules, b.updated_at = "rescheduled", b.reschedules + 1, now
     c.db.flush()
-    plan_reminders(c, b, [r.offset_minutes for r in c.db.scalars(
-        select(BookingReminder).where(BookingReminder.booking_id == b.id))], now)
+    # the calendar's offsets too, not only the rows there are: one that was already past when the booking was made has
+    # no row, and a booking moved later must still get it
+    planned = c.db.scalars(select(BookingReminder.offset_minutes).where(BookingReminder.booking_id == b.id))
+    plan_reminders(c, b, [*cal.reminders, *planned], now)
     emit(c, "booking.rescheduled", b, cal, {"from_starts_at": old[0], "from_ends_at": old[1]})
 
 

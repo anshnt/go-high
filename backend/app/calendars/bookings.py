@@ -9,9 +9,11 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import AwareDatetime, BaseModel, Field
 from sqlalchemy import select, tuple_
 
+from .. import permissions
 from ..api import ApiError, seal, unseal
 from ..models import User
 from ..permissions import requires
+from ..records.schema import Catalog
 from ..security import Ctx
 from . import booking, contacts
 from .models import BOOKING_STATUSES, Booking, Calendar
@@ -39,17 +41,27 @@ def now() -> datetime:
 
 
 def bookings_json(c: Ctx, rows: list[tuple[Booking, Calendar]]) -> list[dict]:
-    """The bookings as the caller may see them: a contact only when it is one the caller may read."""
+    """The bookings as the caller may see them: a contact only when it is one the caller may read, and the invitee's
+    name, email and phone (the contact's own fields, as typed on the page) only when the role may read those fields
+    of contacts."""
     people = {i for b, _ in rows for i in b.host_ids}
     names = dict(c.db.execute(select(User.id, User.name).where(User.id.in_(people))).all()) if people else {}
     seen = contacts.visible(c, {b.contact_id for b, _ in rows if b.contact_id})
+    contact = Catalog(c).object("contact")
+    hide = permissions.hidden(c, contact) if contact else frozenset()
+    named = not hide & {"first_name", "last_name"}
+
+    def invitee(b: Booking) -> dict:
+        return {"name": b.invitee_name if named else None, "email": None if "email" in hide else b.invitee_email,
+                "phone": None if "phone" in hide else b.invitee_phone}
+
     return [{
         "id": b.id, "status": b.status, "starts_at": b.starts_at, "ends_at": b.ends_at, "time_zone": b.time_zone,
         "calendar": {"id": cal.id, "name": cal.name, "kind": cal.kind, "color": cal.color},
         "host": {"user_id": b.host_user_id, "name": names.get(b.host_user_id)},
         "hosts": [{"user_id": i, "name": names.get(i)} for i in b.host_ids],
         "contact": {"id": b.contact_id, "display_name": seen[b.contact_id]} if b.contact_id in seen else None,
-        "invitee": {"name": b.invitee_name, "email": b.invitee_email, "phone": b.invitee_phone},
+        "invitee": invitee(b),
         "location": b.location, "answers": b.answers, "source": b.source, "series_id": b.series_id,
         "reschedules": b.reschedules, "cancelled_at": b.cancelled_at, "cancel_reason": b.cancel_reason,
         "created_at": b.created_at, "updated_at": b.updated_at} for b, cal in rows]

@@ -6,7 +6,16 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from helpers import H, drain, make_record
-from inbox_helpers import add_channel, conversation, conversations_of, only_conversation, sms_in, sql
+from inbox_helpers import (
+    add_channel,
+    bodies,
+    conversation,
+    conversations_of,
+    mailgun_in,
+    only_conversation,
+    sms_in,
+    sql,
+)
 from sqlalchemy import text
 
 from app import config
@@ -282,3 +291,22 @@ def test_the_chat_reply_reaches_the_visitor_even_when_the_worker_is_down(widget,
     assert [(m["from"], m["body"]) for m in poll(key, token)] == [("visitor", "anyone there?"), ("agent", "yes")]
     drain()  # and nothing was left queued for a provider
     assert count(db, "messages", "status = 'queued'") == 0
+
+
+def test_a_visitor_sees_only_the_chat_not_mail_from_or_to_the_address_they_typed_in(widget):
+    """A visitor can type any email into the chat. When the real owner of that address later writes in, the mail
+    joins the same contact's conversation for staff, but the chat token must not read it, nor replies sent by email."""
+    client, ws, channel, key = widget
+    token = session(key)["token"]
+    say(key, token, "hi")
+    r = anonymous.post(f"{base(key)}/identify", json={"email": "pat@example.com"}, headers=auth(token))
+    assert r.status_code == 200, r.text
+    mail = add_channel(client, ws, "mailgun")
+    assert mailgun_in(anonymous, mail, "pat@example.com", "Invoice", "my account number is 1234").status_code == 200
+    conv = only_conversation(client, ws)
+    assert "my account number is 1234" in bodies(client, ws, conv["id"])  # one conversation, as staff see it
+    for body, sender in (("here is your invoice", mail), ("chat reply", channel)):
+        r = client.post(f"/api/v1/conversations/{conv['id']}/messages", json={"body": body, "channel_id": sender["id"]},
+                        headers={H: ws})
+        assert r.status_code == 201, r.text
+    assert [(m["from"], m["body"]) for m in poll(key, token)] == [("visitor", "hi"), ("agent", "chat reply")]

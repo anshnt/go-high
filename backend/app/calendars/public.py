@@ -66,10 +66,13 @@ def calendar_of(db: Session, workspace_slug: str, calendar_slug: str) -> tuple[W
     return ws, cal
 
 
-def booking_of(db: Session, token: str) -> tuple[Workspace, Booking, Calendar]:
+def booking_of(db: Session, token: str, *, lock: bool = False) -> tuple[Workspace, Booking, Calendar]:
+    """`lock` (for a change) waits for anyone else changing the booking, staff included, and reads it after them, as
+    the staff routes do; otherwise a move could bring back a booking cancelled a moment before."""
     wid = booking.token_workspace(token)
     ws = enter(db, db.get(Workspace, wid) if wid else None)
-    b = db.scalar(select(Booking).where(Booking.token_hash == token_hash(token)))
+    stmt = select(Booking).where(Booking.token_hash == token_hash(token))
+    b = db.scalar(stmt.with_for_update().execution_options(populate_existing=True) if lock else stmt)
     if b is None:
         raise not_found("This link is not valid")
     return ws, b, db.get(Calendar, b.calendar_id)
@@ -244,7 +247,7 @@ class Cancel(BaseModel):
 
 @router.post("/bookings/{token}/cancel")
 def cancel_booking(token: str, body: Cancel, db: Session = Depends(public_db)):
-    ws, b, cal = booking_of(db, token)
+    ws, b, cal = booking_of(db, token, lock=True)
     if b.status != "cancelled":
         changeable(b, cal)
         booking.cancel(contacts.system_ctx(db, ws), b, cal, body.reason, now())
@@ -258,8 +261,12 @@ class Move(BaseModel):
 
 
 @router.post("/bookings/{token}/reschedule")
-def reschedule_booking(token: str, body: Move, db: Session = Depends(public_db)):
-    ws, b, cal = booking_of(db, token)
+def reschedule_booking(token: str, body: Move, request: Request, db: Session = Depends(public_db)):
+    """Moves the booking; 429 when the visitor has made too many booking requests. Anyone can get a link by booking
+    once, and each move queues reminder jobs and sends events, so moves count with bookings."""
+    _, _, cal = booking_of(db, token)
+    throttle(db, cal, visitor(request), now())  # commits: the row is locked after it
+    ws, b, cal = booking_of(db, token, lock=True)
     changeable(b, cal)
     try:
         slots.zone(body.time_zone)

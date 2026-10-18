@@ -203,13 +203,16 @@ def identify(body: Identify, request: Request, c: Chat = Depends(chat_for),
 def poll(request: Request, after: int = Query(0, ge=0), c: Chat = Depends(chat_for),
          authorization: str | None = Header(default=None)):
     """The visitor's conversation after message number `after`: what they wrote and the replies. Internal notes and
-    system lines are never included."""
+    system lines are never included, and neither is anything sent or received on another channel: the conversation
+    belongs to the contact, and the email or number a visitor typed in proves nothing, so mail or texts of that
+    address are not theirs to read."""
     visitor = visitor_of(c.channel, authorization)
     limit(c, request, "poll")
     conv = conversation_of(c.db, c, visitor)
     rows = [] if conv is None else c.db.scalars(
-        select(Message).where(Message.conversation_id == conv.id, Message.kind == "message", Message.seq > after,
-                              Message.status != "failed").order_by(Message.seq).limit(PAGE)).all()
+        select(Message).where(Message.conversation_id == conv.id, Message.channel_id == c.channel.id,
+                              Message.kind == "message", Message.seq > after, Message.status != "failed")
+        .order_by(Message.seq).limit(PAGE)).all()
     return {"data": [{"seq": m.seq, "from": "visitor" if m.direction == "in" else "agent", "body": m.body,
                       "at": m.created_at} for m in rows]}
 

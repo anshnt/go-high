@@ -1,5 +1,7 @@
 """What a visitor does with the link of a booking (see it, move it, cancel it, add it to their calendar), the reminders
 that follow a booking around, the private feed, and the spam rules of the public page."""
+import threading
+import time
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -20,6 +22,7 @@ from sqlalchemy import text
 
 from app import config
 from app.calendars.reminders import remind
+from app.db import engine
 
 DAY = weekday_after(14)
 NEXT = DAY + timedelta(days=1)
@@ -101,6 +104,34 @@ def test_a_visitor_cancels_once_and_the_time_opens_again(crm):
                         ).status_code == 409
     [booking] = admin.get("/api/v1/bookings", headers={H: ws}).json()["data"]
     assert booking["status"] == "cancelled" and booking["cancel_reason"] == "Clash with a trip"
+
+
+@pytest.mark.parametrize("action", ["reschedule", "cancel"])
+def test_a_link_waits_for_a_change_staff_are_making_and_does_not_undo_their_cancel(crm, action):
+    """Staff cancel a booking (their transaction holds its row) while the visitor moves or cancels it from the link.
+    The visitor's request must wait and see the cancel, not overwrite it with what it read before."""
+    admin, ws, _ = crm
+    cal = make_calendar(admin, ws)
+    visitor = public_client()
+    done = book(visitor, cal)
+    body = {"start": instant(NEXT, "10:00"), "time_zone": "UTC"} if action == "reschedule" else {"reason": "late"}
+    answer = {}
+    with engine.connect() as staff:
+        staff.execute(text("SELECT id FROM bookings FOR UPDATE"))
+        staff.execute(text("UPDATE bookings SET status = 'cancelled', cancelled_at = now(), cancel_reason = 'staff'"))
+        thread = threading.Thread(target=lambda: answer.update(r=visitor.post(f"{link(done)}/{action}", json=body)))
+        thread.start()
+        time.sleep(1)
+        staff.commit()
+    thread.join(30)
+    seen = visitor.get(link(done)).json()
+    assert seen["status"] == "cancelled" and moment(seen["starts_at"]) == at(str(DAY), "10:00")
+    if action == "reschedule":
+        assert answer["r"].status_code == 409, answer["r"].text
+    else:
+        assert answer["r"].status_code == 200 and types(admin, ws) == ["booking.created"]  # cancelled once, by staff
+    [booking] = admin.get("/api/v1/bookings", headers={H: ws}).json()["data"]
+    assert booking["cancel_reason"] == "staff" and booking["reschedules"] == 0
 
 
 def test_links_stop_working_inside_the_cutoff_and_after_the_meeting(crm, db):
@@ -219,6 +250,19 @@ def test_a_reminder_already_past_when_booked_is_not_scheduled(crm, db):
     assert [o for o, _, _ in reminders(db)] == [60]
 
 
+def test_a_booking_moved_far_enough_gets_the_reminder_that_was_past_when_it_was_made(crm, db):
+    admin, ws, _ = crm
+    cal = make_calendar(admin, ws, reminders=[60, 14 * 24 * 60])
+    visitor = public_client()
+    done = book(visitor, cal, weekday_after(1))
+    later = weekday_after(28)
+    r = visitor.post(f"{link(done)}/reschedule", json={"start": instant(later, "10:00"), "time_zone": "UTC"})
+    assert r.status_code == 200, r.text
+    start = at(str(later), "10:00")
+    assert reminders(db) == [(14 * 24 * 60, "pending", start - timedelta(days=14)),
+                             (60, "pending", start - timedelta(hours=1))]
+
+
 def test_moving_a_booking_moves_its_reminders_and_a_job_for_the_old_time_does_nothing(crm, db):
     admin, ws, _ = crm
     cal = make_calendar(admin, ws, reminders=[1440, 60])
@@ -287,3 +331,19 @@ def test_one_visitor_is_limited_per_calendar_and_the_calendar_has_a_ceiling_of_i
     assert visit(visitor, cal, instant(DAY, "16:30"), email="z@example.com").status_code == 201  # the window passed
     # a hash, not an address
     assert db.scalar(text("SELECT bool_and(ip_hash ~ '^[0-9a-f]{64}$') FROM booking_attempts"))
+
+
+def test_moving_a_booking_from_its_link_counts_against_the_same_limit(crm, monkeypatch, db):
+    """Anyone can get a link by booking once; each move queues reminder jobs and sends events to the business's
+    webhooks, so moves are limited like bookings."""
+    admin, ws, _ = crm
+    cal = make_calendar(admin, ws, reminders=[60])
+    visitor = public_client()
+    done = book(visitor, cal)
+    monkeypatch.setattr(config, "BOOKING_MAX_PER_IP", 3)
+    codes = [visitor.post(f"{link(done)}/reschedule", json={"start": instant(NEXT, clock), "time_zone": "UTC"}
+                          ).status_code for clock in ("10:00", "11:00", "12:00", "13:00")]
+    assert codes == [200, 200, 429, 429]  # the booking was the first attempt
+    assert moment(visitor.get(link(done)).json()["starts_at"]) == at(str(NEXT), "11:00")
+    assert db.scalar(text("SELECT count(*) FROM jobs WHERE kind = 'calendars.reminder'")) == 3
+    assert visitor.post(f"{link(done)}/cancel", json={}).status_code == 200  # cancelling is always possible

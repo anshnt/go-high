@@ -25,7 +25,8 @@ export type Booking = {
   calendar: { id: string; name: string; kind: string; color: string };
   host: { user_id: string | null; name: string | null };
   contact: { id: string; display_name: string } | null;
-  invitee: { name: string; email: string; phone: string | null };
+  // null when the role may not read that field of contacts
+  invitee: { name: string | null; email: string | null; phone: string | null };
   location: { kind?: string; value?: string };
   answers: Record<string, { label: string; value: string }>;
   cancel_reason: string | null;

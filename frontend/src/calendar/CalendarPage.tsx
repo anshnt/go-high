@@ -17,6 +17,7 @@ const px = (minutes: number) => (minutes * HOUR_PX) / 60;
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 const hourLabel = (h: number) => (h === 0 ? "" : `${h % 12 || 12} ${h < 12 ? "AM" : "PM"}`);
 const touch = () => bookingsVersion.set(bookingsVersion.get() + 1);
+const inviteeName = (b: Booking) => b.invitee.name ?? "Invitee"; // null when the role may not read contact names
 
 /** Calendar: your team's bookings in a week, and the booking pages people book from. */
 export function CalendarPage() {
@@ -140,10 +141,10 @@ function Week() {
                     data-status={b.status}
                     data-short={height < 40 || undefined}
                     style={{ top: px(top), height: px(height), left: `${(col / cols) * 100}%`, width: `${100 / cols}%` }}
-                    aria-label={`${formatClock(Date.parse(b.starts_at), zone)} to ${formatClock(Date.parse(b.ends_at), zone)}, ${b.invitee.name}, ${b.calendar.name}, ${STATUS[b.status].label}`}
+                    aria-label={`${formatClock(Date.parse(b.starts_at), zone)} to ${formatClock(Date.parse(b.ends_at), zone)}, ${inviteeName(b)}, ${b.calendar.name}, ${STATUS[b.status].label}`}
                     onClick={() => setOpen(b)}
                   >
-                    <strong>{b.invitee.name}</strong>
+                    <strong>{inviteeName(b)}</strong>
                     <span>
                       {formatClock(Date.parse(b.starts_at), zone)} {b.calendar.name}
                     </span>
@@ -189,8 +190,8 @@ function BookingSheet({ booking, zone, onClose }: { booking: Booking; zone: stri
   const facts: [string, ReactNode][] = [
     ["Status", <Badge tone={STATUS[b.status].tone}>{STATUS[b.status].label}</Badge>],
     ["Host", b.host.name ?? "Unassigned"],
-    ["Email", <a href={`mailto:${b.invitee.email}`}>{b.invitee.email}</a>],
   ];
+  if (b.invitee.email) facts.push(["Email", <a href={`mailto:${b.invitee.email}`}>{b.invitee.email}</a>]);
   if (b.invitee.phone) facts.push(["Phone", <a href={`tel:${b.invitee.phone}`}>{b.invitee.phone}</a>]);
   if (b.contact) facts.push(["Contact", <Link to={`/contacts/${b.contact.id}`}>{b.contact.display_name}</Link>]);
   const place = b.location?.kind ? [{ video: "Video call", phone: "Phone call", in_person: "In person" }[b.location.kind] ?? "", b.location.value].filter(Boolean).join(": ") : "";
@@ -202,7 +203,7 @@ function BookingSheet({ booking, zone, onClose }: { booking: Booking; zone: stri
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
-      title={b.invitee.name}
+      title={inviteeName(b)}
       description={`${b.calendar.name}, ${formatDateLong(start, zone)}, ${formatClock(start, zone)} to ${formatClock(Date.parse(b.ends_at), zone)}`}
       footer={
         cancelling ? (
