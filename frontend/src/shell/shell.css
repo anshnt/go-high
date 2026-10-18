@@ -369,6 +369,17 @@
   color: var(--text-2);
   font-size: var(--fs-sm);
 }
+.sh-card-top {
+  justify-content: space-between;
+}
+.sh-card-body {
+  flex: 1;
+}
+.sh-card-link {
+  display: inline-block;
+  margin-top: var(--space-2);
+  font-size: var(--fs-sm);
+}
 
 .sh-settings-search {
   max-width: 480px;

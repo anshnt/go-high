@@ -24,6 +24,7 @@ import {
   MapPin,
   Image,
   Building2,
+  ClipboardList,
   type LucideIcon,
 } from "lucide-react";
 import { persisted } from "./store";
@@ -50,9 +51,11 @@ export const HOME = import.meta.env.VITE_DEMO === "1" ? "/contacts" : MY_DAY_NAV
 export const APPS_NAV: NavItem = { id: "apps", label: "Apps", path: "/apps", icon: LayoutGrid, blurb: "Switch on only the modules you need." };
 export const SETTINGS_NAV: NavItem = { id: "settings", label: "Settings", path: "/settings", icon: Settings, blurb: "One searchable hub for every setting." };
 
-export type AppInfo = { id: string; label: string; icon: LucideIcon; blurb: string };
+export type AppInfo = { id: string; label: string; icon: LucideIcon; blurb: string; path?: string };
 
+// An app with a path is built and can be switched on; the rest still say "Coming soon".
 export const APPS: AppInfo[] = [
+  { id: "forms", label: "Forms", icon: ClipboardList, path: "/forms", blurb: "Forms, surveys and quizzes with branching, scoring and embeds that create contacts." },
   { id: "sites", label: "Sites and funnels", icon: Globe, blurb: "Build fast pages and funnels that publish as static HTML." },
   { id: "email", label: "Email marketing", icon: Mail, blurb: "Campaigns and newsletters with deliverability checks built in." },
   { id: "payments", label: "Payments", icon: CreditCard, blurb: "Invoices, subscriptions and payment links with a clear cost preview." },
@@ -99,6 +102,14 @@ export const sidebarPrefs = persisted<SidebarPrefs>("gh:sidebar", { order: [], h
   const p = v as Partial<SidebarPrefs> | null;
   return p && isIds(p.order) && isIds(p.hidden) ? { order: p.order, hidden: p.hidden } : undefined;
 });
+
+// ponytail: which apps are on lives in localStorage, like the sidebar; it moves to workspace settings with them. Forms is
+// on by default for now.
+export const appsOn = persisted<string[]>("gh:apps", ["forms"], (v) => (isIds(v) ? v : undefined));
+
+/** The apps that are built and switched on, as sidebar items. */
+export const enabledApps = (on: string[]): NavItem[] =>
+  APPS.flatMap((a) => (a.path && on.includes(a.id) ? [{ id: a.id, label: a.label, path: a.path, icon: a.icon, blurb: a.blurb }] : []));
 
 /** Core items in the user's order. Unknown or new ids fall back to the default order. */
 export function orderedCore(prefs: SidebarPrefs): NavItem[] {
