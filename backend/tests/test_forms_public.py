@@ -308,8 +308,8 @@ def optional_lead():
                      q("phone", "phone", maps_to="phone")))
 
 
-def test_a_known_contact_is_updated_and_an_empty_answer_never_blanks_a_field(site, db):
-    made = site.live(definition=optional_lead())
+def test_a_known_contact_is_updated_when_the_form_says_so_and_an_empty_answer_never_blanks_a_field(site, db):
+    made = site.live(definition=optional_lead(), settings={"contact": {"existing": "update"}})
     site.submit(made, {"first_name": "Ada", "email": "ada@example.com", "phone": "+14155550100"})
     [first] = site.records()
     second = site.submit(made, {"first_name": "Adaline", "email": "ADA@example.com", "phone": ""})
@@ -330,7 +330,8 @@ def test_a_contact_is_found_by_phone_when_the_form_has_no_email(site):
     known = {"values": {"first_name": "Known", "phone": "+14155550111"}}
     site.client.post("/api/v1/objects/contact/records", json=known, headers={H: site.ws})
     made = site.live(definition=form(step("s1", q("first_name", maps_to="first_name"),
-                                           q("phone", "phone", maps_to="phone"))))
+                                           q("phone", "phone", maps_to="phone"))),
+                     settings={"contact": {"existing": "update"}})
     site.submit(made, {"first_name": "Renamed", "phone": "(415) 555-0111"})
     [contact] = site.records()
     assert contact["values"]["first_name"] == "Renamed" and contact["values"]["phone"] == "+14155550111"
@@ -344,7 +345,7 @@ def test_the_oldest_duplicate_gets_the_update_and_trashed_contacts_are_ignored(s
     oldest, newer = add("dup@example.com", "Oldest"), add("dup@example.com", "Newer")
     gone = add("gone@example.com", "Gone")
     site.client.delete(f"/api/v1/objects/contact/records/{gone}", headers={H: site.ws})
-    made = site.live(definition=optional_lead())
+    made = site.live(definition=optional_lead(), settings={"contact": {"existing": "update"}})
     site.submit(made, {"first_name": "Updated", "email": "dup@example.com"})
     by_id = {c["id"]: c["values"]["first_name"] for c in site.records()}
     assert by_id[oldest] == "Updated" and by_id[newer] == "Newer"
@@ -353,8 +354,9 @@ def test_the_oldest_duplicate_gets_the_update_and_trashed_contacts_are_ignored(s
             ] == ["Fresh"]
 
 
-def test_fill_empty_only_adds_what_the_contact_does_not_have(site):
-    made = site.live(definition=optional_lead(), settings={"contact": {"existing": "fill_empty"}})
+def test_by_default_a_known_contact_only_gets_what_it_does_not_have(site):
+    made = site.live(definition=optional_lead())  # the default: a stranger's answers never overwrite a field
+    assert made["settings"]["contact"] == {"create": True, "existing": "fill_empty"}
     site.submit(made, {"first_name": "Ada", "email": "ada@example.com"})
     site.submit(made, {"first_name": "Mallory", "email": "ada@example.com", "phone": "+14155550100"})
     [contact] = site.records()

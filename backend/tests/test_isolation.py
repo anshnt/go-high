@@ -866,7 +866,8 @@ def test_the_app_role_cannot_move_a_row_to_another_workspace_or_point_one_across
             assert conn.execute(text("DELETE FROM pipelines WHERE id NOT IN (SELECT pipeline_id FROM stages)")
                                 ).rowcount == 1  # Sales, which has nothing left
             conn.rollback()
-    assert db.scalar(text("SELECT count(*) FROM records WHERE workspace_id = :w"), {"w": b_ws}) == 8  # as filled, and the contact a form made
+    # as filled, with the inbox's two contacts and the contact a form made
+    assert db.scalar(text("SELECT count(*) FROM records WHERE workspace_id = :w"), {"w": b_ws}) == 8
     assert db.scalar(text("SELECT count(*) FROM stages WHERE workspace_id = :w"), {"w": b_ws}) == 8
     assert db.scalar(text("SELECT count(*) FROM pipelines WHERE workspace_id = :w"), {"w": b_ws}) == 2
     assert db.scalar(text("SELECT count(*) FROM tasks WHERE workspace_id = :w"), {"w": b_ws}) == 2

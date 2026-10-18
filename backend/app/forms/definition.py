@@ -438,7 +438,9 @@ Text = Annotated[str, StringConstraints(strip_whitespace=True, max_length=1000)]
 
 class ContactSettings(BaseModel, extra="forbid"):
     create: bool = True  # a form without a contact (an anonymous survey) leaves this off
-    existing: Literal["update", "fill_empty"] = "update"  # what a known contact gets from a new answer
+    # What a known contact gets from a new answer. The safe default only fills what is empty, so a stranger who knows an
+    # email address cannot rewrite what the business already knows; `update` lets the newest answer win.
+    existing: Literal["update", "fill_empty"] = "fill_empty"
 
 
 class Settings(BaseModel, extra="forbid"):

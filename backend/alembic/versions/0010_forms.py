@@ -1,7 +1,7 @@
 """forms, surveys and quizzes: forms, immutable versions, submissions, view counters, rate counters
 
 Revision ID: 0010
-Revises: 0004
+Revises: 0005
 Create Date: 2026-10-18
 """
 import sqlalchemy as sa
@@ -9,7 +9,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "0010"
-down_revision = "0004"
+down_revision = "0005"
 branch_labels = None
 depends_on = None
 
@@ -20,6 +20,12 @@ EMPTY_OBJECT = sa.text("'{}'::jsonb")
 KINDS = ("form", "survey", "quiz")
 STATUSES = ("draft", "published", "closed")
 SUBMISSION_STATUSES = ("partial", "complete")
+# frozen: the capabilities of forms, and what each system role of an existing organization gets (a new organization
+# gets them from app/roles_seed.py). Custom roles get nothing: an admin adds them to the roles that should have them.
+FORM_CAPABILITIES = ("forms.read", "forms.write", "forms.publish", "forms.delete", "responses.read",
+                     "responses.export")
+GRANTS = {"owner": FORM_CAPABILITIES, "admin": FORM_CAPABILITIES, "manager": FORM_CAPABILITIES,
+          "member": ("forms.read", "forms.write", "responses.read"), "viewer": ("forms.read", "responses.read")}
 
 
 def col(name: str, type_, *args, **kw) -> sa.Column:
@@ -118,8 +124,20 @@ def upgrade() -> None:
         op.execute(f"CREATE POLICY workspace ON {table} {WORKSPACE}")
         for policy in extra:
             op.execute(policy)
+    # roles have row level security forced on them, which applies to their owner too: the system setting (what sign up
+    # uses) lets this migration change them
+    op.execute("SELECT set_config('app.system', 'on', true)")
+    connection = op.get_bind()
+    for key, capabilities in GRANTS.items():
+        # only what a role lacks: roles seeded by an older migration already hold the current catalog
+        connection.execute(sa.text("UPDATE roles SET capabilities = capabilities || array(SELECT c FROM "
+                                   "unnest(CAST(:caps AS text[])) c WHERE c <> ALL(capabilities)) "
+                                   "WHERE is_system AND key = :key"), {"caps": list(capabilities), "key": key})
 
 
 def downgrade() -> None:
+    op.execute("SELECT set_config('app.system', 'on', true)")
+    op.get_bind().execute(sa.text("UPDATE roles SET capabilities = array(SELECT c FROM unnest(capabilities) c "
+                                  "WHERE c <> ALL(CAST(:caps AS text[])))"), {"caps": list(FORM_CAPABILITIES)})
     for table in reversed(RLS):
         op.execute(f"DROP TABLE {table} CASCADE")

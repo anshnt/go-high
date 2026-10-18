@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session
 
 from .. import events
 from ..api import ApiError, Idem, idempotency, paginate
+from ..permissions import require, requires
 from ..records.schema import Catalog
-from ..security import Ctx, in_workspace
+from ..security import Ctx
 from .definition import (
     DefinitionError,
     Settings,
@@ -148,7 +149,8 @@ def create(c: Ctx, name: str, kind: str, slug: str | None, definition: dict, set
 def list_forms(status: Literal["draft", "published", "closed"] | None = None,
                kind: Literal["form", "survey", "quiz"] | None = None,
                q: Annotated[str | None, Query(max_length=100)] = None, trashed: bool = False,
-               limit: int = Query(50, ge=1, le=200), cursor: str | None = None, c: Ctx = Depends(in_workspace)):
+               limit: int = Query(50, ge=1, le=200), cursor: str | None = None,
+               c: Ctx = Depends(requires("forms.read"))):
     """Most recently changed first. `status` filters by the stored status; each row's `status` also shows `closed` for
     a published form past its close date or response limit."""
     stmt = select(Form).where(Form.deleted_at.is_not(None) if trashed else Form.deleted_at.is_(None))
@@ -163,7 +165,7 @@ def list_forms(status: Literal["draft", "published", "closed"] | None = None,
 
 
 @router.post("", status_code=201)
-def create_form(body: NewForm, c: Ctx = Depends(in_workspace), idem: Idem = Depends(idempotency)):
+def create_form(body: NewForm, c: Ctx = Depends(requires("forms.write")), idem: Idem = Depends(idempotency)):
     cat = Catalog(c)
     definition = check_definition(cat, body.definition or starter(body.kind), body.kind,
                                   mapping=body.definition is not None)  # the starter names fields every contact has
@@ -175,16 +177,19 @@ def create_form(body: NewForm, c: Ctx = Depends(in_workspace), idem: Idem = Depe
 
 
 @router.get("/{form_id}")
-def get_form(form_id: uuid.UUID, c: Ctx = Depends(in_workspace)):
+def get_form(form_id: uuid.UUID, c: Ctx = Depends(requires("forms.read"))):
     """The form with the definition of its newest version, which is what the builder edits."""
     form = form_or_404(c, form_id)
     return {**form_json(c.db, [form])[0], "definition": newest(c.db, form.id).definition}
 
 
 @router.patch("/{form_id}")
-def update_form(form_id: uuid.UUID, body: PatchForm, c: Ctx = Depends(in_workspace)):
+def update_form(form_id: uuid.UUID, body: PatchForm, c: Ctx = Depends(requires("forms.write"))):
     form = form_or_404(c, form_id)
     sent = body.model_dump(exclude_unset=True, mode="json")
+    live_change = "settings" in sent and sent["settings"] != form.settings and form.status != "draft"
+    if sent.get("status", form.status) != form.status or live_change:
+        require(c, "forms.publish")  # taking a form offline, or changing the settings of a live one, is publishing
     if nulls := [k for k, v in sent.items() if v is None]:
         raise ApiError(422, "validation_failed", "The request is not valid", {k: "cannot be null" for k in nulls})
     old = {"name": form.name, "slug": form.slug, "settings": form.settings, "status": form.status}
@@ -213,7 +218,7 @@ def update_form(form_id: uuid.UUID, body: PatchForm, c: Ctx = Depends(in_workspa
 
 
 @router.delete("/{form_id}", status_code=204)
-def delete_form(form_id: uuid.UUID, c: Ctx = Depends(in_workspace)):
+def delete_form(form_id: uuid.UUID, c: Ctx = Depends(requires("forms.delete"))):
     """Moves the form to the trash: its link stops working, its responses are kept, and it can be restored."""
     form = form_or_404(c, form_id)
     form.deleted_at, form.updated_at = func.now(), func.now()
@@ -223,7 +228,8 @@ def delete_form(form_id: uuid.UUID, c: Ctx = Depends(in_workspace)):
 
 
 @router.post("/{form_id}/restore")
-def restore_form(form_id: uuid.UUID, c: Ctx = Depends(in_workspace), idem: Idem = Depends(idempotency)):
+def restore_form(form_id: uuid.UUID, c: Ctx = Depends(requires("forms.delete")),
+                 idem: Idem = Depends(idempotency)):
     form = form_or_404(c, form_id, trashed=True)
     form.deleted_at, form.updated_at = None, func.now()
     c.db.flush()
@@ -232,7 +238,7 @@ def restore_form(form_id: uuid.UUID, c: Ctx = Depends(in_workspace), idem: Idem 
 
 
 @router.post("/{form_id}/duplicate", status_code=201)
-def duplicate_form(form_id: uuid.UUID, body: Duplicate | None = None, c: Ctx = Depends(in_workspace),
+def duplicate_form(form_id: uuid.UUID, body: Duplicate | None = None, c: Ctx = Depends(requires("forms.write")),
                    idem: Idem = Depends(idempotency)):
     """A draft copy of the newest version and the settings, with its own link name and public key."""
     form = form_or_404(c, form_id)
@@ -244,7 +250,7 @@ def duplicate_form(form_id: uuid.UUID, body: Duplicate | None = None, c: Ctx = D
 
 @router.get("/{form_id}/versions")
 def list_versions(form_id: uuid.UUID, limit: int = Query(50, ge=1, le=200), cursor: str | None = None,
-                  c: Ctx = Depends(in_workspace)):
+                  c: Ctx = Depends(requires("forms.read"))):
     form = form_or_404(c, form_id)
     rows, next_cursor = paginate(c.db, select(FormVersion).where(FormVersion.form_id == form.id), FormVersion, limit,
                                  cursor)
@@ -252,7 +258,7 @@ def list_versions(form_id: uuid.UUID, limit: int = Query(50, ge=1, le=200), curs
 
 
 @router.get("/{form_id}/versions/{version_id}")
-def get_version(form_id: uuid.UUID, version_id: uuid.UUID, c: Ctx = Depends(in_workspace)):
+def get_version(form_id: uuid.UUID, version_id: uuid.UUID, c: Ctx = Depends(requires("forms.read"))):
     form = form_or_404(c, form_id)
     version = c.db.scalar(select(FormVersion).where(FormVersion.form_id == form.id, FormVersion.id == version_id))
     if version is None:
@@ -263,7 +269,7 @@ def get_version(form_id: uuid.UUID, version_id: uuid.UUID, c: Ctx = Depends(in_w
 # ponytail: every changed save is a new row, never pruned; drop old versions that were never published and have no
 # responses when a form's history gets long.
 @router.post("/{form_id}/versions")
-def save_version(form_id: uuid.UUID, body: SaveVersion, c: Ctx = Depends(in_workspace)):
+def save_version(form_id: uuid.UUID, body: SaveVersion, c: Ctx = Depends(requires("forms.write"))):
     """Saving a draft is a new version; the published one is not touched until `publish`. Saving what the newest
     version already holds changes nothing and returns it. A response keeps the version it began on."""
     form = c.db.scalar(select(Form).where(Form.id == form_id, Form.deleted_at.is_(None)).with_for_update())
@@ -282,7 +288,7 @@ def save_version(form_id: uuid.UUID, body: SaveVersion, c: Ctx = Depends(in_work
 
 
 @router.post("/{form_id}/publish")
-def publish_form(form_id: uuid.UUID, body: Publish | None = None, c: Ctx = Depends(in_workspace)):
+def publish_form(form_id: uuid.UUID, body: Publish | None = None, c: Ctx = Depends(requires("forms.publish"))):
     """Makes a version (the newest, unless `version_id` is given) what visitors see, and opens a closed form again.
     The version is checked once more, because the contact fields it writes to may have changed since it was saved."""
     form = form_or_404(c, form_id)

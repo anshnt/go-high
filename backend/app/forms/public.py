@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from .. import config, events
 from ..api import ApiError
 from ..db import rescope
-from ..models import Workspace
+from ..models import Role, Workspace
 from ..records import timeline
 from ..records.schema import Catalog
 from ..security import Ctx, system_db, token_hash
@@ -83,6 +83,13 @@ def open_form(db: Session, key: str) -> tuple[Form, Workspace, Settings]:
     rescope(db, org_id=ws.org_id, workspace_id=ws.id)
     s = Settings.model_validate(form.settings)
     return form, ws, s
+
+
+def automation(db: Session, ws: Workspace) -> Ctx:
+    """The context a response writes to contacts with: nobody is signed in, so the organization's Automation role does
+    it. What that role may read and write is the organization's to edit, like any other role's."""
+    role = db.scalar(select(Role).where(Role.org_id == ws.org_id, Role.key == "automation", Role.is_system))
+    return Ctx(db, None, None, "", workspace=ws, role=role)
 
 
 def ensure_open(db: Session, form: Form, s: Settings) -> None:
@@ -218,7 +225,7 @@ async def complete(public_key: PublicKey, submission_id: uuid.UUID, request: Req
     ensure_open(db, form, s)
     spam.opened(body.view_token, form, s, waited=True)
 
-    cat = Catalog(Ctx(db, None, None, "", workspace=ws))
+    cat = Catalog(automation(db, ws))
     contact_obj = cat.object("contact")
     contact_fields = cat.fields(contact_obj) if contact_obj else {}
     given = body.answers or sub.answers

@@ -269,7 +269,7 @@ def test_a_mapping_must_fit_a_contact_field():
 def test_settings_have_safe_defaults_and_refuse_bad_values():
     s = Settings()
     assert s.spam_protection and s.rate_limit_per_minute == 30 and s.max_body_kb == 64 and s.contact.create
-    assert s.double_submission == "allow" and s.contact.existing == "update" and s.redirect_url is None
+    assert s.double_submission == "allow" and s.contact.existing == "fill_empty" and s.redirect_url is None
     for bad in ({"redirect_url": "javascript:alert(1)"}, {"redirect_url": "ftp://x.test/a"},
                 {"redirect_url": "https://x.test/a b"}, {"redirect_url": "//x.test"},
                 {"close_at": "2026-12-01T10:00:00"}, {"max_responses": 0}, {"rate_limit_per_minute": 0},

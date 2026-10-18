@@ -24,10 +24,20 @@ def find(cat: Catalog, obj: ObjectDef, values: dict) -> Record | None:
     return None
 
 
+def form_source(fields: dict) -> str | None:
+    """The choice of the contact's `source` field that says a form brought the contact in, if the workspace has one."""
+    f = fields.get("source")
+    if f is None or f.type != "select":
+        return None
+    return next((c["id"] for c in f.options.get("choices", []) if c["id"] == "form" or c["label"].lower() == "form"),
+                None)
+
+
 # ponytail: forms write to the contact object only; deals and custom objects follow when a form needs them.
 def upsert(cat: Catalog, values: dict, existing: str) -> tuple[uuid.UUID, bool]:
-    """(contact id, whether it was created). `existing`: `update` writes every answer, `fill_empty` only fills fields
-    the contact has no value for, which keeps a stranger's answer from rewriting what the business already knows."""
+    """(contact id, whether it was created). A new contact gets `source = form`; a known one never has its source
+    touched. `existing`: `fill_empty` only fills fields the contact has no value for, which keeps a stranger's answer
+    from rewriting what the business already knows; `update` writes every answer."""
     obj = cat.need("contact")
     email, phone = store.identity(cat.fields(obj), values)
     key = email or phone
@@ -35,7 +45,9 @@ def upsert(cat: Catalog, values: dict, existing: str) -> tuple[uuid.UUID, bool]:
         cat.db.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(f"{cat.c.workspace.id}:{key}", 0))))
     rec = find(cat, obj, values)
     if rec is None:
-        return store.create(cat, obj, values, None).id, True
+        source = form_source(cat.fields(obj))
+        return store.create(cat, obj, {**({"source": source} if source and "source" not in values else {}), **values},
+                            None).id, True
     rec = store.get(cat, obj, rec.id, lock=True)
     patch = values if existing == "update" else {k: v for k, v in values.items() if k not in rec.values}
     if patch:

@@ -7,7 +7,8 @@ from datetime import date
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, text
 
-from ..security import Ctx, in_workspace
+from ..permissions import requires
+from ..security import Ctx
 from .admin import form_or_404
 from .models import FormVersion
 from .responses import bounds
@@ -31,7 +32,7 @@ VIEWS = "SELECT coalesce(sum(count), 0) FROM form_views WHERE form_id = :form {d
 
 @router.get("")
 def analytics(form_id: uuid.UUID, created: date | None = Query(None, alias="from"),
-              until: date | None = Query(None, alias="to"), c: Ctx = Depends(in_workspace)):
+              until: date | None = Query(None, alias="to"), c: Ctx = Depends(requires("forms.read"))):
     """`from` and `to` (UTC dates, inclusive) bound when responses were started and views counted. A step's `reached`
     counts the responses that visited it, `dropped` those that left the form there; a question's `answered` counts
     responses with an answer, `dropped_after` those whose last answer it was."""
