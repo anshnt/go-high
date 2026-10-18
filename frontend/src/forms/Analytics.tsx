@@ -36,8 +36,8 @@ export function Analytics({ form }: { form: FormDetail }) {
   return (
     <div className="fm-analytics">
       <div className="fm-filters">
-        <Input aria-label="From date" type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
-        <Input aria-label="To date" type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+        <Input label="From" type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+        <Input label="To" type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
         {(from || to) && (
           <Button variant="ghost" onClick={() => { setFrom(""); setTo(""); }}>
             Clear dates

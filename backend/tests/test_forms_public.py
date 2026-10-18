@@ -67,6 +67,8 @@ def test_a_closed_form_says_so_with_its_own_message(site):
     r = site.page(made["public_key"])
     assert r.status_code == 410 and r.json()["error"]["code"] == "form_closed"
     assert r.json()["error"]["message"] == "Applications closed on Friday."
+    assert r.headers["cache-control"] == "no-store"  # a browser must not keep showing "closed" once it is open again
+    assert site.page("a" * 16).headers["cache-control"] == "no-store"
     for call in (lambda: site.anonymous.post(f"{PUBLIC}/{made['public_key']}/views"),
                  lambda: site.anonymous.post(f"{PUBLIC}/{made['public_key']}/submissions", json={}),
                  lambda: site.anonymous.post(f"{PUBLIC}/{made['public_key']}/resume", json={})):

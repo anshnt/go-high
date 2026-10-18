@@ -69,9 +69,9 @@ export function Responses({ form, def }: { form: FormDetail; def: Definition }) 
   return (
     <div className="fm-responses">
       <div className="fm-filters">
-        <Select value={status} onValueChange={setStatus} options={STATUS} />
-        <Input aria-label="From date" type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
-        <Input aria-label="To date" type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+        <Select label="Show" value={status} onValueChange={setStatus} options={STATUS} />
+        <Input label="From" type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+        <Input label="To" type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
         <Button
           loading={busy}
           onClick={async () => {

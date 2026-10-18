@@ -62,6 +62,7 @@ export function FormBuilder() {
   const [savedDraft, setSavedDraft] = useState("");
   const [contact, setContact] = useState<ContactField[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  const [sheet, setSheet] = useState(false); // phones edit a question in a sheet; closing it keeps the question selected
   const [side, setSide] = useState<"question" | "preview">("question");
   const [busy, setBusy] = useState<"save" | "publish" | null>(null);
   const [problems, setProblems] = useState<string[]>([]);
@@ -88,7 +89,7 @@ export function FormBuilder() {
   useEffect(load, [load]);
 
   const dirty = !!def && !!draft && (JSON.stringify(def) !== savedDef || JSON.stringify(draft) !== savedDraft);
-  const blocker = useBlocker(dirty);
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => dirty && currentLocation.pathname !== nextLocation.pathname); // tabs only change the query
   useEffect(() => {
     if (!dirty) return;
     const stop = (e: BeforeUnloadEvent) => e.preventDefault();
@@ -204,11 +205,15 @@ export function FormBuilder() {
     );
 
   const field = def.steps.flatMap((s) => s.fields).find((f) => f.key === selected) ?? null;
+  const pick = (key: string | null) => {
+    setSelected(key);
+    setSheet(key !== null);
+  };
   const addAtEnd = (type: Parameters<typeof newField>[1]) => {
     const home = def.steps.find((s) => s.fields.some((f) => f.key === selected)) ?? def.steps[def.steps.length - 1]!;
     const f = newField(def, type);
     setDef(addField(def, home.key, f));
-    setSelected(f.key);
+    pick(f.key);
   };
   const panel = field ? (
     <FieldPanel field={field} kind={form.kind} contact={contact} error={questionIssues[field.key]} onChange={(patch) => setDef(updateField(def, field.key, patch))} />
@@ -288,7 +293,7 @@ export function FormBuilder() {
         <TabsContent value="build">
           <div className="fm-build">
             <Palette onAdd={addAtEnd} />
-            <Canvas def={def} onChange={setDef} selected={selected} onSelect={setSelected} issues={questionIssues} />
+            <Canvas def={def} onChange={setDef} selected={selected} onSelect={pick} issues={questionIssues} />
             {wide && (
               <aside className="fm-side" aria-label="Question and preview">
                 <div className="fm-seg" role="group" aria-label="Side panel">
@@ -304,7 +309,7 @@ export function FormBuilder() {
             )}
           </div>
           {!wide && (
-            <Sheet open={!!field} onOpenChange={(o) => !o && setSelected(null)} title="Question settings">
+            <Sheet open={!!field && sheet} onOpenChange={setSheet} title="Question settings">
               {panel}
             </Sheet>
           )}

@@ -101,10 +101,12 @@ function ConditionEditor({ def, rule, onChange }: { def: Definition; rule: Rule;
               <Select value={leaf.op} onValueChange={(op) => setItem(i, { leaf: { field: leaf.field, op: op as Op, value: defaultValue(f, op as Op) } })} options={ops.map((o) => ({ value: o, label: OP_LABEL[o] }))} />
             )}
             {f && <ValueInput f={f} op={leaf.op} value={leaf.value} onChange={(value) => setItem(i, { leaf: { ...leaf, value } })} />}
-            <Checkbox label="Not" aria-label="Reverse this test" checked={not} onCheckedChange={(on) => setItem(i, { not: on })} />
-            <Button variant="ghost" size="icon" aria-label="Remove this test" disabled={flat.items.length < 2} onClick={() => set({ ...flat, items: flat.items.filter((_, j) => j !== i) })}>
-              <X size={16} aria-hidden />
-            </Button>
+            <div className="fm-leaf-end">
+              <Checkbox label="Not" aria-label="Reverse this test" checked={not} onCheckedChange={(on) => setItem(i, { not: on })} />
+              <Button variant="ghost" size="icon" aria-label="Remove this test" disabled={flat.items.length < 2} onClick={() => set({ ...flat, items: flat.items.filter((_, j) => j !== i) })}>
+                <X size={16} aria-hidden />
+              </Button>
+            </div>
           </div>
         );
       })}
@@ -179,28 +181,27 @@ export function Logic({ def, onChange, serverProblems }: { def: Definition; onCh
                 </div>
                 {problem && <p className="fm-issue" role="alert">{problem}</p>}
                 <div className="fm-rule-body">
-                  <div className="fm-rule-then">
-                    <span className="fm-when">Then</span>
-                    <Select value={r.do} onValueChange={(v) => changeAction(i, v as Rule["do"])} options={ACTIONS} />
-                    {jump ? (
-                      <>
-                        <span className="fm-when">after</span>
-                        <Select value={r.from ?? ""} onValueChange={(from) => setRule(i, { from })} options={stepOptions} placeholder="Step" />
-                        {r.do === "jump" && (
-                          <>
-                            <span className="fm-when">go to</span>
-                            <Select value={r.target ?? ""} onValueChange={(target) => setRule(i, { target })} options={stepOptions} placeholder="Step" />
-                          </>
-                        )}
-                      </>
-                    ) : (
+                  <span className="fm-when">Then</span>
+                  <Select value={r.do} onValueChange={(v) => changeAction(i, v as Rule["do"])} options={ACTIONS} />
+                  {jump ? (
+                    <>
+                      <span className="fm-when">After</span>
+                      <Select value={r.from ?? ""} onValueChange={(from) => setRule(i, { from })} options={stepOptions} placeholder="Step" />
+                      {r.do === "jump" && (
+                        <>
+                          <span className="fm-when">Go to</span>
+                          <Select value={r.target ?? ""} onValueChange={(target) => setRule(i, { target })} options={stepOptions} placeholder="Step" />
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <span className="fm-when">What</span>
                       <Select value={r.target ?? ""} onValueChange={(target) => setRule(i, { target })} options={targets} placeholder="Choose what to show or hide" />
-                    )}
-                  </div>
-                  <div className="fm-rule-if">
-                    <span className="fm-when">When</span>
-                    <ConditionEditor def={def} rule={r} onChange={(when) => setRule(i, { when })} />
-                  </div>
+                    </>
+                  )}
+                  <span className="fm-when">When</span>
+                  <ConditionEditor def={def} rule={r} onChange={(when) => setRule(i, { when })} />
                 </div>
               </li>
             );

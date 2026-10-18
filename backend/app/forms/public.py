@@ -49,6 +49,8 @@ async def cors(request: Request, call_next):
         return Response(status_code=204, headers=CORS)
     response = await call_next(request)
     response.headers.update(CORS)
+    # An answer is never reused: a browser would otherwise keep showing "closed" after the form was opened again.
+    response.headers.setdefault("Cache-Control", "no-store")
     return response
 
 
@@ -284,7 +286,8 @@ def hosted(public_key: PublicKey, theme: str = "light", db: Session = Depends(sy
     name = db.scalar(select(Form.name).where(Form.public_key == public_key, Form.deleted_at.is_(None),
                                             Form.status != "draft"))
     if name is None:
-        return HTMLResponse("<!doctype html><title>Not found</title><p>This form does not exist.", status_code=404)
+        return HTMLResponse("<!doctype html><title>Not found</title><p>This form does not exist.", status_code=404,
+                            headers=NO_STORE)
     return HTMLResponse(shell(name, public_key, "dark" if theme == "dark" else "light"), headers={
         "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
                                    "connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'",
