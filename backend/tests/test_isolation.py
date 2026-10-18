@@ -2,11 +2,13 @@
 import itertools
 import json
 import re
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.routing import iter_route_contexts
 from fastapi.testclient import TestClient
 from helpers import PASSWORD, add_member, context, link, type_id
+from inbox_helpers import sms_in
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
@@ -16,12 +18,17 @@ from app.main import app
 from app.models import Base
 from app.security import UNSAFE
 
+hooks = TestClient(app)  # no session: what a provider or a visitor is
+SOON = (datetime.now(UTC) + timedelta(days=30)).isoformat()  # a valid time to snooze until
+
 TENANT_TABLES = ["organizations", "brands", "workspaces", "users", "org_members", "workspace_members",
                  "auth_sessions", "magic_links", "login_attempts", "events", "webhook_endpoints", "webhook_deliveries",
                  "idempotency_keys", "objects", "fields", "records", "tags", "record_tags", "association_types",
                  "associations", "saved_views", "event_records", "pipelines", "stages", "board_layouts", "roles",
                  "role_object_rules", "teams", "team_members", "user_credentials", "tasks", "notifications",
-                 "notification_prefs"]
+                 "notification_prefs",
+                 "secrets", "channels", "conversations", "conversation_reads", "messages", "consents",
+                 "chat_limits"]
 NOT_TENANT_DATA = {"jobs", "event_cursors"}  # the queue and the consumer cursors: no tenant rows, no app role access
 
 
@@ -61,6 +68,7 @@ def fill_crm(client, ids: dict, name: str) -> None:
     ids["association_id"] = link(client, ids["workspace_id"], person["id"], company["id"],
                                  type_id(client, ids["workspace_id"], "contact", "company"))["id"]
     ids["vault_association_id"] = link(client, ids["workspace_id"], person["id"], vault["id"], ids["type_id"])["id"]
+    fill_inbox(client, ids, name, person["id"])
     ids["view_name"], ids["shared_view_name"] = f"{title} private view", f"{title} shared view"
     ids["view_id"] = post("/api/v1/views", object="contact", name=ids["view_name"],
                           filter={"tag": ids["tag_name"]})["id"]
@@ -112,6 +120,37 @@ def fill_tasks(client, ids: dict, name: str, db) -> None:
     ids["pref_tz"] = f"{title}/Zone"
 
 
+def fill_inbox(client, ids: dict, name: str, person_id: str) -> None:
+    """A text channel with a signed inbound message, a note, a do not disturb mark, and a chat widget with a
+    visitor's message; every name and text is one B's secrets list will carry."""
+    ws, title, digit = {"X-Workspace-Id": ids["workspace_id"]}, name.title(), "1" if name == "alpha" else "2"
+    ids["channel_token"], ids["channel_address"] = f"test-{name}-token-not-real", f"+1555000020{digit}"
+    r = client.post("/api/v1/channels", headers=ws, json={
+        "kind": "sms", "provider": "twilio", "name": f"{title} Line", "address": ids["channel_address"],
+        "config": {"account_sid": "AC" + name[0] * 32}, "secrets": {"auth_token": ids["channel_token"]}})
+    assert r.status_code == 201, r.text
+    channel = r.json()
+    ids["channel_id"], ids["channel_name"] = channel["id"], f"{title} Line"
+    ids["customer_phone"] = f"+1415555020{digit}"
+    ids["inbound_text"], ids["note_text"] = f"{title} secret inbound message", f"{title} secret internal note"
+    assert sms_in(hooks, channel, ids["customer_phone"], ids["inbound_text"], token=ids["channel_token"]
+                  ).status_code == 200
+    conv = client.get("/api/v1/conversations", headers=ws, params={"q": ids["customer_phone"]}).json()["data"][0]
+    ids["conversation_id"], ids["customer_id"] = conv["id"], conv["contact"]["id"]
+    note = client.post(f"/api/v1/conversations/{conv['id']}/messages", headers=ws,
+                       json={"body": ids["note_text"], "kind": "note"})
+    assert note.status_code == 201, note.text
+    ids["message_id"] = note.json()["id"]
+    assert client.put(f"/api/v1/contacts/{person_id}/consents/sms", headers=ws, json={"dnd": True}).status_code == 200
+    chat = client.post("/api/v1/channels", headers=ws, json={"kind": "webchat", "provider": "internal",
+                                                              "name": f"{title} Chat"}).json()
+    ids["widget_key"], ids["chat_text"] = chat["widget_key"], f"{title} secret chat message"
+    token = hooks.post(f"/api/public/chat/{chat['widget_key']}/session").json()["token"]
+    sent = hooks.post(f"/api/public/chat/{chat['widget_key']}/messages", json={"body": ids["chat_text"]},
+                      headers={"Authorization": f"Bearer {token}"})
+    assert sent.status_code == 200, sent.text
+
+
 @pytest.fixture
 def two_orgs(make_user, db):
     """Org A and org B, each with a user, a second workspace, a live session, a webhook and one delivery in its log,
@@ -156,8 +195,12 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
                "record_id": b_ids["record_id"], "tag_id": b_ids["tag_id"], "view_id": b_ids["view_id"],
                "association_id": b_ids["association_id"], "type_id": b_ids["type_id"], "role_id": b_ids["role_id"],
                "team_id": b_ids["team_id"], "user_id": b_ids["user_id"], "pipeline_id": b_ids["pipeline_id"],
-               "stage_id": b_ids["stage_id"], "deal_id": b_ids["deal_id"], "task_id": b_ids["task_id"]}
-    others = {"key": [b_ids["object_key"], "contact"], "field_key": [b_ids["field_key"], "email"]}  # B's, and A's own
+               "stage_id": b_ids["stage_id"], "deal_id": b_ids["deal_id"], "task_id": b_ids["task_id"],
+               "channel_id": b_ids["channel_id"], "conversation_id": b_ids["conversation_id"],
+               "message_id": b_ids["message_id"], "contact_id": b_ids["record_id"],
+               "provider": "twilio"}
+    others = {"key": [b_ids["object_key"], "contact"], "field_key": [b_ids["field_key"], "email"],  # B's, and A's own
+              "kind": ["sms"]}
     body = {"name": "x", "brand_id": b_ids["brand_id"], "org_id": b_ids["org_id"], "email": "bob@example.com",
             "workspace_id": b_ids["workspace_id"], "password": "not the password", "token": "bogus",
             "url": "https://hooks.example.com/sweep", "event_types": ["*"], "active": False,
@@ -181,10 +224,17 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
             # bulk delete and restore of records, and bulk changes of tasks
             "ids": [b_ids["record_id"], b_ids["trashed_id"], b_ids["company_id"], b_ids["task_id"],
                     b_ids["follow_task_id"], b_ids["notification_id"]],
-            "prefs": [{"kind": "task_due", "scope": "all", "tz": "UTC"}]}
+            "prefs": [{"kind": "task_due", "scope": "all", "tz": "UTC"}],
+            # the inbox: B's channel, contact, user and team wherever a body takes one
+            "channel_id": b_ids["channel_id"], "contact_id": b_ids["record_id"], "user_id": b_ids["user_id"],
+            "team_id": b_ids["team_id"], "provider": "twilio", "address": "+15550009999",
+            "config": {"account_sid": "AC1"}, "secrets": {"auth_token": "test-swept-token-not-real"},
+            "until": SOON, "seq": 1, "dnd": True}
     tables_of_b = ("objects", "fields", "records", "tags", "record_tags", "association_types", "associations",
                    "saved_views", "event_records", "events", "pipelines", "stages", "board_layouts", "teams",
-                   "team_members", "tasks", "notifications", "notification_prefs")
+                   "team_members", "tasks", "notifications", "notification_prefs",
+                   "secrets", "channels", "conversations", "conversation_reads", "messages", "consents",
+                   "chat_limits")
     snapshot = "SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t::text), '')) FROM {} t WHERE {} = :w"
 
     def rows_of_b():
@@ -220,7 +270,16 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
         "/api/v1/tasks/bulk", "/api/v1/tasks/{task_id}", "/api/v1/tasks/{task_id}/complete",
         "/api/v1/tasks/{task_id}/reopen", "/api/v1/tasks/{task_id}/reorder", "/api/v1/my-day",
         "/api/v1/notifications", "/api/v1/notifications/unread-count", "/api/v1/notifications/read",
-        "/api/v1/notifications/prefs"}
+        "/api/v1/notifications/prefs",
+        "/api/v1/channels", "/api/v1/channels/{channel_id}", "/api/v1/channels/{channel_id}/test",
+        "/api/v1/channels/{channel_id}/estimate", "/api/v1/conversations", "/api/v1/conversations/{conversation_id}",
+        "/api/v1/conversations/{conversation_id}/messages", "/api/v1/conversations/{conversation_id}/assign",
+        "/api/v1/conversations/{conversation_id}/snooze", "/api/v1/conversations/{conversation_id}/close",
+        "/api/v1/conversations/{conversation_id}/reopen", "/api/v1/conversations/{conversation_id}/read",
+        "/api/v1/conversations/{conversation_id}/messages/{message_id}",
+        "/api/v1/contacts/{contact_id}/consents", "/api/v1/contacts/{contact_id}/consents/{kind}",
+        "/api/v1/stream", "/api/hooks/{provider}/{channel_id}", "/api/public/chat/{widget_key}/session",
+        "/api/public/chat/{widget_key}/messages", "/api/public/chat/{widget_key}/identify"}
 
     seen_own_data = False
     alice = signin_alice()
@@ -230,6 +289,8 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
             chosen = dict(zip(params, values, strict=True))
             path = re.sub(r"\{(\w+)[^}]*\}", lambda m, chosen=chosen: chosen[m.group(1)], route.path)
             for headers in ({}, {"X-Workspace-Id": b_ids["workspace_id"]}, {"X-Workspace-Id": a_ids["workspace_id"]}):
+                if route.path == "/api/v1/stream" and headers.get("X-Workspace-Id") == a_ids["workspace_id"]:
+                    continue  # a stream of A's own never ends: test_inbox_stream reads it against a live server
                 query = {"object": b_ids["object_key"]} if route.path == "/api/v1/trash" else None
                 r = alice.request(method, path, params=query, headers=headers, json=body if method in UNSAFE else None)
                 label = f"{method} {route.path} {values} {headers}"
@@ -277,6 +338,14 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
     assert [d["display_name"] for d in cards] == [a_ids["deal_name"]]
     assert alice.get(f"{mine_p}/forecast", headers=own).status_code == 200
     assert alice.get(f"{mine_p}/layout", headers=own).json()["collapsed"] == [a_ids["won_stage_id"]]
+    # the inbox: A reaches its own channel, conversation and messages, and nothing of B's comes with them
+    inbox = alice.get("/api/v1/conversations", headers=own, params={"limit": 200})
+    assert {a_ids["conversation_id"]} <= {c["id"] for c in inbox.json()["data"]}
+    assert not any(leak in inbox.text for leak in leaks)
+    detail = alice.get(f"/api/v1/conversations/{a_ids['conversation_id']}", headers=own)
+    assert a_ids["inbound_text"] in detail.text and a_ids["note_text"] in detail.text
+    assert a_ids["channel_id"] in {c["id"] for c in alice.get("/api/v1/channels", headers=own).json()["data"]}
+    assert b_ids["channel_id"] not in alice.get("/api/v1/channels", headers=own).text
 
 
 def test_a_user_of_a_cannot_target_b_with_a_valid_looking_request(two_orgs):
@@ -289,7 +358,9 @@ def test_a_user_of_a_cannot_target_b_with_a_valid_looking_request(two_orgs):
 
 
 def rows(conn, table: str) -> list[str]:
-    return conn.execute(text(f"SELECT to_jsonb(t)::text FROM {table} t")).scalars().all()  # no WHERE on purpose
+    source = "(SELECT id, workspace_id, created_at, updated_at FROM secrets)" if table == "secrets" else table
+    # no WHERE on purpose; the ciphertext of a secret is not readable by this role at all (tested below)
+    return conn.execute(text(f"SELECT to_jsonb(t)::text FROM {source} t")).scalars().all()
 
 
 def test_sql_with_workspace_a_context_sees_no_rows_of_b(two_orgs):
@@ -401,7 +472,13 @@ def test_the_app_role_holds_only_the_grants_its_handlers_need():
               "user_credentials": {"SELECT", "INSERT", "UPDATE", "DELETE"},
               # tasks are the workspace's; a notification is read and marked read by its user (the worker writes it)
               "tasks": {"SELECT", "INSERT", "UPDATE", "DELETE"}, "notifications": {"SELECT"},
-              "notification_prefs": {"SELECT", "INSERT", "UPDATE"}}
+              "notification_prefs": {"SELECT", "INSERT", "UPDATE"},
+              # the inbox: nothing is deleted by a request except consent marks and old rate counters, and the
+              # ciphertext of a secret is not readable at all (the table grants no SELECT, only some columns)
+              "secrets": {"INSERT", "UPDATE"}, "channels": {"SELECT", "INSERT", "UPDATE"},
+              "conversations": {"SELECT", "INSERT", "UPDATE"}, "conversation_reads": {"SELECT", "INSERT", "UPDATE"},
+              "messages": {"SELECT", "INSERT", "UPDATE"}, "consents": {"SELECT", "INSERT", "UPDATE", "DELETE"},
+              "chat_limits": {"SELECT", "INSERT", "UPDATE", "DELETE"}}
     every = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
     with engine.connect() as conn:
         for table, expected in wanted.items():
@@ -591,7 +668,9 @@ def test_a_user_of_a_gets_404s_for_bs_objects_fields_records_tags_views_and_link
         assert not any(leak in r.text for leak in secrets_of(b_ids)), (method, path)
     # what A can list and search is A's: not B's names, not B's tag, not B's count
     page = a.get(contact, params={"count": "true", "include": "tags,company", "limit": 200}, headers=mine).json()
-    assert {r["display_name"] for r in page["data"]} == {a_ids["record_name"]} and page["total"] == 1
+    names = {r["display_name"] for r in page["data"]}  # A's contacts: the person, the texting customer, a chat visitor
+    assert names - {a_ids["customer_phone"]} - {n for n in names if n.startswith("Visitor ")} == {a_ids["record_name"]}
+    assert page["total"] == 3
     assert not any(leak in json.dumps(page) for leak in secrets_of(b_ids))
     for query in ({"q": "bravo"}, {"q": "secret"}, {"q": b_ids["record_name"]}, {"filter": json.dumps({"tag": tag})},
                   {"filter": json.dumps({"tag": b_ids["tag_name"]})},
@@ -722,7 +801,7 @@ def test_the_app_role_cannot_move_a_row_to_another_workspace_or_point_one_across
             assert conn.execute(text("DELETE FROM pipelines WHERE id NOT IN (SELECT pipeline_id FROM stages)")
                                 ).rowcount == 1  # Sales, which has nothing left
             conn.rollback()
-    assert db.scalar(text("SELECT count(*) FROM records WHERE workspace_id = :w"), {"w": b_ws}) == 5  # as filled
+    assert db.scalar(text("SELECT count(*) FROM records WHERE workspace_id = :w"), {"w": b_ws}) == 7  # as filled
     assert db.scalar(text("SELECT count(*) FROM stages WHERE workspace_id = :w"), {"w": b_ws}) == 8
     assert db.scalar(text("SELECT count(*) FROM pipelines WHERE workspace_id = :w"), {"w": b_ws}) == 2
     assert db.scalar(text("SELECT count(*) FROM tasks WHERE workspace_id = :w"), {"w": b_ws}) == 2
@@ -808,3 +887,122 @@ def test_the_app_role_cannot_reach_other_tenants_roles_teams_or_memberships(two_
                 conn.execute(text(statement), ids)
     assert db.scalar(text("SELECT count(*) FROM roles WHERE org_id = :o"), {"o": b_org}) == 7  # six system, one custom
     assert db.scalar(text("SELECT count(*) FROM teams WHERE workspace_id = :w"), {"w": b_ws}) == 1
+
+
+def test_a_user_of_a_gets_404s_for_bs_channels_conversations_messages_and_consent(two_orgs):
+    a, a_ids, b, b_ids = two_orgs
+    mine = {"X-Workspace-Id": a_ids["workspace_id"]}
+    channel, conv, note = b_ids["channel_id"], b_ids["conversation_id"], b_ids["message_id"]
+    theirs = f"/api/v1/conversations/{conv}"
+    attempts = [
+        ("GET", f"/api/v1/channels/{channel}", None), ("PATCH", f"/api/v1/channels/{channel}", {"name": "stolen"}),
+        ("POST", f"/api/v1/channels/{channel}/test", None), ("POST", f"/api/v1/channels/{channel}/estimate",
+                                                              {"body": "x"}),
+        ("GET", theirs, None), ("GET", f"{theirs}/messages", None), ("GET", f"{theirs}/messages?q=secret", None),
+        ("POST", f"{theirs}/messages", {"body": "hello from A"}),
+        ("POST", f"{theirs}/messages", {"body": "a note", "kind": "note"}),
+        ("PATCH", f"{theirs}/messages/{note}", {"body": "stolen"}),
+        ("POST", f"{theirs}/assign", {"user_id": a_ids["user"]["id"]}),
+        ("POST", f"{theirs}/snooze", {"until": SOON}), ("POST", f"{theirs}/close", None),
+        ("POST", f"{theirs}/reopen", None), ("POST", f"{theirs}/read", {"seq": 1}),
+        ("POST", "/api/v1/conversations", {"contact_id": b_ids["customer_id"]}),
+        ("GET", f"/api/v1/contacts/{b_ids['record_id']}/consents", None),
+        ("PUT", f"/api/v1/contacts/{b_ids['record_id']}/consents/sms", {"dnd": False}),
+    ]
+    for method, path, body in attempts:
+        r = a.request(method, path, json=body, headers=mine)
+        assert r.status_code == 404, (method, path, r.status_code, r.text[:200])
+        assert not any(leak in r.text for leak in secrets_of(b_ids)), (method, path)
+    # A's own conversation cannot be answered on B's channel or assigned to B's user, and says nothing of B
+    own = a.get("/api/v1/conversations", headers=mine, params={"limit": 200}).json()["data"][0]["id"]
+    for path, body, status, code in [
+            (f"/api/v1/conversations/{own}/messages", {"body": "x", "channel_id": channel}, 422, "no_channel"),
+            (f"/api/v1/conversations/{own}/assign", {"user_id": b_ids["user_id"]}, 422, "validation_failed")]:
+        r = a.post(path, json=body, headers=mine)
+        assert (r.status_code, r.json()["error"]["code"]) == (status, code), r.text
+        assert not any(leak in r.text for leak in secrets_of(b_ids))
+    # what A lists and searches is A's: B's texts, numbers and channels never match
+    for q in ("secret", b_ids["customer_phone"], b_ids["inbound_text"], b_ids["chat_text"], "bravo"):
+        found = a.get("/api/v1/conversations", headers=mine, params={"q": q, "view": "open", "limit": 200}).json()
+        assert not any(leak in json.dumps(found) for leak in secrets_of(b_ids)), q
+        assert b_ids["conversation_id"] not in json.dumps(found), q
+    assert b_ids["channel_id"] not in a.get("/api/v1/channels", headers=mine).text
+    # and B still has all of it
+    theirs_h = {"X-Workspace-Id": b_ids["workspace_id"]}
+    assert b_ids["inbound_text"] in b.get(theirs, headers=theirs_h).text
+    assert [c["name"] for c in b.get("/api/v1/channels", headers=theirs_h).json()["data"] if "Line" in c["name"]] == [
+        b_ids["channel_name"]]
+    assert b.get(f"/api/v1/channels/{channel}", headers=theirs_h).json()["status"] == "active"
+
+
+def test_a_chat_widget_key_opens_only_its_own_conversation(two_orgs):
+    """The public chat is the one door without a session: a token is for one widget and one visitor."""
+    a, a_ids, b, b_ids = two_orgs
+    token_a = hooks.post(f"/api/public/chat/{a_ids['widget_key']}/session").json()["token"]
+    for method, path in [("GET", "messages"), ("POST", "messages"), ("POST", "identify")]:
+        r = hooks.request(method, f"/api/public/chat/{b_ids['widget_key']}/{path}", json={"body": "x"},
+                          headers={"Authorization": f"Bearer {token_a}"})
+        assert r.status_code == 401, (method, path)
+    mine = hooks.get(f"/api/public/chat/{a_ids['widget_key']}/messages", headers={"Authorization": f"Bearer {token_a}"})
+    assert mine.json() == {"data": []}  # a fresh visitor sees nothing, neither A's earlier visitor nor B's
+    assert b_ids["chat_text"] not in mine.text and a_ids["chat_text"] not in mine.text
+
+
+def test_the_app_role_cannot_read_ciphertext_or_write_inbox_rows_across_workspaces(two_orgs, db):
+    _, a_ids, _, b_ids = two_orgs
+    a_ws, b_ws = a_ids["workspace_id"], b_ids["workspace_id"]
+    b_secret = db.scalar(text("SELECT secret_ref FROM channels WHERE id = :c"), {"c": b_ids["channel_id"]})
+    b_contact = b_ids["customer_id"]
+    with engine.connect() as conn:
+        for statement in ("SELECT ciphertext FROM secrets", "SELECT * FROM secrets", "SELECT s FROM secrets s",
+                          "DELETE FROM secrets", "DELETE FROM channels", "DELETE FROM conversations",
+                          "DELETE FROM messages", "DELETE FROM conversation_reads"):
+            with pytest.raises(DBAPIError, match="permission denied"), conn.begin():
+                context(conn, workspace_id=a_ws)
+                conn.execute(text(statement))
+        with conn.begin():
+            context(conn, workspace_id=a_ws)
+            assert len(conn.execute(text("SELECT id FROM secrets")).all()) == 1  # A's own, by id only, none of B's
+        # a row cannot be put into, or moved to, another workspace
+        for statement in (
+                "INSERT INTO channels (workspace_id, kind, provider, name) VALUES (:b, 'sms', 'twilio', 'x')",
+                "INSERT INTO secrets (workspace_id, ciphertext) VALUES (:b, '\\x00')",
+                "INSERT INTO conversations (workspace_id, contact_id) VALUES (:b, :bc)",
+                "INSERT INTO consents (workspace_id, contact_id, kind, status, source) "
+                "VALUES (:b, :bc, 'sms', 'dnd', 'x')",
+                "INSERT INTO chat_limits (workspace_id, bucket, window_start) VALUES (:b, 'x', now())",
+                "UPDATE channels SET workspace_id = :b", "UPDATE conversations SET workspace_id = :b",
+                "UPDATE messages SET workspace_id = :b", "UPDATE consents SET workspace_id = :b"):
+            with pytest.raises(DBAPIError, match="row-level security"), conn.begin():
+                context(conn, workspace_id=a_ws)
+                conn.execute(text(statement), {"b": b_ws, "bc": b_contact})
+        # and a row of A cannot point at a row of B: the foreign keys carry the workspace
+        a_conv = db.scalar(text("SELECT id FROM conversations WHERE workspace_id = :w LIMIT 1"), {"w": a_ws})
+        ids = {"a": a_ws, "bc": b_contact, "bch": b_ids["channel_id"], "bs": b_secret, "ac": a_conv,
+               "bconv": b_ids["conversation_id"], "u": signin_alice().get("/api/me").json()["user"]["id"]}
+        for statement in (
+                "INSERT INTO conversations (workspace_id, contact_id) VALUES (:a, :bc)",
+                "INSERT INTO consents (workspace_id, contact_id, kind, status, source) "
+                "VALUES (:a, :bc, 'sms', 'dnd', 'x')",
+                "INSERT INTO messages (workspace_id, conversation_id, seq, direction, status) "
+                "VALUES (:a, :bconv, 99, 'in', 'received')",
+                "INSERT INTO messages (workspace_id, conversation_id, seq, direction, status, channel_id) "
+                "VALUES (:a, :ac, 99, 'in', 'received', :bch)",
+                "INSERT INTO channels (workspace_id, kind, provider, name, secret_ref) "
+                "VALUES (:a, 'sms', 'twilio', 'x', :bs)",
+                "INSERT INTO conversation_reads (workspace_id, conversation_id, user_id) VALUES (:a, :bconv, :u)"):
+            with pytest.raises(DBAPIError, match="foreign key"), conn.begin():
+                context(conn, workspace_id=a_ws)
+                conn.execute(text(statement), ids)
+        with conn.begin():  # the system scope (a public webhook looking for its channel) reads channels only
+            context(conn, system="on")
+            assert conn.execute(text("SELECT count(*) FROM channels")).scalar() == 4  # a text and a chat channel each
+            for table in ("secrets", "conversations", "messages", "consents", "conversation_reads", "chat_limits"):
+                assert conn.execute(text(f"SELECT count(*) FROM {table}")).scalar() == 0, table
+        with pytest.raises(DBAPIError, match="row-level security"), conn.begin():
+            context(conn, system="on")
+            conn.execute(text("INSERT INTO channels (workspace_id, kind, provider, name) "
+                              "VALUES (:a, 'sms', 'twilio', 'x')"), {"a": a_ws})
+        with conn.begin():  # nor can it change one: the system policy is for reading only
+            context(conn, system="on")
+            assert conn.execute(text("UPDATE channels SET name = 'x'")).rowcount == 0

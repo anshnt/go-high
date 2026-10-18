@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "channel.updated",
+  "description": "A messaging channel was edited, enabled or disabled. `changed` lists the parts that changed (secrets by name only). Subject: the channel.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "kind": {"type": "string"},
+    "provider": {"type": "string"},
+    "name": {"type": "string"},
+    "address": {"type": "string"},
+    "status": {"type": "string"},
+    "changed": {"type": "array", "items": {"type": "string"}}
+  },
+  "required": ["id", "kind", "provider", "name", "address", "status", "changed"],
+  "additionalProperties": false
+}

@@ -104,6 +104,16 @@ def parse(request: Request) -> list[Inbound]:
     return [inbound_message(f)]
 
 
+def check(channel: Channel, *, base_url: str | None = None) -> str:
+    base = base_url or REGIONS.get(channel.config.get("region", "us"))
+    if not base:
+        raise ChannelError('region must be "us" or "eu"')
+    domain = channel.conf("domain")
+    transport.get(f"{base}/v3/domains/{quote(domain, safe='')}",
+                  headers={"Authorization": transport.basic("api", channel.secret("api_key"))})
+    return f"Mailgun accepted the API key for {domain}"
+
+
 def send(channel: Channel, message: Outbound, *, base_url: str | None = None) -> SendResult:
     base = base_url or REGIONS.get(channel.config.get("region", "us"))
     if not base:

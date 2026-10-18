@@ -60,6 +60,12 @@ def parse(request: Request) -> list[Inbound]:
     return []
 
 
+def check(channel: Channel, *, base_url: str = API) -> str:
+    transport.get(f"{base_url}/v2/messaging_profiles?page%5Bsize%5D=1",
+                  headers={"Authorization": f"Bearer {channel.secret('api_key')}"})
+    return "Telnyx accepted the API key"
+
+
 def send(channel: Channel, message: Outbound, *, base_url: str = API) -> SendResult:
     payload: dict = {"to": message.to, "text": message.body, "type": "MMS" if message.attachments else "SMS"}
     if message.from_ or channel.address:

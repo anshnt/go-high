@@ -106,7 +106,8 @@ def classify(e: Exception) -> ChannelError:
     raise e
 
 
-def send(channel: Channel, message: Outbound) -> SendResult:
+def server(channel: Channel) -> tuple[str, ssrf.Target]:
+    """(security, the validated address to connect to) from the channel's settings."""
     security = channel.config.get("security", "starttls")
     if security not in ("starttls", "tls"):
         raise ChannelError('security must be "starttls" or "tls"')
@@ -114,16 +115,37 @@ def send(channel: Channel, message: Outbound) -> SendResult:
         port = int(channel.config.get("port") or (465 if security == "tls" else 587))
     except (TypeError, ValueError):
         raise ChannelError("the SMTP port is not a number") from None
-    target = pin(channel.conf("host"), port, security == "tls")
-    msg, mid = build(channel, message)
+    if channel.config.get("username"):
+        channel.secret("password")  # a missing password is a config error, found before any connection
+    return security, pin(channel.conf("host"), port, security == "tls")
+
+
+def login(smtp: smtplib.SMTP, channel: Channel, security: str) -> None:
+    if security == "starttls":
+        smtp.starttls(context=ssl.create_default_context())  # smtplib's own default does not verify
     user = channel.config.get("username")
-    password = channel.secret("password") if user else ""
+    if user:
+        smtp.login(user, channel.secret("password"))
+
+
+def check(channel: Channel) -> str:
+    """Connects, encrypts and logs in, without sending anything."""
+    security, target = server(channel)
+    try:
+        with Pinned(target, mail.domain_of(channel.address) or "localhost") as smtp:
+            login(smtp, channel, security)
+            smtp.noop()
+    except Exception as e:
+        raise classify(e) from None
+    return "the SMTP server accepted the connection and login"
+
+
+def send(channel: Channel, message: Outbound) -> SendResult:
+    security, target = server(channel)
+    msg, mid = build(channel, message)
     try:
         with Pinned(target, mail.domain_of(str(msg["From"]))) as smtp:
-            if security == "starttls":
-                smtp.starttls(context=ssl.create_default_context())  # smtplib's own default does not verify
-            if user:
-                smtp.login(user, password)
+            login(smtp, channel, security)
             smtp.send_message(msg, from_addr=parseaddr(str(msg["From"]))[1], to_addrs=[parseaddr(message.to)[1]])
     except Exception as e:
         raise classify(e) from None

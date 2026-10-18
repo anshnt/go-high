@@ -1,10 +1,10 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pytest
 
 from app import compliance
-from app.compliance import email_risk, keyword, quiet_until, sms_segments
+from app.compliance import Consent, Refusal, can_send, email_risk, keyword, phone_zones, quiet_until, sms_segments
 
 NY = "America/New_York"
 
@@ -315,3 +315,94 @@ def test_several_warnings_come_back_together_in_a_stable_order():
                                                     "all_caps_subject", "url_shortener"]
     risk = email_risk("Hi", "<p>x</p>", "")[0]
     assert risk.code == "missing_text" and risk.message and risk == ("missing_text", risk.message)
+
+
+# can_send
+
+DAY = datetime(2026, 10, 17, 19, 0, tzinfo=UTC)  # 12:00 in Los Angeles, 15:00 in New York
+NIGHT = datetime(2026, 10, 17, 5, 0, tzinfo=UTC)  # 22:00 on the 16th in Los Angeles
+LA = ("America/Los_Angeles",)
+
+
+def opted(status: str, source: str = "stop") -> Consent:
+    return Consent(status, source, datetime(2026, 10, 3, 12, 0, tzinfo=UTC))
+
+
+def test_a_contact_nobody_has_restricted_may_be_messaged():
+    assert can_send("sms", DAY, zones=LA) is None
+    assert can_send("email", NIGHT) is None and can_send("webchat", NIGHT) is None
+
+
+@pytest.mark.parametrize("source,who", [("stop", "STOP"), ("unsubscribe", "unsubscribe"),
+                                        ("complaint", "a spam complaint"), ("manual", "staff"), ("other", "other")])
+def test_an_opt_out_is_refused_with_who_and_when(source, who):
+    refusal = can_send("sms", DAY, consent=opted("opted_out", source))
+    assert refusal == Refusal("opted_out", f"Opted out by {who} on Oct 3")  # nothing to wait for
+
+
+def test_do_not_disturb_is_refused_and_opted_in_is_allowed():
+    assert can_send("sms", DAY, consent=opted("dnd", "manual")) == Refusal("dnd", "Do not disturb is on for sms")
+    assert can_send("email", DAY, consent=opted("dnd", "manual")).reason == "Do not disturb is on for email"
+    assert can_send("sms", DAY, consent=opted("opted_in", "start")) is None
+
+
+def test_an_opt_out_wins_over_everything_else():
+    refusal = can_send("sms", NIGHT, consent=opted("opted_out"), zones=LA, sent=99, cap=(1, 24))
+    assert refusal.code == "opted_out"
+
+
+def test_quiet_hours_wait_for_the_window_in_the_contacts_zone():
+    refusal = can_send("sms", NIGHT, zones=LA)
+    assert refusal.code == "quiet_hours" and refusal.retry_at == quiet_until(NIGHT, LA[0])
+    assert refusal.retry_at == datetime(2026, 10, 17, 15, 0, tzinfo=UTC)  # 08:00 in Los Angeles
+    assert "America/Los_Angeles" in refusal.reason and "08:00" in refusal.reason
+    assert can_send("whatsapp", NIGHT, zones=LA).code == "quiet_hours"
+    assert can_send("sms", NIGHT, zones=("Australia/Sydney",)) is None  # 16:00 there
+    assert can_send("sms", DAY, zones=LA) is None
+
+
+def test_quiet_hours_do_not_bind_email_or_chat_or_a_contact_who_just_wrote_or_unknown_zones():
+    assert can_send("email", NIGHT, zones=LA) is None and can_send("webchat", NIGHT, zones=LA) is None
+    assert can_send("sms", NIGHT, zones=LA, replying=True) is None
+    assert can_send("sms", NIGHT) is None  # no zone known: nothing to check against
+    assert can_send("sms", NIGHT, zones=("Not/AZone",)) is None  # a name that is not a zone counts as unknown
+
+
+def test_quiet_hours_can_be_changed_or_switched_off():
+    assert can_send("sms", NIGHT, zones=LA, quiet=("22:30", "23:30")) is None  # 22:00 is outside this window
+    assert can_send("sms", NIGHT, zones=LA, quiet=("20:00", "23:00")).code == "quiet_hours"
+    assert can_send("sms", NIGHT, zones=LA, quiet=("09:00", "09:00")) is None  # start == end: none
+
+
+def test_when_the_zone_is_uncertain_any_zone_in_quiet_hours_waits_for_the_latest_end():
+    at = datetime(2026, 10, 17, 14, 30, tzinfo=UTC)  # 07:30 in Los Angeles, 10:30 in New York
+    refusal = can_send("sms", at, zones=("America/New_York", "America/Los_Angeles"))
+    assert refusal.code == "quiet_hours" and refusal.retry_at == datetime(2026, 10, 17, 15, 0, tzinfo=UTC)
+    assert can_send("sms", at, zones=("America/New_York",)) is None
+
+
+def test_the_frequency_cap_counts_what_was_sent_in_its_window():
+    assert can_send("sms", DAY, sent=2, cap=(3, 24)) is None
+    refusal = can_send("sms", DAY, sent=3, cap=(3, 24))
+    assert refusal == Refusal("frequency_cap", "Frequency cap reached: 3 messages in 24 hours")
+    assert can_send("sms", DAY, sent=999, cap=(0, 24)) is None and can_send("sms", DAY, sent=999) is None
+    assert can_send("sms", NIGHT, zones=LA, replying=True, sent=3, cap=(3, 24)).code == "frequency_cap"
+
+
+def test_quiet_hours_are_checked_before_the_cap():
+    assert can_send("sms", NIGHT, zones=LA, sent=9, cap=(3, 24)).code == "quiet_hours"
+
+
+@pytest.mark.parametrize("number,zone", [("+14155550123", "America/Los_Angeles"), ("+12125550123", "America/New_York"),
+                                         ("+442071234567", "Europe/London"), ("+61412345678", "Australia/Sydney")])
+def test_a_phone_number_gives_its_time_zones(number, zone):
+    assert zone in phone_zones(number)
+
+
+@pytest.mark.parametrize("number", ["", "nope", "+0", "12345", "+999999999999999"])
+def test_a_number_that_cannot_be_placed_gives_no_zone(number):
+    assert phone_zones(number) == ()
+
+
+def test_the_reply_window_is_a_day():
+    assert compliance.REPLY_WINDOW == timedelta(hours=24)

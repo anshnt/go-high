@@ -36,3 +36,10 @@ WEBHOOK_ALLOW_IPS = {a.strip() for a in os.getenv("WEBHOOK_ALLOW_IPS", "").split
 # ponytail: there is no workspace settings table yet, so a phone field's own `options.region` wins and this is the
 # fallback (ISO 3166 alpha-2). Move it to a workspace setting when that exists.
 DEFAULT_PHONE_REGION = os.getenv("DEFAULT_PHONE_REGION", "US")
+
+# Requests per minute to the public webchat endpoints, per visitor IP and per widget key: sending (a session or a
+# message) and polling for replies.
+CHAT_SEND_PER_IP = int(os.getenv("CHAT_SEND_PER_IP", "10"))
+CHAT_SEND_PER_KEY = int(os.getenv("CHAT_SEND_PER_KEY", "300"))
+CHAT_POLL_PER_IP = int(os.getenv("CHAT_POLL_PER_IP", "120"))
+CHAT_POLL_PER_KEY = int(os.getenv("CHAT_POLL_PER_KEY", "6000"))

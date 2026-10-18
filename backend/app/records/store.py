@@ -218,8 +218,8 @@ def state(cat: Catalog, obj: ObjectDef, rec: Record) -> dict:
             "values": {k: v for k, v in rec.values.items() if k in fields}, "owner_id": rec.owner_id}
 
 
-def actor(c: Ctx) -> tuple[str, uuid.UUID]:
-    return "user", c.user_id
+def actor(c: Ctx) -> tuple[str, uuid.UUID] | None:
+    return ("user", c.user_id) if c.user_id else None  # no user: the platform itself (an inbound message)
 
 
 def create(cat: Catalog, obj: ObjectDef, values: dict, owner_id=UNSET) -> Record:

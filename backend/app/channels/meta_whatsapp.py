@@ -112,6 +112,12 @@ def payload(message: Outbound) -> dict:
     return p
 
 
+def check(channel: Channel, *, base_url: str = GRAPH) -> str:
+    transport.get(f"{base_url}/{quote(channel.conf('phone_number_id'), safe='')}?fields=id",
+                  headers={"Authorization": f"Bearer {channel.secret('access_token')}"})
+    return "WhatsApp accepted the access token and phone number id"
+
+
 def send(channel: Channel, message: Outbound, *, base_url: str = GRAPH) -> SendResult:
     # ponytail: the Cloud API has no idempotency key: the send job checks for an existing provider id first
     url = f"{base_url}/{quote(channel.conf('phone_number_id'), safe='')}/messages"

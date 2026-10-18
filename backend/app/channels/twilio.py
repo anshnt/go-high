@@ -52,6 +52,14 @@ def parse(request: Request) -> list[Inbound]:
                     occurred_at=now, status="received")]
 
 
+def check(channel: Channel, *, base_url: str = API) -> str:
+    """Reads the account with the credentials: a wrong SID or token is refused by Twilio."""
+    sid = channel.conf("account_sid")
+    transport.get(f"{base_url}/2010-04-01/Accounts/{quote(sid, safe='')}.json",
+                  headers={"Authorization": transport.basic(sid, channel.secret("auth_token"))})
+    return "Twilio accepted the account SID and auth token"
+
+
 def send(channel: Channel, message: Outbound, *, base_url: str = API) -> SendResult:
     sid = channel.conf("account_sid")
     form = [("To", message.to), ("Body", message.body)]
