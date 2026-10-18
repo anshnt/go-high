@@ -3,8 +3,9 @@ stage only when it meets that stage's exit rules (a filter on the deal), a deal 
 change of stage is a `deal.stage_changed` event with the time the deal spent in the stage it left. `store` calls these
 functions on every write, so the API, the move route, imports and workflows share one set of rules.
 
-A deal's place in its column on the board is `records.board_position`, lower is higher up. A drop between two cards
-takes the midpoint of their positions and writes only the dropped record.
+A deal's stage is also the typed column `records.stage_id` (derived from the value on every write, so that an index can
+serve the board under row level security) and its place in the column is `records.board_position`, lower is higher up.
+A drop between two cards takes the midpoint of their positions and writes only the dropped record.
 ponytail: pipelines serve deals; `pipelines.object_key` and the generic stage field type are there for other objects,
 but only a deal gets exit rules, lost reasons, events and a board.
 ponytail: a drop between the same two cards over and over adds one digit to the position each time (exact up to 1000
@@ -76,9 +77,9 @@ def settle(cat: Catalog, obj, current: dict, merged: dict, patch: dict, errors: 
         merged.pop("lost_note", None)
 
 
-def snapshot(rec: Record, values: dict, owner_id):
+def snapshot(rec: Record, values: dict, owner_id, name: str):
     """The deal as it will be after the change: a one-row subquery that the filter compiler reads like the table."""
-    columns = {"id": (rec.id, Uuid), "object_id": (rec.object_id, Uuid), "display_name": (rec.display_name, String),
+    columns = {"id": (rec.id, Uuid), "object_id": (rec.object_id, Uuid), "display_name": (name, String),
                "owner_id": (owner_id, Uuid), "created_by": (rec.created_by, Uuid),
                "created_at": (rec.created_at, DateTime(timezone=True)),
                "updated_at": (rec.updated_at, DateTime(timezone=True)), "values": (values, JSONB)}
@@ -95,17 +96,17 @@ def reason(cat: Catalog, obj, rule, stage: Stage) -> tuple[str, str]:
     phrase = PHRASES.get(rule.get("op")) or f"must satisfy {rule.get('op')}" + (
         f" {json.dumps(rule['value'])}" if "value" in rule else "")
     name = field.label if field else key
-    return (f"values.{key}" if "." not in key else key), f"{name} {phrase} to leave {stage.name}"
+    return (f"values.{key}" if field else key), f"{name} {phrase} to leave {stage.name}"
 
 
-def check_exit(cat: Catalog, obj, rec: Record, values: dict, owner_id, stage: Stage) -> None:
+def check_exit(cat: Catalog, obj, rec: Record, values: dict, owner_id, name: str, stage: Stage) -> None:
     """Refuses (422) while the deal, as it will be after the change, does not meet an exit rule of `stage`. A rule is
     each condition of a top level `and`, so every one that fails is named with the field that is missing."""
     rules = stage.exit_rules
     parts = rules["and"] if set(rules) == {"and"} and isinstance(rules["and"], list) else [rules]
     if not rules or not parts:
         return
-    after = snapshot(rec, values, owner_id)
+    after = snapshot(rec, values, owner_id, name)
     try:
         tests = [filters.compile(cat, obj, part, entity=after, root="exit_rules") for part in parts]
     except filters.FilterError as e:
@@ -117,7 +118,7 @@ def check_exit(cat: Catalog, obj, rec: Record, values: dict, owner_id, stage: St
         raise ApiError(422, "validation_failed", f"The deal cannot leave {stage.name} yet", failed)
 
 
-def moving(cat: Catalog, obj, rec: Record, merged: dict, owner_id) -> Move | None:
+def moving(cat: Catalog, obj, rec: Record, merged: dict, owner_id, name: str) -> Move | None:
     """The change of stage that `merged` makes to the deal `rec`, or None when it stays where it is (or loses its
     stage). Raises when the stage it leaves has exit rules the deal does not meet."""
     if obj.key != DEAL:
@@ -126,15 +127,19 @@ def moving(cat: Catalog, obj, rec: Record, merged: dict, owner_id) -> Move | Non
     if new is None or (old is not None and old.id == new.id):
         return None
     if old is not None and old.exit_rules:
-        check_exit(cat, obj, rec, merged, owner_id, old)
+        check_exit(cat, obj, rec, merged, owner_id, name, old)
     return Move(old, new)
 
 
-def top(cat: Catalog, stage_id: str) -> Decimal:
+def stage_id(obj, values: dict) -> uuid.UUID | None:
+    """The `stage_id` column of a record, derived from its values on every write: a deal's stage, else none."""
+    return uuid.UUID(values[STAGE]) if obj.key == DEAL and values.get(STAGE) else None
+
+
+def top(cat: Catalog, stage: str) -> Decimal:
     """A board position above every live card of the stage."""
     low = cat.db.scalar(select(func.min(Record.board_position)).where(
-        Record.workspace_id == cat.c.workspace.id, Record.values[STAGE].astext == stage_id,
-        Record.deleted_at.is_(None)))
+        Record.workspace_id == cat.c.workspace.id, Record.stage_id == uuid.UUID(stage), Record.deleted_at.is_(None)))
     return Decimal(0) if low is None else EXACT.subtract(low, 1)
 
 

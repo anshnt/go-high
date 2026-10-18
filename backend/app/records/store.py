@@ -193,7 +193,7 @@ def create(cat: Catalog, obj: ObjectDef, values: dict, owner_id: uuid.UUID | Non
     email, phone = identity(fields, clean)
     rec = Record(workspace_id=c.workspace.id, object_id=obj.id, values=clean, owner_id=owner_id, created_by=c.user_id,
                  display_name=display_name(obj, fields, clean), email_norm=email, phone_e164=phone,
-                 board_position=stages.place(cat, obj, {}, clean, None))
+                 stage_id=stages.stage_id(obj, clean), board_position=stages.place(cat, obj, {}, clean, None))
     c.db.add(rec)
     c.db.flush()
     events.emit(c.db, "record.created", "record", rec.id, state(cat, obj, rec), actor=actor(c))
@@ -213,7 +213,7 @@ def update(cat: Catalog, obj: ObjectDef, rec: Record, patch: dict, owner_id=UNSE
                if rec.values.get(k) != merged.get(k)}
     if new_owner != rec.owner_id:
         changes["owner_id"] = {"old": rec.owner_id, "new": new_owner}
-    move = stages.moving(cat, obj, rec, merged, new_owner)
+    move = stages.moving(cat, obj, rec, merged, new_owner, display_name(obj, cat.fields(obj), merged))
     spot = stages.place(cat, obj, rec.values, merged, position)
     if spot is not None:
         rec.board_position = spot
@@ -221,7 +221,7 @@ def update(cat: Catalog, obj: ObjectDef, rec: Record, patch: dict, owner_id=UNSE
         c.db.flush()
         return False
     fields = cat.fields(obj)
-    rec.values, rec.owner_id = merged, new_owner
+    rec.values, rec.owner_id, rec.stage_id = merged, new_owner, stages.stage_id(obj, merged)
     rec.display_name = display_name(obj, fields, merged)
     rec.email_norm, rec.phone_e164 = identity(fields, merged)
     rec.updated_at = func.now()

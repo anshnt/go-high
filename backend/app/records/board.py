@@ -84,15 +84,16 @@ def weigh(total: int, probability: int) -> int:
 def totals(cat: Catalog, obj, columns: list[Stage]) -> dict[uuid.UUID, dict]:
     """Per stage: how many deals, and their amounts and weighted amounts (amount times the stage's probability) in
     minor units, one entry per currency. One query for the whole board.
+    ponytail: the sums read the amount of every deal in the stages (about 100 ms for 36 000 deals in one stage); keep
+    them in a rollup table when a workspace has hundreds of thousands of open deals.
     ponytail: sums read `amount` whatever `permissions.redact` hides; ADR 0004 must scope them for a caller who may
     not read it."""
-    where = Record.values[stages.STAGE].astext
     currency = Record.values["amount"]["currency"].astext
     amount = cast(Record.values["amount"]["amount"].astext, BigInteger)
     rows = cat.db.execute(
-        select(where.label("stage_key"), currency.label("cur"), func.count(), func.sum(amount))
-        .where(*store.live(cat, obj), where.in_([str(s.id) for s in columns])).group_by("stage_key", "cur"))
-    by_id = {str(s.id): s for s in columns}
+        select(Record.stage_id, currency.label("cur"), func.count(), func.sum(amount))
+        .where(*store.live(cat, obj), Record.stage_id.in_([s.id for s in columns])).group_by(Record.stage_id, "cur"))
+    by_id = {s.id: s for s in columns}
     out = {s.id: {"count": 0, "amount": {}, "weighted": {}} for s in columns}
     for stage_id, cur, n, total in rows:
         stage = by_id[stage_id]
@@ -106,8 +107,7 @@ def totals(cat: Catalog, obj, columns: list[Stage]) -> dict[uuid.UUID, dict]:
 def column(cat: Catalog, obj, stage: Stage, limit: int, cursor: str | None) -> tuple[list[Record], str | None]:
     """One page of a stage's deals, top to bottom, with the cursor of the next page. The cursor belongs to the stage."""
     key = query.Key(f"board:{stage.id}", Record.board_position, "num", False)
-    stmt = select(Record, Record.board_position).where(*store.live(cat, obj),
-                                                       Record.values[stages.STAGE].astext == str(stage.id))
+    stmt = select(Record, Record.board_position).where(*store.live(cat, obj), Record.stage_id == stage.id)
     if cursor:
         values, last_id = query.read_cursor(cursor, [key])
         stmt = stmt.where(query.after([key], values, last_id, False))
@@ -146,7 +146,7 @@ def neighbour(cat: Catalog, obj, stage: Stage, deal: Record, other_id: uuid.UUID
         return None
     other = cat.db.scalar(select(Record).where(
         *store.live(cat, obj), Record.id == other_id, Record.id != deal.id,
-        Record.values[stages.STAGE].astext == str(stage.id), Record.board_position.is_not(None)))
+        Record.stage_id == stage.id, Record.board_position.is_not(None)))
     if other is None:
         raise ApiError(422, "validation_failed", "The move is not valid", {name: "is not another deal of that stage"})
     return other.board_position

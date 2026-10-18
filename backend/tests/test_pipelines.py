@@ -350,6 +350,25 @@ def test_exit_rules_can_look_at_associated_records_and_nest(crm):
     assert move(client, ws, deal["id"], s["qualified"]).status_code == 200  # the contact the rule looks for exists
 
 
+def test_exit_rules_judge_the_deal_as_it_will_be_including_its_new_owner(crm):
+    client, ws, _ = crm
+    [sales] = pipelines(client, ws)
+    s = stage_ids(client, ws)
+    me = client.get("/api/me").json()["user"]["id"]
+    rules(client, ws, sales["id"], s["qualified"], {"and": [{"field": "owner_id", "op": "is_not_empty"},
+                                                            {"field": "name", "op": "contains", "value": "deal"}]})
+    deal = make_deal(client, ws, "My deal", s["qualified"])
+    r = move(client, ws, deal["id"], s["proposal"])
+    assert r.status_code == 422 and error_fields(r) == {"owner_id": "owner_id is required to leave Qualified"}
+    r = client.patch(f"{DEALS}/{deal['id']}", json={"values": {"stage": s["proposal"], "name": "Plain"},
+                                                    "owner_id": me}, headers={H: ws})
+    assert r.status_code == 422 and error_fields(r) == {"values.name": 'Name must satisfy contains "deal" to leave '
+                                                                     "Qualified"}  # the new name is what counts
+    r = client.patch(f"{DEALS}/{deal['id']}", json={"values": {"stage": s["proposal"]}, "owner_id": me},
+                     headers={H: ws})
+    assert r.status_code == 200 and r.json()["owner_id"] == me and r.json()["values"]["stage"] == s["proposal"]
+
+
 def test_a_rule_that_is_a_single_condition_names_how_it_failed(crm):
     client, ws, _ = crm
     [sales] = pipelines(client, ws)

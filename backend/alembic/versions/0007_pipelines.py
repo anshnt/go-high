@@ -71,16 +71,15 @@ def tables() -> None:
         col("user_id", sa.Uuid(), sa.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True), workspace(),
         col("layout", postgresql.JSONB(), server_default=EMPTY_OBJECT), created("updated_at"),
         within("pipeline_id", "pipelines"))
+    op.add_column("records", sa.Column("stage_id", sa.Uuid(), nullable=True))
     op.add_column("records", sa.Column("board_position", sa.Numeric(), nullable=True))
-    op.create_index("ix_records_stage", "records", ["workspace_id", sa.text("(\"values\" ->> 'stage')"),
-                                                    "board_position", "id"],
-                    postgresql_where=sa.text("deleted_at IS NULL AND (\"values\" ->> 'stage') IS NOT NULL"))
 
 
 def backfill(connection) -> None:
     """Every workspace gets the Sales pipeline. Its deals hold placeholder stage ids from before pipelines: they become
     the stages of that name, newest deal on top, and the deal object gets the lost reason fields (a new database
-    already has them from the seed, hence ON CONFLICT)."""
+    already has them from the seed, hence ON CONFLICT). A deal's `stage_id` column follows its value; a value that
+    names no stage keeps the value and has no column."""
     from app.records import seed
 
     for workspace_id in connection.execute(sa.text("SELECT id FROM workspaces")).scalars().all():
@@ -92,6 +91,9 @@ def backfill(connection) -> None:
         + ") AS m (old, name) "
         "WHERE o.id = r.object_id AND o.key = 'deal' AND r.values ->> 'stage' = m.old "
         "AND s.workspace_id = r.workspace_id AND s.name = m.name"))
+    connection.execute(sa.text(
+        "UPDATE records r SET stage_id = s.id FROM stages s, objects o WHERE o.id = r.object_id AND o.key = 'deal' "
+        "AND s.workspace_id = r.workspace_id AND r.values ->> 'stage' = s.id::text"))
     connection.execute(sa.text(
         "UPDATE fields f SET options = '{}'::jsonb FROM objects o "
         "WHERE o.id = f.object_id AND o.key = 'deal' AND f.key = 'stage'"))
@@ -120,6 +122,9 @@ RLS = {
 def upgrade() -> None:
     tables()
     backfill(op.get_bind())  # before row level security is switched on, so the owner role can write
+    op.create_foreign_key(None, "records", "stages", ["stage_id", "workspace_id"], ["id", "workspace_id"])
+    op.create_index("ix_records_stage", "records", ["workspace_id", "stage_id", "board_position", "id"],
+                    postgresql_where=sa.text("deleted_at IS NULL AND stage_id IS NOT NULL"))
     for table, (privileges, policy) in RLS.items():
         op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
         op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")
@@ -144,6 +149,7 @@ def downgrade() -> None:
         "DELETE FROM fields f USING objects o WHERE o.id = f.object_id AND o.key = 'deal' "
         "AND f.key IN ('lost_reason', 'lost_note')"))
     op.drop_index("ix_records_stage", "records")
+    op.drop_column("records", "stage_id")  # and its foreign key
     op.drop_column("records", "board_position")
     for table in reversed(RLS):
         op.execute(f"DROP TABLE {table} CASCADE")

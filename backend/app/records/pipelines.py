@@ -16,7 +16,7 @@ from . import query, seed
 from .models import Pipeline, Record, Stage
 from .objects import invalid
 from .schema import Catalog, Label
-from .stages import DEAL, STAGE
+from .stages import DEAL
 
 router = APIRouter(prefix="/api/v1/pipelines")
 MAX_STAGES = 30  # ponytail: a board with more columns than this stops being readable
@@ -94,7 +94,7 @@ def stage_or_404(c: Ctx, pipeline: Pipeline, stage_id: uuid.UUID) -> Stage:
 def deals_in(c: Ctx, stage_ids: list[uuid.UUID]) -> int:
     """Deals that name one of these stages, the trashed included (they come back to the stage they were in)."""
     return c.db.scalar(select(func.count()).select_from(Record).where(
-        Record.workspace_id == c.workspace.id, Record.values[STAGE].astext.in_([str(i) for i in stage_ids])))
+        Record.workspace_id == c.workspace.id, Record.stage_id.in_(stage_ids)))
 
 
 def live_count(c: Ctx) -> int:

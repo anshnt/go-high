@@ -96,6 +96,12 @@ def test_workspaces_get_the_sales_pipeline_and_old_deals_land_in_its_stages(old_
         assert found["Neg"][2] < found["Prop"][2] < 0
         assert found["Old lost"][2] < found["Old won"][2]
 
+        # the stage_id column follows the value, and is empty where the value names no stage
+        columns = conn.execute(text("SELECT display_name, stage_id IS NOT NULL, stage_id::text = values ->> 'stage' "
+                                    "FROM records")).all()
+        assert {name: (has, same) for name, has, same in columns} == {
+            "Old won": (True, True), "Old new": (True, True), "Odd": (False, None), "Floating": (False, None),
+            "Old lost": (True, True), "Prop": (True, True), "Neg": (True, True)}
         options = conn.execute(text("SELECT options FROM fields WHERE type = 'stage'")).scalars().all()
         assert options == [{}, {}]  # the stage field no longer has choices of its own
         for workspace in conn.execute(text("SELECT id FROM workspaces")).scalars().all():
@@ -129,7 +135,7 @@ def test_the_migration_reverses_and_runs_again(old_database):
         assert conn.scalar(text("SELECT count(*) FROM pg_tables WHERE tablename IN ('pipelines', 'stages', "
                                 "'board_layouts')")) == 0
         assert conn.scalar(text("SELECT count(*) FROM information_schema.columns WHERE table_name = 'records' "
-                                "AND column_name = 'board_position'")) == 0
+                                "AND column_name IN ('board_position', 'stage_id')")) == 0
         stored = {name: values.get("stage") for name, values in conn.execute(text(
             "SELECT display_name, values FROM records")).all()}
         assert stored == {"Old won": None, "Old new": "new", "Odd": "weird", "Floating": None, "Old lost": "lost",

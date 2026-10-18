@@ -85,7 +85,12 @@ class FieldDef(Base):
 
 class Record(Base):
     __tablename__ = "records"
-    __table_args__ = (UniqueConstraint("id", "workspace_id"), within("object_id", "objects"))
+    __table_args__ = (
+        UniqueConstraint("id", "workspace_id"),
+        within("object_id", "objects"),
+        # a stage cannot be deleted while a deal (trashed ones too) is in it
+        ForeignKeyConstraint(["stage_id", "workspace_id"], ["stages.id", "stages.workspace_id"]),
+    )
 
     id: Mapped[uuid.UUID] = pk()
     workspace_id: Mapped[uuid.UUID] = workspace()
@@ -99,8 +104,12 @@ class Record(Base):
     created_at: Mapped[datetime] = created()
     updated_at: Mapped[datetime] = created()
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # a deal's place in its stage column on the board, lower is higher up (stages.py); numeric, so a drop between two
-    # cards is the midpoint of theirs and writes only this record
+    # A deal's stage and its place in the stage's column on the board (stages.py), lower is higher up. The stage is the
+    # `stage` value again, as a typed column for the same reason as the identity keys: row level security keeps
+    # Postgres from using an index on a jsonb expression (`->>` is not leakproof), and the board must read one stage in
+    # one indexed range. Position is numeric, so a drop between two cards is the midpoint of theirs and writes only
+    # this record.
+    stage_id: Mapped[uuid.UUID | None]
     board_position: Mapped[Decimal | None] = mapped_column(Numeric)
     # ponytail: the search text covers archived fields' values too (archiving hides a field, the index keeps its
     # words); rebuild the column from live fields when that matters.
@@ -115,10 +124,9 @@ Index("ix_records_search", Record.search, postgresql_using="gin")
 Index("ix_records_values", Record.values, postgresql_using="gin", postgresql_ops={"values": "jsonb_path_ops"})
 Index("ix_records_email", Record.workspace_id, Record.email_norm)
 Index("ix_records_phone", Record.workspace_id, Record.phone_e164)
-# The board reads one stage at a time in position order. ponytail: partial on records that have a stage, so only
-# deals pay for it; a custom object with a stage field would need its own.
-Index("ix_records_stage", Record.workspace_id, Record.values["stage"].astext, Record.board_position, Record.id,
-      postgresql_where=text("deleted_at IS NULL AND (\"values\" ->> 'stage') IS NOT NULL"))
+# The board reads one stage at a time in position order; only deals have a stage, so only deals pay for the index.
+Index("ix_records_stage", Record.workspace_id, Record.stage_id, Record.board_position, Record.id,
+      postgresql_where=text("deleted_at IS NULL AND stage_id IS NOT NULL"))
 Index("ix_records_trash", Record.workspace_id, Record.object_id, Record.deleted_at.desc(),
       postgresql_where=Record.deleted_at.is_not(None))
 

@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import BigInteger, Date, DateTime, String, cast, func, select
+from sqlalchemy import BigInteger, Date, DateTime, cast, func, select
 
 from ..security import Ctx, in_workspace
 from . import stages, store
@@ -76,7 +76,7 @@ def forecast(pipeline_id: uuid.UUID, period: Literal["month", "quarter"] = "mont
     rows = c.db.execute(
         select(opens.label("opens"), Record.owner_id, currency.label("cur"), Stage.kind, Stage.probability,
                func.sum(amount)).select_from(Record)
-        .join(Stage, cast(Stage.id, String) == Record.values[stages.STAGE].astext).where(*where)
+        .join(Stage, Stage.id == Record.stage_id).where(*where)
         .group_by("opens", Record.owner_id, "cur", Stage.kind, Stage.probability))
     periods: dict[date, dict] = {}
     for first, owner, cur, kind, probability, total in rows:
