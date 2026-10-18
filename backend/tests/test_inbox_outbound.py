@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs
 
 from fastapi.testclient import TestClient
@@ -64,7 +64,9 @@ def last_event(db) -> str:
 
 
 def at(monkeypatch, hour: int) -> datetime:
-    when = datetime.now(UTC).replace(hour=hour, minute=0, second=0, microsecond=0)
+    """Fakes the compliance clock to `hour` UTC tomorrow: on a later day, so the end of a quiet window it computes is
+    still ahead of the real clock that decides when a job is due, at any time of day the suite runs."""
+    when = (datetime.now(UTC) + timedelta(days=1)).replace(hour=hour, minute=0, second=0, microsecond=0)
     monkeypatch.setattr(consent, "clock", lambda: when)
     return when
 
