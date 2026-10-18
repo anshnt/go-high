@@ -211,7 +211,7 @@ class Receiver:
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
                 body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
-                outer.requests.append({"path": self.path, "body": body,
+                outer.requests.append({"path": self.path, "body": body, "method": self.command,
                                        "headers": {k.lower(): v for k, v in self.headers.items()}})
                 try:
                     if outer.trickle:
@@ -231,6 +231,8 @@ class Receiver:
                     self.wfile.write(payload)
                 except OSError:
                     pass  # the client gave up
+
+            do_GET = do_POST  # connection checks read; the same replies apply
 
             def log_message(self, *args):
                 pass

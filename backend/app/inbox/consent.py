@@ -21,6 +21,10 @@ router = APIRouter(prefix="/api/v1/contacts")
 DEFAULT_CAP = {"sms": (10, 24), "whatsapp": (10, 24)}  # messages per hours; email and chat have none unless set
 
 
+def clock() -> datetime:
+    return datetime.now(UTC)
+
+
 def get(db: Session, contact_id: uuid.UUID, kind: str) -> compliance.Consent | None:
     row = db.get(Consent, (contact_id, kind))
     return compliance.Consent(row.status, row.source, row.changed_at) if row else None
@@ -60,7 +64,7 @@ def cap_of(channel: Channel) -> tuple[int, int] | None:
 def verdict(db: Session, channel: Channel, contact: Record, conv: Conversation | None,
             now: datetime | None = None, *, capped: bool = True) -> compliance.Refusal | None:
     """`compliance.can_send` for one message to `contact` on `channel`, with what the database knows."""
-    now = now or datetime.now(UTC)
+    now = now or clock()
     config = channel.config
     cap = cap_of(channel) if capped else None
     sent = 0
