@@ -5,7 +5,9 @@ functions on every write, so the API, the move route, imports and workflows shar
 
 A deal's stage is also the typed column `records.stage_id` (derived from the value on every write, so that an index can
 serve the board under row level security) and its place in the column is `records.board_position`, lower is higher up.
-A drop between two cards takes the midpoint of their positions and writes only the dropped record.
+A drop between two cards takes the midpoint of their positions and writes only the dropped record. Every write that
+places a card locks its stage row first (`lock`), so drops into one stage take turns; two cards that still share a
+position (an older race) get the stage renumbered by the drop between them.
 ponytail: pipelines serve deals; `pipelines.object_key` and the generic stage field type are there for other objects,
 but only a deal gets exit rules, lost reasons, events and a board.
 ponytail: a drop between the same two cards over and over adds one digit to the position each time (exact up to 1000
@@ -16,7 +18,7 @@ from datetime import datetime
 from decimal import Context, Decimal
 from typing import NamedTuple
 
-from sqlalchemy import DateTime, String, Uuid, func, literal, select
+from sqlalchemy import DateTime, String, Uuid, func, literal, select, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session, aliased
 
@@ -136,8 +138,24 @@ def stage_id(obj, values: dict) -> uuid.UUID | None:
     return uuid.UUID(values[STAGE]) if obj.key == DEAL and values.get(STAGE) else None
 
 
+def lock(cat: Catalog, stage_id: uuid.UUID) -> None:
+    """Holds the stage row until commit, so two drops into the stage cannot both read the same neighbours."""
+    cat.db.execute(select(Stage.id).where(Stage.id == stage_id).with_for_update())
+
+
+def renumber(cat: Catalog, stage_id: uuid.UUID) -> None:
+    """Spreads the stage's cards one apart in board order (position, then id, as the board lists them), for when two
+    share a position and nothing fits between them. Every card counts, seen by the caller or not."""
+    ranked = select(Record.id, func.row_number().over(order_by=(Record.board_position, Record.id)).label("n")).where(
+        Record.workspace_id == cat.c.workspace.id, Record.stage_id == stage_id, Record.deleted_at.is_(None),
+        Record.board_position.is_not(None)).subquery()
+    cat.db.execute(update(Record).where(Record.id == ranked.c.id).values(board_position=ranked.c.n)
+                   .execution_options(synchronize_session="fetch"))
+
+
 def top(cat: Catalog, stage: str) -> Decimal:
-    """A board position above every live card of the stage."""
+    """A board position above every live card of the stage (locked first)."""
+    lock(cat, uuid.UUID(stage))
     low = cat.db.scalar(select(func.min(Record.board_position)).where(
         Record.workspace_id == cat.c.workspace.id, Record.stage_id == uuid.UUID(stage), Record.deleted_at.is_(None)))
     return Decimal(0) if low is None else EXACT.subtract(low, 1)

@@ -3,7 +3,8 @@ fan-out), and the job that says a task is due. Runs in the worker, as the owner 
 
 Who hears about an event is each person's own rule for its kind (`notification_prefs`): the person it concerns hears
 about it unless they switched the in-app channel off, and anyone whose scope for that kind is "all" hears about every
-one in the workspace. Nobody is told about what they did themselves. Quiet hours hold a notification back until they
+one in the workspace they may see (`sees`: the record in their role's scope with its name readable, or tasks.read for a
+task). Nobody is told about what they did themselves. Quiet hours hold a notification back until they
 end (it is dated then, and not listed before). A notification is created once per event or due time (`dedupe_key`).
 
 ponytail: email, web push and the digest are not sent; the channel and digest settings are stored for the email module.
@@ -12,15 +13,20 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from .. import events, jobs
+from .. import events, jobs, permissions
 from ..compliance import quiet_until
 from ..events import Event
-from ..models import User
+from ..models import User, Workspace
+from ..records.models import Record
+from ..records.schema import Catalog
+from ..records.store import scope
+from ..security import Ctx
 from ..tasks.models import Task
+from ..tenancy import effective_role
 from .models import Notification, NotificationPref
 
 # kind: what the setting is called (shown in Settings > Notifications)
@@ -64,7 +70,7 @@ def drafts(e: Event, names: dict[uuid.UUID, str]) -> list[Draft]:
     d, actor = e.data, names.get(e.actor_id, "Someone")
     if e.type in ("task.created", "task.updated"):
         new = d["assignee_id"] if e.type == "task.created" else (d["changes"].get("assignee_id") or {}).get("new")
-        if not new or d.get("parent_task_id"):  # the next occurrence of a repeating task is not an assignment
+        if not new or (e.type == "task.created" and d.get("parent_task_id")):  # a repeat's next one is no assignment
             return []
         who = uuid.UUID(new)
         return [Draft("task_assigned", e.workspace_id, who, e.actor_id, f"{actor} assigned you a task",
@@ -108,6 +114,27 @@ def shows_at(pref: NotificationPref, now: datetime) -> datetime | None:
     return quiet_until(now, pref.tz or "UTC", pref.quiet_start.isoformat(), pref.quiet_end.isoformat())
 
 
+def sees(db: Session, cache: dict, draft: Draft, user_id: uuid.UUID) -> bool:
+    """Whether a watcher may see what the draft is about, decided by the functions the API runs, on a request made up
+    for them: a task needs tasks.read, a record must be in their scope with its name (`display_name`) readable."""
+    key = ("sees", user_id, draft.subject)
+    if key not in cache:
+        ws = db.get(Workspace, draft.workspace_id)
+        found = effective_role(db, user_id, ws)
+        ctx = found and Ctx(db, user_id, uuid.uuid4(), "", ws, None, found[0], found[1])
+        if ctx is None:
+            cache[key] = False
+        elif draft.subject[0] == "task":
+            cache[key] = "tasks.read" in permissions.grants(ctx).capabilities
+        else:
+            rec = db.get(Record, draft.subject[1])
+            cat = Catalog(ctx)
+            obj = rec and cat.by_id(rec.object_id)
+            cache[key] = bool(obj and "display_name" not in permissions.hidden(ctx, obj) and db.scalar(
+                select(exists().where(Record.id == rec.id, scope(cat, obj)))))
+    return cache[key]
+
+
 def deliver(db: Session, cache: dict, draft: Draft) -> None:
     now = datetime.now(UTC)
     wanted = {draft.person: True} if draft.person else {}
@@ -115,7 +142,8 @@ def deliver(db: Session, cache: dict, draft: Draft) -> None:
         wanted.setdefault(user_id, False)
     for user_id, concerned in wanted.items():
         pref = preference(db, cache, draft.workspace_id, user_id, draft.kind)
-        if user_id == draft.actor_id or "in_app" not in pref.channels:
+        if user_id == draft.actor_id or "in_app" not in pref.channels or not (
+                concerned or sees(db, cache, draft, user_id)):
             continue
         show_at = shows_at(pref, now)
         db.execute(pg_insert(Notification).values(

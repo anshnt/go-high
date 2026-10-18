@@ -173,8 +173,13 @@ def move_deal(deal_id: uuid.UUID, body: Move, c: Ctx = Depends(requires("deals.w
         raise ApiError(422, "validation_failed", "The move is not valid",
                        {"position": "cannot be combined with after_id or before_id"})
     deal = store.get(cat, obj, deal_id, lock=True)
+    stages.lock(cat, target.id)  # after the deal, as a stage change through the records API takes them
     above = neighbour(cat, obj, target, deal, body.after_id, "after_id")
     below = neighbour(cat, obj, target, deal, body.before_id, "before_id")
+    if above is not None and above == below:  # tied by an older race: make room, then read them again
+        stages.renumber(cat, target.id)
+        above = neighbour(cat, obj, target, deal, body.after_id, "after_id")
+        below = neighbour(cat, obj, target, deal, body.before_id, "before_id")
     if above is not None and below is not None and above >= below:
         raise ApiError(409, "conflict", "The cards are no longer in that order: reload the board")
     position = body.position

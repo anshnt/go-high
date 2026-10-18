@@ -38,6 +38,11 @@ class RecordIds(BaseModel):
     ids: list[uuid.UUID] = Field(min_length=1, max_length=MAX_BULK)
 
 
+class BulkPatch(RecordIds):
+    values: dict[str, Any] = {}
+    owner_id: uuid.UUID | None = None  # send null to unassign; leave out to keep each record's owner
+
+
 class RecordQuery(BaseModel):
     filter: dict = {}
     sort: str | list[str] | None = None
@@ -114,6 +119,22 @@ def delete_records(key: str, body: RecordIds, c: Ctx = Depends(requires_object("
     recs = store.get_many(cat, obj, body.ids, lock=True)
     store.trash_many(cat, obj, recs)
     return idem.commit(200, {"deleted": len(recs)})
+
+
+@router.post("/objects/{key}/records/update")
+def update_records(key: str, body: BulkPatch, c: Ctx = Depends(requires_object("write")),
+                   idem: Idem = Depends(idempotency)):
+    """The same change to up to 1000 records in one transaction (reassign a batch of leads, set a field on all of
+    them): every one must be visible and writable and pass validation, or nothing changes. `updated` counts the
+    records that actually changed; each of those emits its own `record.updated`."""
+    cat = Catalog(c)
+    obj = cat.need(key)
+    if not body.values and "owner_id" not in body.model_fields_set:
+        raise ApiError(422, "validation_failed", "Nothing to change", {"values": "send values or owner_id"})
+    owner = body.owner_id if "owner_id" in body.model_fields_set else store.UNSET
+    recs = store.get_many(cat, obj, body.ids, lock=True)
+    changed = sum(store.update(cat, obj, rec, body.values, owner) for rec in recs)
+    return idem.commit(200, {"updated": changed})
 
 
 @router.post("/objects/{key}/records/restore")

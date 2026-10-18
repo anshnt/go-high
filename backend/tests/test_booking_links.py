@@ -54,7 +54,8 @@ def test_the_link_shows_the_booking_and_only_the_booking(crm):
     assert seen["calendar"]["name"] == "Intro call" and seen["invitee"] == {"name": "Ada Lovelace"}
     assert "ada@example.com" not in str(seen)
     assert moment(seen["change_until"]) == at(str(DAY), "10:00") - timedelta(hours=24)
-    for bad in ("nope", f"{'0' * 32}.nope", done["token"][:-1] + "x", done["token"].split(".")[0] + ".x"):
+    altered = done["token"][:-1] + ("y" if done["token"].endswith("x") else "x")  # never the token itself
+    for bad in ("nope", f"{'0' * 32}.nope", altered, done["token"].split(".")[0] + ".x"):
         assert visitor.get(f"/api/public/bookings/{bad}").status_code == 404, bad
     elsewhere = "1" * 32 + done["token"][32:]  # the secret with another workspace's name on it
     assert visitor.get(f"/api/public/bookings/{elsewhere}").status_code == 404

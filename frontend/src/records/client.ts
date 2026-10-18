@@ -18,6 +18,8 @@ export interface RecordsClient {
   create(object: string, input: NewRecord): Promise<RecordRow>;
   /** `changes` maps field key to the new value; `owner_id` is accepted too. Resolves with the saved row. */
   update(object: string, id: string, changes: Record<string, unknown>): Promise<RecordRow>;
+  /** The same `changes` to many records, all or nothing per call. */
+  updateMany(object: string, ids: string[], changes: Record<string, unknown>): Promise<void>;
   /** Soft delete (trash); restore brings them back. Take lists so a bulk action is one call. */
   remove(object: string, ids: string[]): Promise<void>;
   restore(object: string, ids: string[]): Promise<void>;

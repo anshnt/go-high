@@ -346,6 +346,12 @@ export function createApiClient(http: Http): RecordsClient {
       return toRow(await call(() => http.patch<ApiRow>(`${row(object, id)}${queryString({ include: "tags" })}`, body)));
     },
 
+    updateMany: (object, ids, changes) => {
+      const { owner_id, ...values } = changes;
+      const extra = "owner_id" in changes ? { owner_id: owner_id ?? null } : {};
+      return bulk(`/api/v1/objects/${enc(object)}/records/update`, ids, (part) => ({ ids: part, values, ...extra }));
+    },
+
     remove: (object, ids) => bulk(`/api/v1/objects/${enc(object)}/records/delete`, ids, (part) => ({ ids: part })),
     restore: (object, ids) => bulk(`/api/v1/objects/${enc(object)}/records/restore`, ids, (part) => ({ ids: part })),
 

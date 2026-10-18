@@ -213,15 +213,22 @@ def test_writes_without_an_origin_header_or_without_a_cookie_are_not_blocked():
     assert r.status_code == 201  # no cookie yet; third-party pages may post to public endpoints
 
 
-def test_first_magic_link_evicts_whoever_registered_the_address_before_it_was_verified(make_user):
-    squatter, _ = make_user("victim@example.com")  # signed up with someone else's address and a password
+def test_first_magic_link_evicts_whoever_registered_the_address_before_it_was_verified(make_user, db):
+    squatter, ids = make_user("victim@example.com", verified=False)  # someone else's address, and a password
     assert squatter.get("/api/me").json()["user"]["email_verified"] is False
+    r = squatter.post("/api/v1/webhooks", json={"url": "https://hooks.example.com/x"},
+                      headers={"X-Workspace-Id": ids["workspace_id"]})
+    assert r.status_code == 403 and r.json()["error"]["code"] == "email_unverified"
+    db.execute(text("INSERT INTO webhook_endpoints (workspace_id, url, event_types, secret) "
+                    "VALUES (:w, 'https://hooks.example.com/x', '{*}', 's')"), {"w": ids["workspace_id"]})
+    db.commit()  # one made before webhooks needed a proved address
     link = TestClient(app).post("/api/auth/magic-link", json={"email": "victim@example.com"}).json()["link"]
     owner = TestClient(app)
     r = owner.post("/api/auth/magic-link/consume", json={"token": link_token(link)})
     assert r.status_code == 200 and r.json()["user"]["email_verified"] is True
     assert squatter.get("/api/me").status_code == 401  # pre-verification session revoked
     assert signin("victim@example.com", PASSWORD)[1].status_code == 401  # pre-verification password cleared
+    assert db.execute(text("SELECT active FROM webhook_endpoints")).scalar() is False  # it may point at the squatter
     # Later links only sign in: the verified owner's session survives.
     link = TestClient(app).post("/api/auth/magic-link", json={"email": "victim@example.com"}).json()["link"]
     assert TestClient(app).post("/api/auth/magic-link/consume", json={"token": link_token(link)}).status_code == 200
@@ -279,6 +286,15 @@ def test_changing_a_password_needs_the_current_one_and_signs_out_other_sessions(
     assert other.get("/api/me").status_code == 401 and client.get("/api/me").status_code == 200
     assert signin("a@example.com", PASSWORD)[1].status_code == 401
     assert signin("a@example.com", new)[1].status_code == 200
+
+
+def test_repeated_wrong_current_passwords_are_throttled(make_user):
+    client, _ = make_user("a@example.com")
+    change = {"password": "another long password", "current_password": "nope"}
+    for _ in range(config.LOGIN_MAX_FAILURES):
+        assert client.post("/api/auth/password", json=change).status_code == 403
+    blocked = client.post("/api/auth/password", json={**change, "current_password": PASSWORD})
+    assert blocked.status_code == 429 and "retry-after" in blocked.headers
 
 
 def test_a_first_password_needs_a_fresh_session(db):

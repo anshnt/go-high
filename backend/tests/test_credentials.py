@@ -83,7 +83,7 @@ def test_a_password_can_be_set_changed_and_cleared_through_the_credentials_table
                       ).status_code == 200
     # the first emailed link clears a password (it may belong to someone who only registered the address), and
     # setting one afterwards creates the row again
-    magic, _ = make_user("m@example.com")
+    magic, _ = make_user("m@example.com", verified=False)
     link = magic.post("/api/auth/magic-link", json={"email": "m@example.com"}).json()["link"]
     fresh = TestClient(app)
     assert fresh.post("/api/auth/magic-link/consume", json={"token": link.split("token=")[1]}).status_code == 200
