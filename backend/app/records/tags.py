@@ -1,7 +1,8 @@
 """Tags (ADR 0002): named labels with a group, color and description, applied to records of any object. They have
 their own tables, so usage counts, rename and merge across thousands of records stay one statement. Creating and
 applying tags is the `tags.write` capability; renaming, merging and deleting change what everyone sees, so those are
-`tags.manage`. A tag's usage counts the records the caller may see."""
+`tags.manage`. Tagging a record also needs the write capability of its object. A tag's usage, and what a merge
+reports, counts the records the caller may see."""
 import uuid
 from collections import defaultdict
 from typing import Annotated
@@ -13,7 +14,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import events
+from .. import events, permissions
 from ..api import ApiError, Idem, idempotency, paginate
 from ..permissions import requires
 from ..security import Ctx
@@ -161,7 +162,7 @@ def merge_tag(tag_id: uuid.UUID, body: Merge, c: Ctx = Depends(requires("tags.ma
     if source.id == target.id:
         raise ApiError(422, "validation_failed", "The request is not valid", {"into": "must be another tag"})
     mine = select(Record.id).join(RecordTag, RecordTag.record_id == Record.id).where(
-        RecordTag.tag_id == source.id, Record.deleted_at.is_(None))
+        RecordTag.tag_id == source.id, Record.deleted_at.is_(None), store.anywhere(Catalog(c)))
     has_target = select(RecordTag.record_id).where(RecordTag.tag_id == target.id)
     records = c.db.scalar(select(func.count()).select_from(mine.subquery()))
     gaining = c.db.scalar(select(func.count()).select_from(mine.where(Record.id.not_in(has_target)).subquery()))
@@ -180,7 +181,8 @@ def merge_tag(tag_id: uuid.UUID, body: Merge, c: Ctx = Depends(requires("tags.ma
 
 
 def apply(cat: Catalog, record_ids: list[uuid.UUID], add: list[uuid.UUID], remove: list[uuid.UUID]) -> dict:
-    """Adds and removes tags on records the caller may see; an event per record and tag that really changed."""
+    """Adds and removes tags on records the caller may see and write; an event per record and tag that really
+    changed."""
     c, ids, wanted = cat.c, list(dict.fromkeys(record_ids)), set(add) | set(remove)
     found = set(c.db.scalars(select(Tag.id).where(Tag.id.in_(wanted)))) if wanted else set()
     if found != wanted:
@@ -198,6 +200,8 @@ def apply(cat: Catalog, record_ids: list[uuid.UUID], add: list[uuid.UUID], remov
             visible |= {r: obj for r in allowed}
     if len(visible) != len(ids):
         raise HTTPException(404, "Record not found")
+    for obj in {o.id: o for o in visible.values()}.values():
+        permissions.require_object(c, obj, "write")
     tags = {t.id: t for t in c.db.scalars(select(Tag).where(Tag.id.in_(wanted)))} if wanted else {}
     added = c.db.execute(pg_insert(RecordTag).values(
         [{"record_id": r, "tag_id": t, "workspace_id": c.workspace.id} for r in ids for t in add])
