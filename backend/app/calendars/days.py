@@ -32,7 +32,8 @@ def slot_days(db: Session, cal: Calendar, first: date, last: date, tz_name: str,
     if last < first or (last - first).days >= MAX_DAYS:
         raise ApiError(422, "validation_failed", "The request is not valid",
                        {"to": f"must be on or after from, and at most {MAX_DAYS} days after it"})
-    length = chosen_duration(cal, duration)
+    # moving a booking keeps its length, even one the calendar no longer offers
+    length = chosen_duration(cal, duration) if ignore is None else duration
     lo, hi = slots.midnight(first, tz), slots.midnight(last + timedelta(days=1), tz)
     snap = slots.load(db, cal, lo, hi, now, ignore=ignore)
     days: dict[str, list[datetime]] = {}

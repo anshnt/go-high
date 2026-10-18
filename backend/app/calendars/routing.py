@@ -4,8 +4,8 @@ daily cap) the one with the fewest bookings for their weight goes first, a tie g
 the host added first. A host who owns the contact keeps them, whatever the rotation says. Counts are the calendar's own
 bookings from the last ROLLING_DAYS days onward, so a host who was away catches up and nobody is starved or flooded.
 
-`simulate` plays the rotation forward on a copy of the snapshot, taking the earliest open time each round, and writes
-nothing: it is the "who would get the next 20 bookings" preview."""
+`simulate` plays the rotation forward on the snapshot, one booking for each of the next open start times in order, and
+writes nothing: it is the "who would get the next 20 bookings" preview."""
 import uuid
 from datetime import datetime, timedelta
 from fractions import Fraction
@@ -41,15 +41,13 @@ def choose(snap: Snapshot, verdict: Verdict, owner_id: uuid.UUID | None = None) 
 
 
 def simulate(snap: Snapshot, now: datetime, duration: int, n: int, owner_id: uuid.UUID | None = None) -> dict:
-    """The next `n` bookings if they arrived now, each taking the earliest open time: who gets each, and per host the
-    share they receive against the share their weight entitles them to."""
+    """The next `n` bookings if they arrived now, one for each of the next open start times: who gets each, and per host
+    the share they receive against the share their weight entitles them to."""
     hi = now + timedelta(days=snap.calendar.window_days + 1)
     rounds, given = [], {h.user_id: 0 for h in snap.hosts}
-    for i in range(1, n + 1):
-        found = next(open_slots(snap, now, hi, now, duration), None)
-        if found is None:
+    for i, (start, verdict) in enumerate(open_slots(snap, now, hi, now, duration), 1):
+        if i > n:
             break
-        start, verdict = found
         pick = choose(snap, verdict, owner_id)
         end = start + timedelta(minutes=duration)
         snap.add(start, end, [p.user_id for p in pick.attendees])

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "booking.created",
+  "description": "A booking was made, on the public page or by staff. `status` is confirmed on a calendar that confirms by itself and booked when it waits for a person; `host_reason` says why this host got it. The contact's name, email and phone are on the contact, not here. Subject: the booking; it also shows on the contact's timeline.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "calendar_id": {"type": "string", "format": "uuid"},
+    "calendar": {"type": "string"},
+    "host_user_id": {"type": ["string", "null"], "format": "uuid"},
+    "host_ids": {"type": "array", "items": {"type": "string", "format": "uuid"}},
+    "contact_id": {"type": ["string", "null"], "format": "uuid"},
+    "starts_at": {"type": "string", "format": "date-time"},
+    "ends_at": {"type": "string", "format": "date-time"},
+    "time_zone": {"type": "string"},
+    "status": {"type": "string", "enum": ["booked", "confirmed", "cancelled", "rescheduled", "no_show", "showed"]},
+    "source": {"type": "string"},
+    "host_reason": {"type": "string"}
+  },
+  "required": ["id", "calendar_id", "calendar", "host_user_id", "host_ids", "contact_id", "starts_at", "ends_at", "time_zone", "status", "source", "host_reason"],
+  "additionalProperties": false
+}

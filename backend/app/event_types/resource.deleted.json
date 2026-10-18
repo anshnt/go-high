@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "resource.deleted",
+  "description": "A resource nothing was booked on was deleted. Subject: the resource.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"},
+    "kind": {"type": "string", "enum": ["room", "equipment"]},
+    "quantity": {"type": "integer"}
+  },
+  "required": ["id", "name", "kind", "quantity"],
+  "additionalProperties": false
+}

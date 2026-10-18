@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "booking.rescheduled",
+  "description": "A booking moved to another time, with the same host or hosts. `from_starts_at` and `from_ends_at` are where it was; its reminders move with it. Subject: the booking.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "calendar_id": {"type": "string", "format": "uuid"},
+    "calendar": {"type": "string"},
+    "host_user_id": {"type": ["string", "null"], "format": "uuid"},
+    "host_ids": {"type": "array", "items": {"type": "string", "format": "uuid"}},
+    "contact_id": {"type": ["string", "null"], "format": "uuid"},
+    "starts_at": {"type": "string", "format": "date-time"},
+    "ends_at": {"type": "string", "format": "date-time"},
+    "time_zone": {"type": "string"},
+    "status": {"type": "string", "enum": ["booked", "confirmed", "cancelled", "rescheduled", "no_show", "showed"]},
+    "source": {"type": "string"},
+    "from_starts_at": {"type": "string", "format": "date-time"},
+    "from_ends_at": {"type": "string", "format": "date-time"}
+  },
+  "required": ["id", "calendar_id", "calendar", "host_user_id", "host_ids", "contact_id", "starts_at", "ends_at", "time_zone", "status", "source", "from_starts_at", "from_ends_at"],
+  "additionalProperties": false
+}

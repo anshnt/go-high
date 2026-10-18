@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "booking.status_changed",
+  "description": "A person confirmed a booking or recorded whether the invitee came (showed, no_show). `from_status` is the status it had. Subject: the booking.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "calendar_id": {"type": "string", "format": "uuid"},
+    "calendar": {"type": "string"},
+    "host_user_id": {"type": ["string", "null"], "format": "uuid"},
+    "host_ids": {"type": "array", "items": {"type": "string", "format": "uuid"}},
+    "contact_id": {"type": ["string", "null"], "format": "uuid"},
+    "starts_at": {"type": "string", "format": "date-time"},
+    "ends_at": {"type": "string", "format": "date-time"},
+    "time_zone": {"type": "string"},
+    "status": {"type": "string", "enum": ["booked", "confirmed", "cancelled", "rescheduled", "no_show", "showed"]},
+    "source": {"type": "string"},
+    "from_status": {"type": "string"}
+  },
+  "required": ["id", "calendar_id", "calendar", "host_user_id", "host_ids", "contact_id", "starts_at", "ends_at", "time_zone", "status", "source", "from_status"],
+  "additionalProperties": false
+}

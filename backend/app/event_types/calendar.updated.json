@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "calendar.updated",
+  "description": "A calendar's settings, hosts or resources changed (or it was archived); `changes` maps each to its old and new value. Subject: the calendar.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"},
+    "slug": {"type": "string"},
+    "kind": {"type": "string", "enum": ["personal", "round_robin", "collective", "class", "service"]},
+    "status": {"type": "string", "enum": ["active", "paused", "archived"]},
+    "changes": {"type": "object"}
+  },
+  "required": ["id", "name", "slug", "kind", "status", "changes"],
+  "additionalProperties": false
+}

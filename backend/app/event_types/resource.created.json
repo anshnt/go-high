@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "resource.created",
+  "description": "A room or piece of equipment was added. Subject: the resource.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"},
+    "kind": {"type": "string", "enum": ["room", "equipment"]},
+    "quantity": {"type": "integer"}
+  },
+  "required": ["id", "name", "kind", "quantity"],
+  "additionalProperties": false
+}

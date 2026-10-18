@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "resource.updated",
+  "description": "A resource was renamed or its quantity changed; `changes` maps each to its old and new value. Subject: the resource.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"},
+    "kind": {"type": "string", "enum": ["room", "equipment"]},
+    "quantity": {"type": "integer"},
+    "changes": {"type": "object"}
+  },
+  "required": ["id", "name", "kind", "quantity", "changes"],
+  "additionalProperties": false
+}
