@@ -180,7 +180,7 @@ def test_a_completed_response_creates_the_contact_the_event_and_a_timeline_entry
     assert done["status"] == "complete" and done["message"] == "Thanks, Ada!" and done["result"] is None
     assert done["redirect_url"] == "https://example.com/done"
     [contact] = site.records()
-    assert contact["values"] == {"first_name": "Ada", "email": "ada@example.com"}
+    assert contact["values"] == {"first_name": "Ada", "email": "ada@example.com", "source": "form"}
     assert contact["display_name"] == "Ada" and contact["created_by"] is None
     row = rows(db, "SELECT * FROM form_submissions")[0]
     assert row["status"] == "complete" and row["answers"] == {"first_name": "Ada", "email": "ada@example.com"}
