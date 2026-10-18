@@ -216,13 +216,14 @@ test("bulk delete, restore and tags are one call up to a thousand ids and chunke
 test("saved views map the filter, the sort and the owner both ways", async () => {
   const view = (extra: object = {}) => ({ id: "v1", object: "contact", name: "Leads", filter: { and: [{ field: "lifecycle", op: "is", value: "lead" }] }, columns: ["display_name", "tags"], sort: ["-created_at"], shared: true, owner_id: "u1", ...extra });
   const { calls, client } = fake({
-    "GET /api/v1/views": () => page([view(), view({ id: "v2", filter: {}, sort: [], shared: false, owner_id: null })]),
+    "GET /api/v1/views": () => page([view({ id: "v2", filter: {}, sort: [], shared: false, owner_id: null }), view()]),
     "POST /api/v1/views": () => view({ id: "v3" }),
     "PATCH /api/v1/views/v1": () => view(),
     "DELETE /api/v1/views/v1": () => undefined,
   });
-  const views = await client.listViews("contact");
+  const views = await client.listViews("contact"); // the API sends the newest first (v2)
   assert.match(calls[0]!.path, /object=contact/);
+  assert.deepEqual(views.map((v) => v.id), ["v1", "v2"]); // the tabs read oldest first
   assert.deepEqual(views[0], { id: "v1", object: "contact", name: "Leads", filter: { and: [{ field: "lifecycle", op: "is", value: "lead" }] }, columns: ["display_name", "tags"], sort: [{ field: "created_at", dir: "desc" }], shared: true, owner_id: "u1" });
   assert.deepEqual([views[1]!.filter, views[1]!.sort, views[1]!.owner_id], [null, [], null]); // no filter is null on the screens, {} on the server
 

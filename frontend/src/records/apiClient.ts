@@ -326,7 +326,8 @@ export function createApiClient(http: Http, opts: ApiClientOptions = {}): Record
     },
 
     async listViews(object) {
-      return (await call(() => all<ApiView>("/api/v1/views", { object }))).map(toView);
+      // the API lists the newest first; the tabs read oldest first, so a view you save lands at the end and stays there
+      return (await call(() => all<ApiView>("/api/v1/views", { object }))).map(toView).reverse();
     },
 
     async saveView(view) {

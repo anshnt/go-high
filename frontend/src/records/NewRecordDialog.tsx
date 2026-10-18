@@ -118,7 +118,7 @@ export function NewRecordDialog({ client, def, fields, open, onOpenChange, onCre
       open={open}
       onOpenChange={onOpenChange}
       title={`New ${def.singular.toLowerCase()}`}
-      description={required.length ? `Fields marked * are required.` : undefined}
+      description={editable.some((f) => f.rules.required) ? "Fields marked * are required." : undefined}
       footer={
         <>
           <span className="rec-foot-left">
