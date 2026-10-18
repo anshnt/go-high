@@ -47,3 +47,9 @@ CHAT_POLL_PER_KEY = int(os.getenv("CHAT_POLL_PER_KEY", "6000"))
 # Public forms: a form completed sooner than this after its page was opened came from a script, not a person.
 # 0 switches the check off (tests).
 FORM_MIN_FILL_SECONDS = int(os.getenv("FORM_MIN_FILL_SECONDS", "3"))
+
+# Public booking requests (module 16) one visitor (a hash of their IP) and one calendar may make within the window, and
+# all visitors together for one calendar.
+BOOKING_MAX_PER_IP = int(os.getenv("BOOKING_MAX_PER_IP", "8"))
+BOOKING_MAX_PER_CALENDAR = int(os.getenv("BOOKING_MAX_PER_CALENDAR", "120"))
+BOOKING_WINDOW_MINUTES = int(os.getenv("BOOKING_WINDOW_MINUTES", "10"))

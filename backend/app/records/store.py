@@ -219,8 +219,8 @@ def state(cat: Catalog, obj: ObjectDef, rec: Record) -> dict:
 
 
 def actor(c: Ctx) -> tuple[str, uuid.UUID] | None:
-    """Who caused the change: the user, or the system (None) for work no signed-in user is behind, like a form or an
-    inbound message."""
+    """Who caused the change: the user, or the system (None) for work no signed-in user is behind, like a form, an
+    inbound message or a visitor booking a call."""
     return ("user", c.user_id) if c.user_id else None
 
 

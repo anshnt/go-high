@@ -14,7 +14,17 @@ from sqlalchemy.orm import Session
 
 from . import config, events, roles_seed, security
 from .db import rescope, scoped
-from .models import AuthSession, Brand, MagicLink, Organization, OrgMember, User, UserCredential, Workspace
+from .models import (
+    AuthSession,
+    Brand,
+    MagicLink,
+    Organization,
+    OrgMember,
+    User,
+    UserCredential,
+    Workspace,
+    new_slug,
+)
 from .records.seed import seed_workspace
 from .security import COOKIE, Ctx, system_db, token_hash, user
 from .tenancy import my_orgs, my_workspaces, workspace_data, workspace_ids
@@ -91,7 +101,7 @@ def signup(body: SignUp, request: Request, response: Response, db: Session = Dep
     roles = roles_seed.add(db, org.id)
     db.add_all([brand, OrgMember(user_id=account.id, org_id=org.id, role_id=roles["owner"])])
     db.flush()
-    workspace = Workspace(org_id=org.id, brand_id=brand.id, name="Main")
+    workspace = Workspace(org_id=org.id, brand_id=brand.id, name="Main", slug=new_slug(org.name))
     db.add(workspace)
     db.flush()
     seed_workspace(db, workspace.id)
