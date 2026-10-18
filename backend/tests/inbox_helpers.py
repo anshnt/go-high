@@ -15,6 +15,7 @@ from sqlalchemy import text
 
 from app import config
 from app.channels import twilio
+from app.inbox import gateway
 
 TWILIO_TOKEN = "test-auth-token-not-real"
 TELNYX_KEY = Ed25519PrivateKey.generate()
@@ -71,8 +72,8 @@ def sms_in(client, channel: dict, sender: str, body: str, sid: str | None = None
 
 
 def sms_status(client, channel: dict, sid: str, status: str, **more):
-    return twilio_hook(client, channel, MessageSid=sid, MessageStatus=status, From=channel["address"], To="+14155550123",
-                       **more)
+    return twilio_hook(client, channel, MessageSid=sid, MessageStatus=status, From=channel["address"],
+                       To="+14155550123", **more)
 
 
 def telnyx_hook(client, channel: dict, body: dict, key=TELNYX_KEY, stamp: int | None = None):
@@ -123,9 +124,10 @@ def meta_hook(client, channel: dict, body: dict, secret: str = META_SECRET):
 def meta_in(sender: str, body: str, wamid: str | None = None) -> dict:
     message = {"from": sender, "id": wamid or f"wamid.{uuid.uuid4().hex}", "timestamp": "1760697000", "type": "text",
                "text": {"body": body}}
-    value = {"messaging_product": "whatsapp", "metadata": {"display_phone_number": "15550003333"}, "messages": [message]}
-    return {"object": "whatsapp_business_account", "entry": [{"id": "1", "changes": [{"field": "messages",
-                                                                                    "value": value}]}]}
+    value = {"messaging_product": "whatsapp", "metadata": {"display_phone_number": "15550003333"},
+             "messages": [message]}
+    changes = [{"field": "messages", "value": value}]
+    return {"object": "whatsapp_business_account", "entry": [{"id": "1", "changes": changes}]}
 
 
 def conversations_of(client, ws, **params) -> dict:
@@ -156,3 +158,27 @@ def bodies(client, ws, conv_id: str, **params) -> list[str]:
 def sql(db, query: str, **params):
     db.rollback()  # see what the application committed
     return db.execute(text(query), params).all()
+
+
+def point(monkeypatch, receiver, provider: str, reply: str = "{}") -> None:
+    """Sends through `provider` to the local receiver, which answers each request with `reply`; a `%d` in it is
+    the request's number, so every message gets a provider id of its own."""
+    monkeypatch.setitem(gateway.BASE_URLS, provider, receiver.url(""))
+    receiver.replies = [(200, (reply % i if "%d" in reply else reply).encode(), {}) for i in range(60)]
+
+
+def outbound_row(db, conv_id: str, channel_id: str, provider_id: str, status: str = "sent", body: str = "reply") -> str:
+    """A reply the provider already accepted, put in the conversation as the send job would leave it."""
+    db.rollback()
+    message = db.scalar(text(
+        "INSERT INTO messages (workspace_id, conversation_id, seq, direction, channel_id, kind, body, status, "
+        "provider_message_id) SELECT workspace_id, id, last_seq + 1, 'out', :ch, 'message', :body, :st, :pid "
+        "FROM conversations WHERE id = :c RETURNING id"), {"ch": channel_id, "body": body, "st": status,
+                                                            "pid": provider_id, "c": conv_id})
+    db.execute(text("UPDATE conversations SET last_seq = last_seq + 1 WHERE id = :c"), {"c": conv_id})
+    db.commit()
+    return str(message)
+
+
+def message_status(db, message_id: str) -> tuple[str, str | None]:
+    return tuple(sql(db, "SELECT status, error FROM messages WHERE id = :m", m=message_id)[0])

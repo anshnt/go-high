@@ -3,6 +3,7 @@ TEST_DATABASE_URL at a server; the test database is created if missing."""
 import os
 import re
 import ssl
+from datetime import UTC, datetime
 
 import pytest
 from fakes import FakeSMTP, Files, make_cert
@@ -22,6 +23,7 @@ with create_engine(URL.set(database="postgres"), isolation_level="AUTOCOMMIT").c
 
 from app import config, ssrf  # noqa: E402  (must import after DATABASE_URL is set)
 from app.db import SessionLocal, engine  # noqa: E402
+from app.inbox import consent  # noqa: E402
 from app.main import app, migrate  # noqa: E402
 
 migrate()
@@ -52,6 +54,13 @@ def dns(monkeypatch):
 
     monkeypatch.setattr(ssrf, "resolve", fake)
     return hosts
+
+
+@pytest.fixture(autouse=True)
+def afternoon(monkeypatch):
+    """Consent rules look at the time of day (quiet hours): by default it is 19:00 UTC, afternoon in every US zone."""
+    at = datetime.now(UTC).replace(hour=19, minute=0, second=0, microsecond=0)
+    monkeypatch.setattr(consent, "clock", lambda: at)
 
 
 @pytest.fixture
