@@ -4,7 +4,7 @@ emits them, with `link`. Notes, calls and messages will do the same, so one inde
 import uuid
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
 from .. import permissions
@@ -20,8 +20,9 @@ router = APIRouter(prefix="/api/v1")
 
 def link(db: Session, event: Event, record_ids: list[uuid.UUID]) -> None:
     """Shows `event` on the timeline of each of these records, besides the record that is its subject."""
-    db.add_all(EventRecord(event_id=event.id, record_id=r, workspace_id=event.workspace_id) for r in record_ids)
-    db.flush()
+    # one INSERT with all the rows (the ORM's add_all is an executemany, which is slow where network round trips are)
+    db.execute(insert(EventRecord).values([{"event_id": event.id, "record_id": r, "workspace_id": event.workspace_id}
+                                           for r in record_ids]))
 
 
 def event_json(e: Event, data: dict | None = None) -> dict:

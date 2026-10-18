@@ -142,6 +142,20 @@ def test_shared_views_are_the_workspaces_and_private_views_only_their_owners(crm
     assert bob.get(VIEWS, params={"object": "nothing"}, headers={H: ws}).status_code == 404
 
 
+def test_a_view_says_who_owns_it_and_may_list_tags_as_a_column(crm, db):
+    client, ws, ids = crm
+    me = client.get("/api/me").json()["user"]["id"]
+    bob = add_member(db, ids["org_id"], "bob@example.com", workspace_id=ws)
+    view = make_view(client, ws, shared=True, columns=["display_name", "email", "tags", "owner_id", "created_at"])
+    assert view["owner_id"] == me and view["columns"][2] == "tags"  # tags: shown by `include=tags`, not a field
+    seen = {v["id"]: v["owner_id"] for v in bob.get(VIEWS, headers={H: ws}).json()["data"]}
+    assert seen == {view["id"]: me}  # the others see whose it is, to know they may only read it
+    assert bob.get(f"{VIEWS}/{view['id']}", headers={H: ws}).json()["owner_id"] == me
+    assert bob.patch(f"{VIEWS}/{view['id']}", json={"name": "Mine now"}, headers={H: ws}).status_code == 403
+    nope = client.post(VIEWS, json={"object": "contact", "name": "X", "columns": ["tags", "ghost"]}, headers={H: ws})
+    assert nope.status_code == 422 and list(nope.json()["error"]["fields"]) == ["columns.1"]
+
+
 def test_creating_a_view_twice_with_the_same_key_creates_it_once(crm):
     client, ws, _ = crm
     body = {"object": "contact", "name": "Once", "filter": LEADS}

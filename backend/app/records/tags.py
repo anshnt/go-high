@@ -104,8 +104,8 @@ def list_tags(q: Annotated[str | None, Query(max_length=100)] = None, limit: int
     return {"data": [tag_json(tag, n) for tag, n in rows], "next_cursor": next_cursor}
 
 
-@router.post("/tags", status_code=201)
-def create_tag(body: NewTag, c: Ctx = Depends(requires("tags.write")), idem: Idem = Depends(idempotency)):
+def new_tag(c: Ctx, body: NewTag) -> Tag:
+    """Adds a tag and its event in the caller's transaction; a name already used (any case) is a 409."""
     tag = Tag(workspace_id=c.workspace.id, name=body.name, color=body.color, group_name=body.group,
               description=body.description)
     try:
@@ -114,7 +114,12 @@ def create_tag(body: NewTag, c: Ctx = Depends(requires("tags.write")), idem: Ide
     except IntegrityError:
         raise exists_error(body.name) from None
     events.emit(c.db, "tag.created", "tag", tag.id, tag_data(tag), actor=store.actor(c))
-    return idem.commit(201, tag_json(tag, 0))
+    return tag
+
+
+@router.post("/tags", status_code=201)
+def create_tag(body: NewTag, c: Ctx = Depends(requires("tags.write")), idem: Idem = Depends(idempotency)):
+    return idem.commit(201, tag_json(new_tag(c, body), 0))
 
 
 @router.patch("/tags/{tag_id}")

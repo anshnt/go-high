@@ -38,19 +38,35 @@ def live(cat: Catalog, obj: ObjectDef):
             scope(cat, obj))
 
 
+def conditions(cat: Catalog, obj: ObjectDef, trashed: bool | None) -> list:
+    """What a record of `obj` must satisfy to be read: this workspace's, in scope, and live or trashed."""
+    where = [Record.workspace_id == cat.c.workspace.id, Record.object_id == obj.id, scope(cat, obj)]
+    if trashed is not None:
+        where.append(Record.deleted_at.is_not(None) if trashed else Record.deleted_at.is_(None))
+    return where
+
+
 def get(cat: Catalog, obj: ObjectDef, record_id: uuid.UUID, *, trashed: bool | None = False,
         lock: bool = False) -> Record:
     """A record of `obj` the caller may see: a live one, a trashed one (`trashed=True`) or either (None). Anything
     else, another workspace's included, is a 404."""
-    where = [Record.workspace_id == cat.c.workspace.id, Record.object_id == obj.id, Record.id == record_id,
-             scope(cat, obj)]
-    if trashed is not None:
-        where.append(Record.deleted_at.is_not(None) if trashed else Record.deleted_at.is_(None))
-    stmt = select(Record).where(*where)
+    stmt = select(Record).where(Record.id == record_id, *conditions(cat, obj, trashed))
     rec = cat.db.scalar(stmt.with_for_update() if lock else stmt)
     if rec is None:
         raise HTTPException(404, "Record not found")
     return rec
+
+
+def get_many(cat: Catalog, obj: ObjectDef, ids: list[uuid.UUID], *, trashed: bool | None = False,
+             lock: bool = False) -> list[Record]:
+    """`get` for several ids (a bulk change): each must be a record of `obj` the caller may see, or none is touched
+    and the answer is a 404. Locked in id order, so two bulk changes cannot deadlock."""
+    wanted = list(dict.fromkeys(ids))
+    stmt = select(Record).where(Record.id.in_(wanted), *conditions(cat, obj, trashed)).order_by(Record.id)
+    recs = list(cat.db.scalars(stmt.with_for_update() if lock else stmt))
+    if len(recs) != len(wanted):
+        raise HTTPException(404, "Record not found")
+    return recs
 
 
 def find(cat: Catalog, record_id: uuid.UUID, *, trashed: bool | None = False,
@@ -222,6 +238,7 @@ def create(cat: Catalog, obj: ObjectDef, values: dict, owner_id=UNSET) -> Record
     c.db.add(rec)
     c.db.flush()
     events.emit(c.db, "record.created", "record", rec.id, state(cat, obj, rec), actor=actor(c))
+    sync_links(cat, obj, rec, {})
     return rec
 
 
@@ -245,7 +262,7 @@ def update(cat: Catalog, obj: ObjectDef, rec: Record, patch: dict, owner_id=UNSE
     if not changes:
         c.db.flush()
         return False
-    fields = cat.fields(obj)
+    fields, before = cat.fields(obj), rec.values
     rec.values, rec.owner_id, rec.stage_id = merged, new_owner, stages.stage_id(obj, merged)
     rec.display_name = display_name(obj, fields, merged)
     rec.email_norm, rec.phone_e164 = identity(fields, merged)
@@ -255,7 +272,14 @@ def update(cat: Catalog, obj: ObjectDef, rec: Record, patch: dict, owner_id=UNSE
     events.emit(c.db, "record.updated", "record", rec.id, {**state(cat, obj, rec), "changes": changes}, actor=actor(c))
     if move:
         stages.emit_moved(cat, obj, rec, move)
+    sync_links(cat, obj, rec, before)
     return True
+
+
+def sync_links(cat: Catalog, obj: ObjectDef, rec: Record, before: dict) -> None:
+    """Keeps associations in step with the record fields that stand for one (a contact's company and "works at")."""
+    from . import associations  # it imports this module
+    associations.sync_field_links(cat, obj, rec, before)
 
 
 def trash(cat: Catalog, obj: ObjectDef, rec: Record) -> None:
@@ -270,3 +294,18 @@ def restore(cat: Catalog, obj: ObjectDef, rec: Record) -> None:
     rec.deleted_at = None
     cat.db.flush()
     events.emit(cat.db, "record.restored", "record", rec.id, brief(obj, rec), actor=actor(cat.c))
+
+
+def move_many(cat: Catalog, obj: ObjectDef, recs: list[Record], event: str, deleted_at) -> None:
+    permissions.require_object(cat.c, obj, "delete")
+    cat.db.execute(update_rows(Record).where(Record.id.in_([r.id for r in recs])).values(deleted_at=deleted_at))
+    events.emit_many(cat.db, event, "record", [(r.id, brief(obj, r)) for r in recs], actor=actor(cat.c))
+
+
+def trash_many(cat: Catalog, obj: ObjectDef, recs: list[Record]) -> None:
+    """`trash` for a bulk delete: one statement, one batch of events."""
+    move_many(cat, obj, recs, "record.deleted", func.now())
+
+
+def restore_many(cat: Catalog, obj: ObjectDef, recs: list[Record]) -> None:
+    move_many(cat, obj, recs, "record.restored", None)

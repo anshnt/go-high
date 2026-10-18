@@ -43,8 +43,8 @@ MAX_NODES, MAX_DEPTH, MAX_VALUES = 100, 8, 100
 UNITS = ("minutes", "hours", "days", "weeks", "months", "years")
 # Columns of the record itself that filters and sorts address like fields.
 BUILTIN = {name: SimpleNamespace(key=name, type=type_, options={}, rules={}, object_id=None) for name, type_ in (
-    ("display_name", "text"), ("owner_id", "user"), ("created_by", "user"), ("created_at", "datetime"),
-    ("updated_at", "datetime"))}
+    ("id", "record"), ("display_name", "text"), ("owner_id", "user"), ("created_by", "user"),
+    ("created_at", "datetime"), ("updated_at", "datetime"))}
 
 
 class FilterError(ValueError):
@@ -77,7 +77,7 @@ def native(field, value):
         return date.fromisoformat(value)
     if field.type == "datetime":
         return datetime.fromisoformat(value)
-    if field.type == "user":
+    if field.type in ("user", "record"):  # an owner, or the record's own id (the only builtin of type record)
         return uuid.UUID(value)
     return value
 

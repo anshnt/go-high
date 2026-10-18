@@ -53,8 +53,8 @@ def check(cat: Catalog, obj: ObjectDef, filter_: dict | None, columns: list[str]
     """A view is saved only if it runs: its filter compiles, its columns and sort name real fields."""
     if filter_:
         query.where_of(cat, obj, filter_)
-    fields = cat.fields(obj)
-    bad = {f"columns.{i}": f"unknown field {k!r}" for i, k in enumerate(columns or []) if k not in fields | BUILTIN}
+    known = {*cat.fields(obj), *BUILTIN, "tags"}  # tags: a list shows them as a column (`include=tags`)
+    bad = {f"columns.{i}": f"unknown field {k!r}" for i, k in enumerate(columns or []) if k not in known}
     if bad:
         raise ApiError(422, "validation_failed", "The view is not valid", bad)
     if sort:
