@@ -1,7 +1,7 @@
 """inbox: channels, secrets, conversations, messages, read marks, consent, webchat counters; contact source and zone
 
 Revision ID: 0006
-Revises: 0005
+Revises: 0009
 Create Date: 2026-10-17
 """
 import json
@@ -11,7 +11,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "0006"
-down_revision = "0005"
+down_revision = "0009"
 branch_labels = None
 depends_on = None
 

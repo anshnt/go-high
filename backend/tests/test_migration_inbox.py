@@ -31,7 +31,7 @@ def old_database():
             for name in ("One", "Two"):
                 conn.execute(text("INSERT INTO workspaces (org_id, brand_id, name) VALUES (:o, :b, :n)"),
                              {"o": org, "b": brand, "n": name})
-        alembic(url, "upgrade", "0005")
+        alembic(url, "upgrade", "0009")
         with engine.begin() as conn:  # make the contacts look like those before the inbox: six fields
             conn.execute(text("DELETE FROM fields WHERE key IN ('source', 'timezone')"))
             conn.execute(text("UPDATE roles SET capabilities = ARRAY(SELECT c FROM unnest(capabilities) c "
@@ -92,7 +92,7 @@ def test_the_system_roles_gain_the_inbox_capabilities_and_a_custom_role_is_left_
             "viewer": {"conversations.read"}, "automation": {"conversations.read", "conversations.write"},
             "custom": set()}
         assert conn.scalar(text("SELECT capabilities FROM roles WHERE key = 'custom'")) == ["contacts.read"]
-    alembic(url, "downgrade", "0005")
+    alembic(url, "downgrade", "0009")
     with engine.begin() as conn:
         assert set().union(*role_capabilities(conn).values()) == set()
         assert conn.scalar(text("SELECT capabilities FROM roles WHERE key = 'custom'")) == ["contacts.read"]
@@ -106,7 +106,7 @@ def test_the_system_roles_gain_the_inbox_capabilities_and_a_custom_role_is_left_
 def test_the_migration_reverses_and_runs_again(old_database):
     url, engine = old_database
     alembic(url, "upgrade", "head")
-    alembic(url, "downgrade", "0005")
+    alembic(url, "downgrade", "0009")
     with engine.begin() as conn:
         assert conn.scalar(text("SELECT count(*) FROM pg_tables WHERE tablename IN ('channels', 'secrets', "
                                 "'conversations', 'messages', 'consents', 'chat_limits', 'conversation_reads')")) == 0
