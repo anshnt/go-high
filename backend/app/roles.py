@@ -79,7 +79,9 @@ def rules_of(c: Ctx, role: Role) -> list[RoleObjectRule]:
 
 
 def role_or_404(c: Ctx, role_id: uuid.UUID) -> Role:
-    role = c.db.get(Role, role_id)  # row level security: this organization's roles only
+    """A role of the workspace's organization. Row level security alone shows the roles of every organization the
+    user is in, so each query here names the organization."""
+    role = c.db.scalar(select(Role).where(Role.id == role_id, Role.org_id == c.workspace.org_id))
     if role is None:
         raise HTTPException(404, "Role not found")
     return role
@@ -95,16 +97,17 @@ def state(role: Role, rules: list[RoleObjectRule]) -> dict:
 def list_roles(c: Ctx = Depends(requires("members.read"))):
     """Every role of the organization: the system roles first.
     ponytail: not paged, an organization has dozens of roles; add the cursor when one has hundreds."""
-    roles = c.db.scalars(select(Role).order_by(Role.is_system.desc(), Role.name, Role.id)).all()
+    roles = c.db.scalars(select(Role).where(Role.org_id == c.workspace.org_id)
+                         .order_by(Role.is_system.desc(), Role.name, Role.id)).all()
     rules: dict[uuid.UUID, list[RoleObjectRule]] = {r.id: [] for r in roles}
-    for rule in c.db.scalars(select(RoleObjectRule)):
+    for rule in c.db.scalars(select(RoleObjectRule).where(RoleObjectRule.org_id == c.workspace.org_id)):
         rules[rule.role_id].append(rule)
     return {"data": [role_json(r, rules[r.id]) for r in roles], "next_cursor": None}
 
 
 @router.post("", status_code=201)
 def create_role(body: NewRole, c: Ctx = Depends(requires("roles.manage", org=True)), idem: Idem = Depends(idempotency)):
-    source = c.db.scalar(select(Role).where(Role.key == body.copy_from))
+    source = c.db.scalar(select(Role).where(Role.key == body.copy_from, Role.org_id == c.workspace.org_id))
     if source is None:
         raise ApiError(422, "validation_failed", "The request is not valid",
                        {"copy_from": "is not a role of this organization"})

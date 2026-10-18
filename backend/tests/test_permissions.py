@@ -358,6 +358,23 @@ def test_nobody_gives_themselves_a_role_or_one_that_sees_more_than_their_own(crm
     assert r.status_code == 403 and "your own role" in r.json()["error"]["message"]
 
 
+def test_roles_are_those_of_the_workspaces_organization_for_a_user_in_two(crm, make_user, db):
+    admin, ws, ids = crm
+    other, other_ids = make_user("b@example.com")  # owner of a second organization
+    theirs = make_role(other, other_ids["workspace_id"], "Elsewhere")
+    db.execute(text("INSERT INTO org_members (user_id, org_id, role_id) VALUES (:u, :o, :r)"),
+               {"u": user_id_of(other), "o": ids["org_id"], "r": role_id(db, ids["org_id"], "admin")})
+    db.commit()  # now an admin of the first organization too
+    listed = other.get(ROLES, headers={H: ws}).json()["data"]
+    assert {r["id"] for r in listed} == {r["id"] for r in admin.get(ROLES, headers={H: ws}).json()["data"]}
+    assert all(r["key"] != theirs["key"] for r in listed) and len(listed) == 6
+    assert other.get(f"{ROLES}/{theirs['id']}", headers={H: ws}).status_code == 404
+    r = other.post(ROLES, json={"name": "Copy", "copy_from": theirs["key"]}, headers={H: ws})
+    assert r.status_code == 422
+    target = user_id_of(add_member(db, ids["org_id"], "t@example.com", workspace_id=ws))
+    assert other.put(f"{MEMBERS}/{target}", json={"role_id": theirs["id"]}, headers={H: ws}).status_code == 404
+
+
 def test_a_role_cannot_be_edited_to_change_its_own_key_or_system_flag_in_sql(crm, db):
     """The database refuses what the API never does: request handlers may not change a role's key or system flag,
     delete a system role, or edit Owner and Admin or their rules (row level security and column grants)."""

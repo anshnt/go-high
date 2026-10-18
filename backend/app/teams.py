@@ -15,6 +15,7 @@ from .api import ApiError
 from .models import SCOPES, OrgMember, Role, Team, TeamMember, User, WorkspaceMember
 from .permissions import requires
 from .records.store import member_ids
+from .roles import role_or_404
 from .security import Ctx
 from .tenancy import ADMIN_ORG_ROLES, effective_role
 
@@ -213,9 +214,7 @@ def assign_role(user_id: uuid.UUID, body: Assign, c: Ctx = Depends(requires("mem
     """Gives a member of the organization a role in this workspace (and adds them to it). Org owners and admins are
     admins everywhere and keep that. Unless you are one yourself, you cannot hand out a role that can do more than
     yours (more capabilities, a wider scope, fewer hidden or read-only fields), nor give yourself one."""
-    role = c.db.get(Role, body.role_id)  # row level security: this organization's roles only
-    if role is None:
-        raise HTTPException(404, "Role not found")
+    role = role_or_404(c, body.role_id)
     if c.db.scalar(select(OrgMember.user_id).where(OrgMember.org_id == c.workspace.org_id,
                                                    OrgMember.user_id == user_id)) is None:
         raise HTTPException(404, "Member not found")
