@@ -1,7 +1,7 @@
 // The filter AST (ADR 0002): which operators each field type offers, how to tidy a half-built filter,
 // plain-language summaries, and the list of fields (own and through associations) a filter can use.
 import type { FieldDef, FieldType, Filter, FilterCondition, FilterGroup, FilterTag, LinkType, ObjectDef, Op } from "./types.ts";
-import { formatMoney, isMoney, valueText, type Lookup } from "./format.ts";
+import { formatDay, formatMoney, isMoney, valueText, type Lookup } from "./format.ts";
 import { valueType, isComputed, DISPLAY_NAME } from "./schema.ts";
 
 export const isGroup = (f: Filter): f is FilterGroup => "and" in f || "or" in f;
@@ -179,6 +179,7 @@ const humanize = (key: string) => {
 };
 const TEXTUAL: FieldType[] = ["text", "long_text", "email", "phone", "url"];
 const DAY_OPS: Op[] = ["is", "gt", "gte", "lt", "lte", "between"];
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 type Labelled = Pick<FieldDef, "key" | "label" | "type" | "options">;
 
@@ -197,6 +198,7 @@ export function filterToText(ast: Filter | null | undefined, fields: Labelled[],
     const opText = opLabel(c.op, type);
     const one = (v: unknown) => {
       if (!field) return String(v);
+      if (type === "datetime" && typeof v === "string" && DAY.test(v)) return formatDay(v); // the filter names a day, not a moment
       const t = valueText(field, v, ctx);
       return TEXTUAL.includes(type) ? `"${t}"` : t;
     };
