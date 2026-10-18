@@ -4,7 +4,7 @@ import hmac
 import os
 import secrets
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 
 from fastapi import Depends, Header, HTTPException, Request, Response
@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 
 from . import config
 from .db import rescope, scoped
-from .models import AuthSession, LoginAttempt, Workspace
-from .tenancy import workspace_role
+from .models import AuthSession, LoginAttempt, Role, Workspace
+from .tenancy import effective_role
 
 COOKIE = "gohigh_session"
 UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
@@ -99,7 +99,10 @@ class Ctx:
     session_id: uuid.UUID
     token_hash: str
     workspace: Workspace | None = None
-    workspace_role: str | None = None
+    workspace_role: str | None = None  # "admin" for org owners and admins, else the key of the workspace role
+    role: Role | None = None  # the role that applies in the workspace (see tenancy.effective_role)
+    org_admin: bool = False  # the role is implicit: an org owner or admin
+    cache: dict = field(default_factory=dict)  # per request: permissions.py keeps what it has worked out here
 
 
 def user(request: Request):
@@ -133,7 +136,9 @@ def in_workspace(c: Ctx = Depends(user), x_workspace_id: str | None = Header(def
     ws = c.db.get(Workspace, wid)  # row level security: only workspaces this user can access are visible
     if ws is None:
         raise HTTPException(404, "Workspace not found")
-    c.workspace, c.workspace_role = ws, workspace_role(c.db, c.user_id, ws)
+    found = effective_role(c.db, c.user_id, ws)
+    c.workspace, c.role, c.org_admin = ws, found and found[0], bool(found and found[1])
+    c.workspace_role = None if found is None else "admin" if found[1] else found[0].key
     rescope(c.db, user_id=c.user_id, org_id=ws.org_id, workspace_id=ws.id)
     return c
 

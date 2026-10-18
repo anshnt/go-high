@@ -11,12 +11,12 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import config, events, security
-from .db import scoped
+from . import config, events, roles_seed, security
+from .db import rescope, scoped
 from .models import AuthSession, Brand, MagicLink, Organization, OrgMember, User, Workspace
 from .records.seed import seed_workspace
 from .security import COOKIE, Ctx, system_db, token_hash, user
-from .tenancy import my_orgs, my_workspaces, workspace_data
+from .tenancy import my_orgs, my_workspaces, workspace_data, workspace_ids
 
 log = logging.getLogger("auth")
 router = APIRouter(prefix="/api")
@@ -55,6 +55,20 @@ def user_json(u: User) -> dict:
             "has_password": u.password_hash is not None}
 
 
+def sessions_revoked(db: Session, user_id: uuid.UUID, count: int, reason: str) -> None:
+    """The audit log of every workspace the user can act in learns that their sessions were ended. The events go in
+    the caller's transaction, one workspace at a time (the events policy checks the workspace of each row).
+    ponytail: one event per workspace; an agency admin with hundreds of workspaces wants an org level stream."""
+    if count:
+        scope = dict(db.info.get("scope", {}))
+        for workspace_id in workspace_ids(db, user_id):
+            rescope(db, **{**scope, "workspace_id": workspace_id})
+            events.emit(db, "auth.sessions_revoked", "user", user_id,
+                        {"user_id": user_id, "count": count, "reason": reason}, actor=("user", user_id),
+                        workspace_id=workspace_id)
+        rescope(db, **scope)
+
+
 @router.post("/auth/signup", status_code=201)
 def signup(body: SignUp, request: Request, response: Response, db: Session = Depends(system_db)):
     account = User(email=body.email, name=body.name, password_hash=security.hash_password(body.password)
@@ -67,7 +81,8 @@ def signup(body: SignUp, request: Request, response: Response, db: Session = Dep
         db.rollback()
         raise HTTPException(409, "An account with this email already exists") from None
     brand = Brand(org_id=org.id, name="Default")
-    db.add_all([brand, OrgMember(user_id=account.id, org_id=org.id, role="owner")])
+    roles = roles_seed.add(db, org.id)
+    db.add_all([brand, OrgMember(user_id=account.id, org_id=org.id, role_id=roles["owner"])])
     db.flush()
     workspace = Workspace(org_id=org.id, brand_id=brand.id, name="Main")
     db.add(workspace)
@@ -144,8 +159,9 @@ def consume_magic_link(body: MagicConsume, request: Request, response: Response,
         # this point may belong to someone who registered the address without owning it: both go.
         account.email_verified_at = func.now()
         account.password_hash = None
-        db.execute(update(AuthSession).where(AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None))
-                   .values(revoked_at=func.now()))
+        ended = db.execute(update(AuthSession).where(AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None))
+                           .values(revoked_at=func.now())).rowcount
+        sessions_revoked(db, user_id, ended, "email_verified")
     security.start_session(db, response, request, user_id)
     db.commit()
     db.refresh(account)
@@ -167,9 +183,10 @@ def revoke_session(session_id: uuid.UUID, response: Response, c: Ctx = Depends(u
     revoked = c.db.scalar(update(AuthSession).where(
         AuthSession.id == session_id, AuthSession.user_id == c.user_id, AuthSession.revoked_at.is_(None))
         .values(revoked_at=func.now()).returning(AuthSession.id))
-    c.db.commit()
     if revoked is None:
         raise HTTPException(404, "Session not found")
+    sessions_revoked(c.db, c.user_id, 1, "revoked")
+    c.db.commit()
     if revoked == c.session_id:
         response.delete_cookie(COOKIE, path="/")
 
@@ -179,6 +196,7 @@ def revoke_other_sessions(c: Ctx = Depends(user)):
     revoked = c.db.execute(update(AuthSession).where(
         AuthSession.user_id == c.user_id, AuthSession.id != c.session_id, AuthSession.revoked_at.is_(None))
         .values(revoked_at=func.now())).rowcount
+    sessions_revoked(c.db, c.user_id, revoked, "others_revoked")
     c.db.commit()
     return {"revoked": revoked}
 
@@ -212,8 +230,13 @@ def set_password(body: PasswordChange, request: Request, c: Ctx = Depends(user))
     with scoped(system="on") as sdb:  # users rows are writable only in the system scope
         new_hash = security.hash_password(body.password)
         sdb.execute(update(User).where(User.id == c.user_id).values(password_hash=new_hash))
-        sdb.execute(update(AuthSession).where(AuthSession.user_id == c.user_id, AuthSession.id != c.session_id,
-                                              AuthSession.revoked_at.is_(None)).values(revoked_at=func.now()))
+        ended = sdb.execute(update(AuthSession).where(
+            AuthSession.user_id == c.user_id, AuthSession.id != c.session_id, AuthSession.revoked_at.is_(None))
+            .values(revoked_at=func.now())).rowcount
+        for workspace_id in workspace_ids(sdb, c.user_id):
+            events.emit(sdb, "user.password_changed", "user", c.user_id, {"id": c.user_id}, actor=("user", c.user_id),
+                        workspace_id=workspace_id)
+        sessions_revoked(sdb, c.user_id, ended, "password_changed")
         sdb.commit()
 
 
