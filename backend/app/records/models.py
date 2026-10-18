@@ -3,6 +3,7 @@ every record of every object lives in `records`. Policies and grants are in migr
 these tables carries the workspace id as well, so a row can never point into another workspace."""
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     ARRAY,
@@ -15,6 +16,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    Numeric,
     String,
     UniqueConstraint,
     func,
@@ -28,6 +30,7 @@ from ..models import created, pk
 from .types import TYPES
 
 CARDINALITIES = ("one_to_one", "one_to_many", "many_to_many")
+STAGE_KINDS = ("open", "won", "lost")
 EMPTY_OBJECT = text("'{}'::jsonb")
 EMPTY_LIST = text("'[]'::jsonb")
 
@@ -96,6 +99,9 @@ class Record(Base):
     created_at: Mapped[datetime] = created()
     updated_at: Mapped[datetime] = created()
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # a deal's place in its stage column on the board, lower is higher up (stages.py); numeric, so a drop between two
+    # cards is the midpoint of theirs and writes only this record
+    board_position: Mapped[Decimal | None] = mapped_column(Numeric)
     # ponytail: the search text covers archived fields' values too (archiving hides a field, the index keeps its
     # words); rebuild the column from live fields when that matters.
     search = mapped_column(TSVECTOR, Computed(
@@ -109,6 +115,10 @@ Index("ix_records_search", Record.search, postgresql_using="gin")
 Index("ix_records_values", Record.values, postgresql_using="gin", postgresql_ops={"values": "jsonb_path_ops"})
 Index("ix_records_email", Record.workspace_id, Record.email_norm)
 Index("ix_records_phone", Record.workspace_id, Record.phone_e164)
+# The board reads one stage at a time in position order. ponytail: partial on records that have a stage, so only
+# deals pay for it; a custom object with a stage field would need its own.
+Index("ix_records_stage", Record.workspace_id, Record.values["stage"].astext, Record.board_position, Record.id,
+      postgresql_where=text("deleted_at IS NULL AND (\"values\" ->> 'stage') IS NOT NULL"))
 Index("ix_records_trash", Record.workspace_id, Record.object_id, Record.deleted_at.desc(),
       postgresql_where=Record.deleted_at.is_not(None))
 
@@ -218,3 +228,55 @@ class EventRecord(Base):
 
 
 Index("ix_event_records_record", EventRecord.record_id, EventRecord.event_id.desc())
+
+
+class Pipeline(Base):
+    __tablename__ = "pipelines"
+    __table_args__ = (UniqueConstraint("id", "workspace_id"),)
+
+    id: Mapped[uuid.UUID] = pk()
+    workspace_id: Mapped[uuid.UUID] = workspace()
+    object_key: Mapped[str] = mapped_column(String(40), default="deal", server_default="deal")
+    name: Mapped[str] = mapped_column(String(100))
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created()
+
+
+class Stage(Base):
+    __tablename__ = "stages"
+    __table_args__ = (
+        UniqueConstraint("id", "workspace_id"),
+        within("pipeline_id", "pipelines"),
+        CheckConstraint("kind IN (" + ", ".join(f"'{k}'" for k in STAGE_KINDS) + ")", name="ck_stages_kind"),
+        CheckConstraint("probability BETWEEN 0 AND 100", name="ck_stages_probability"),
+        CheckConstraint("rotting_days > 0", name="ck_stages_rotting_days"),
+    )
+
+    id: Mapped[uuid.UUID] = pk()
+    workspace_id: Mapped[uuid.UUID] = workspace()
+    pipeline_id: Mapped[uuid.UUID]
+    name: Mapped[str] = mapped_column(String(100))
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    kind: Mapped[str] = mapped_column(String(4), default="open", server_default="open")
+    probability: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    rotting_days: Mapped[int | None] = mapped_column(Integer)
+    # a filter AST that must hold on the deal for it to leave the stage
+    exit_rules: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=EMPTY_OBJECT)
+    color: Mapped[str | None] = mapped_column(String(20))
+    created_at: Mapped[datetime] = created()
+
+
+Index("ix_stages_pipeline", Stage.pipeline_id, Stage.position)
+
+
+class BoardLayout(Base):
+    """One user's view of one pipeline's board: which stages are collapsed and which fields the cards show."""
+    __tablename__ = "board_layouts"
+    __table_args__ = (within("pipeline_id", "pipelines"),)
+
+    pipeline_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    workspace_id: Mapped[uuid.UUID] = workspace()
+    layout: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=EMPTY_OBJECT)
+    updated_at: Mapped[datetime] = created()

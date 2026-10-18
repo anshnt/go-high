@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from . import api, auth, config, webhooks, workspaces
 from .db import get_db
 from .logs import setup_logging, trace_id
-from .records import associations, objects, tags, timeline, views
+from .records import associations, board, forecast, objects, pipelines, tags, timeline, views
 from .records import routes as records
 from .security import COOKIE, UNSAFE
 
@@ -86,7 +86,7 @@ def health(db: Session = Depends(get_db)):
 app.include_router(auth.router)
 app.include_router(workspaces.router)
 app.include_router(webhooks.router)
-for module in (objects, records, associations, tags, views, timeline):
+for module in (objects, records, associations, tags, views, timeline, pipelines, board, forecast):
     app.include_router(module.router)
 
 

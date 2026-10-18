@@ -20,6 +20,7 @@ from sqlalchemy import (
     DateTime,
     Interval,
     Numeric,
+    String,
     and_,
     case,
     cast,
@@ -33,7 +34,7 @@ from sqlalchemy.orm import aliased
 
 from .. import permissions
 from . import types
-from .models import Association, Record, RecordTag, Tag
+from .models import STAGE_KINDS, Association, Record, RecordTag, Stage, Tag
 from .schema import Catalog
 
 MAX_NODES, MAX_DEPTH, MAX_VALUES = 100, 8, 100
@@ -140,6 +141,8 @@ class Compiler:
         if "." not in key:
             return self.condition(entity, self.field(obj, key, f"{path}.field"), op, n.get("value"), path)
         head, _, rest = key.partition(".")
+        if (staged := self.cat.fields(obj).get(head)) is not None and staged.type == "stage":
+            return self.stage_path(entity, staged, rest, op, n.get("value"), path)
         other = self.cat.object(head)
         if other is None or "." in rest:
             raise FilterError(f"{path}.field", f"{key!r} must be an object key and a field, like company.name")
@@ -153,6 +156,35 @@ class Compiler:
                  (Association.to_record_id, Association.from_record_id, [t.id for t, fwd in links if not fwd]))
         return or_(false(), *[exists().where(mine == entity.id, Association.type_id.in_(ids), theirs == linked.id, test)
                               for mine, theirs, ids in sides if ids])
+
+    def stage_path(self, entity, field, rest: str, op: str, raw, path: str):
+        """`stage.kind` (open, won or lost) and `stage.pipeline` (a pipeline id) for a stage field: what the record's
+        stage is, without naming its id. A record with no stage has neither."""
+        column = {"kind": Stage.kind, "pipeline": Stage.pipeline_id}.get(rest)
+        key = f"{field.key}.{rest}"
+        if column is None:
+            raise FilterError(f"{path}.field", f"{key!r} is not a stage property; use {field.key}.kind or "
+                                               f"{field.key}.pipeline")
+        if op not in ("is", "is_not", "in", "not_in"):
+            raise FilterError(f"{path}.op", f"{op!r} does not apply to {key!r}; use is, is_not, in or not_in")
+        many = op in ("in", "not_in")
+        if many and not (isinstance(raw, list) and 0 < len(raw) <= MAX_VALUES):
+            raise FilterError(f"{path}.value", f"must be a list of 1 to {MAX_VALUES} values")
+
+        def one(value):
+            try:
+                if rest == "pipeline" and isinstance(value, str):
+                    return uuid.UUID(value)
+                if rest == "kind" and value in STAGE_KINDS:
+                    return value
+            except ValueError:
+                pass
+            what = "a pipeline id" if rest == "pipeline" else "open, won or lost"
+            raise FilterError(f"{path}.value", f"must be {what}")
+
+        wanted = [one(v) for v in (raw if many else [raw])]
+        hit = exists().where(cast(Stage.id, String) == entity.values[field.key].astext, column.in_(wanted))
+        return ~hit if op in ("is_not", "not_in") else hit
 
     def scope(self, obj, entity):
         return Compiler(self.cat).node(obj, entity, permissions.scope_filter(self.cat.c, obj), "scope", 0)

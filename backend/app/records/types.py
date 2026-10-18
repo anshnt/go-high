@@ -162,7 +162,7 @@ def choices(field, value):
 
 
 def ident(field, value):
-    """A user or record id; whether it exists is checked by the write path, which has the database."""
+    """A user, record or stage id; whether it exists is checked by the write path, which has the database."""
     try:
         return str(uuid.UUID(str(value)))
     except ValueError:
@@ -182,7 +182,8 @@ class Kind(NamedTuple):
 
 # ponytail: formula and rollup are stored and listed but never computed; they refuse writes and filters until the
 # evaluator exists (ADR 0002: computed on read first, materialized on write when lists need it).
-# ponytail: `stage` is a select until pipelines (module 10) exist; then its choices come from the pipeline's stages.
+# A `stage` value is the id of a stage (module 10); that it exists in this workspace is checked by the write path, which
+# has the database, like the people and records a `user` or `record` value names.
 TYPES: dict[str, Kind] = {
     "text": Kind(text_field(TEXT_CAP), TEXTY, frozenset({"min_length", "max_length"})),
     "long_text": Kind(text_field(LONG_TEXT_CAP), TEXTY, frozenset({"min_length", "max_length"})),
@@ -198,12 +199,12 @@ TYPES: dict[str, Kind] = {
     "url": Kind(url, TEXTY, frozenset({"min_length", "max_length"})),
     "user": Kind(ident, PICK),
     "record": Kind(ident, PICK, options=frozenset({"object"})),
-    "stage": Kind(choice, PICK, options=frozenset({"choices"})),
+    "stage": Kind(ident, PICK),
     "formula": Kind(computed, COMPUTED, options=frozenset({"expression"})),
     "rollup": Kind(computed, COMPUTED, options=frozenset({"association", "field", "function"})),
 }
-SORTABLE = ("text", "long_text", "number", "money", "date", "datetime", "boolean", "select", "stage", "email", "phone",
-            "url")
+# ponytail: a stage field is not sortable; ordering by stage means ordering by stages.position, which needs a join
+SORTABLE = ("text", "long_text", "number", "money", "date", "datetime", "boolean", "select", "email", "phone", "url")
 
 
 def validate(field, value):

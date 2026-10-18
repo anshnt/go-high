@@ -33,10 +33,10 @@ def invalid(field: str, message: str, status: int = 400) -> ApiError:
     return ApiError(status, "validation_failed", f"The {field} is not valid", {field: message})
 
 
-def where_of(cat: Catalog, obj: ObjectDef, ast):
+def where_of(cat: Catalog, obj: ObjectDef, ast, root: str = "filter"):
     """The filter as SQL; a mistake in it is a 400 that points at the node, never an error from the database."""
     try:
-        return filters.compile(cat, obj, ast)
+        return filters.compile(cat, obj, ast, root=root)
     except filters.FilterError as e:
         raise ApiError(400, "validation_failed", "The filter is not valid", {e.path: e.message}) from None
 
@@ -44,7 +44,7 @@ def where_of(cat: Catalog, obj: ObjectDef, ast):
 def sort_keys(cat: Catalog, obj: ObjectDef, spec, rank) -> list[Key]:
     """`-updated_at,display_name`: a leading minus is descending, nulls come last either way. `relevance` ranks a
     text search. The default is the newest change first (what the list index serves), best match first for a search.
-    ponytail: select and stage fields sort by choice id, not by the order of their choices."""
+    ponytail: select fields sort by choice id, not by the order of their choices."""
     items = [s.strip() for s in (spec.split(",") if isinstance(spec, str) else spec or []) if s.strip()]
     items = items or ["-relevance" if rank is not None else "-updated_at"]
     if len(items) > MAX_SORTS:
