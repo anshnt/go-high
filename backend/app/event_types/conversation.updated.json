@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "conversation.updated",
+  "description": "A conversation was assigned, snoozed, closed or reopened. `changes` maps each changed field to its old and new value. Subject: the conversation.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "contact_id": {"type": "string", "format": "uuid"},
+    "status": {"type": "string"},
+    "assignee_id": {"type": ["string", "null"], "format": "uuid"},
+    "team_id": {"type": ["string", "null"], "format": "uuid"},
+    "snooze_until": {"type": ["string", "null"], "format": "date-time"},
+    "changes": {"type": "object"}
+  },
+  "required": ["id", "contact_id", "status", "assignee_id", "team_id", "snooze_until", "changes"],
+  "additionalProperties": false
+}

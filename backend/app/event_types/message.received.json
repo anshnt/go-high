@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "message.received",
+  "description": "A message arrived from a contact, on any channel. `data` is the message with its channel kind and whether the contact and the conversation were created by it. Subject: the message.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "conversation_id": {"type": "string", "format": "uuid"},
+    "contact_id": {"type": "string", "format": "uuid"},
+    "channel_id": {"type": ["string", "null"], "format": "uuid"},
+    "direction": {"type": "string"},
+    "kind": {"type": "string"},
+    "status": {"type": "string"},
+    "subject": {"type": ["string", "null"]},
+    "body": {"type": "string"},
+    "thread_ref": {"type": ["string", "null"]},
+    "channel_kind": {"type": "string"},
+    "contact_created": {"type": "boolean"},
+    "conversation_created": {"type": "boolean"}
+  },
+  "required": ["id", "conversation_id", "contact_id", "channel_id", "direction", "kind", "status", "subject", "body", "thread_ref", "channel_kind", "contact_created", "conversation_created"],
+  "additionalProperties": false
+}

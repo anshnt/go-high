@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from . import api, audit, auth, config, roles, simulator, teams, webhooks, workspaces
 from .db import get_db
+from .inbox import channels, consent, conversations, inbound, outbound
 from .logs import setup_logging, trace_id
 from .notifications import routes as notifications
 from .records import associations, board, forecast, objects, pipelines, tags, timeline, views
@@ -90,7 +91,8 @@ app.include_router(auth.router)
 app.include_router(workspaces.router)
 app.include_router(webhooks.router)
 for module in (objects, records, associations, tags, views, timeline, pipelines, board, forecast, roles, teams,
-               simulator, audit, tasks, day, notifications):
+               simulator, audit, tasks, day, notifications, channels, conversations, outbound,
+               consent, inbound):
     app.include_router(module.router)
 
 

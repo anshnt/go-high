@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "channel.created",
+  "description": "A messaging channel was added. Secrets and settings are not part of the event. Subject: the channel.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "kind": {"type": "string"},
+    "provider": {"type": "string"},
+    "name": {"type": "string"},
+    "address": {"type": "string"},
+    "status": {"type": "string"}
+  },
+  "required": ["id", "kind", "provider", "name", "address", "status"],
+  "additionalProperties": false
+}

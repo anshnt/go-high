@@ -41,13 +41,3 @@ def create(cat: Catalog, obj: ObjectDef, values: dict, source: str) -> Record:
         return store.create(cat, obj, values, None)
     except ApiError as e:
         raise Unusable(str(e.fields or e.detail)) from None
-
-
-def find_or_create(cat: Catalog, *, email: str | None = None, phone: str | None = None,
-                   source: str) -> tuple[Record, bool]:
-    """(contact, whether it was just created). The caller holds `lock` for the identity."""
-    obj = cat.need("contact")
-    found = find(cat, obj, email=email, phone=phone)
-    if found:
-        return found, False
-    return create(cat, obj, {k: v for k, v in (("email", email), ("phone", phone)) if v}, source), True
