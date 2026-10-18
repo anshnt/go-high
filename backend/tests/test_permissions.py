@@ -168,7 +168,7 @@ def test_a_viewer_is_refused_exactly_where_the_routes_say(crm, db):
     viewer = add_member(db, ids["org_id"], "v@example.com", workspace_id=ws, workspace_role="viewer")
     held = set(role_of(admin, ws, "viewer")["capabilities"])
     seen = set()
-    for method, path, route in v1_routes():
+    for method, path, route in v1_routes(streams=False):  # the stream is read in test_inbox_stream
         url = re.sub(r"\{key\}", "contact", path)
         url = re.sub(r"\{(\w+)\}", lambda m: "swept" if m.group(1) == "field_key" else str(uuid.uuid4()), url)
         r = viewer.request(method, url, params={"object": "contact"} if path == "/api/v1/trash" else None,

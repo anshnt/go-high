@@ -103,11 +103,15 @@ def context(conn, **ctx) -> None:
         conn.execute(text("SELECT set_config(:k, :v, true)"), {"k": f"app.{key}", "v": str(ctx.get(key, ""))})
 
 
-def v1_routes() -> list[tuple[str, str, object]]:
-    """(method, path, route) of every /api/v1 route of the app."""
+STREAMS = {"/api/v1/stream"}  # Server-Sent Events: a route that never ends, which a test client cannot call
+
+
+def v1_routes(streams: bool = True) -> list[tuple[str, str, object]]:
+    """(method, path, route) of every /api/v1 route of the app. A test that calls the routes passes `streams=False`:
+    the stream is read against a live server in test_inbox_stream."""
     from app.main import app
     return [(m, r.path, r) for r in iter_route_contexts(app.routes) if (r.path or "").startswith("/api/v1")
-            for m in sorted(r.methods - {"HEAD", "OPTIONS"})]
+            and (streams or r.path not in STREAMS) for m in sorted(r.methods - {"HEAD", "OPTIONS"})]
 
 
 def declared(dependant) -> list[str]:

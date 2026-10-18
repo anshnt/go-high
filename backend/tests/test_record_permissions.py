@@ -534,7 +534,7 @@ def test_no_route_shows_a_restricted_member_what_is_out_of_scope_or_hidden(world
     view = admin.post("/api/v1/views", json={"object": "contact", "name": "V", "shared": True}, headers={H: ws}).json()
     values["view_id"] = [view["id"]]
     calls = 0
-    for method, path, _ in v1_routes():
+    for method, path, _ in v1_routes(streams=False):
         if method != "GET" and not path.endswith("/records/query"):
             continue
         params = re.findall(r"\{(\w+)\}", path)

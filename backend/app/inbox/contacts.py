@@ -39,4 +39,6 @@ def create(cat: Catalog, obj: ObjectDef, values: dict, source: str) -> Record:
     try:
         return store.create(cat, obj, values, None)
     except ApiError as e:
+        if e.status_code != 422:  # a role that may not create contacts is a setup problem: say so, do not drop mail
+            raise
         raise Unusable(str(e.fields or e.detail)) from None

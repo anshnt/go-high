@@ -11,6 +11,7 @@ from app.records import seed
 
 URL = make_url(config.DATABASE_URL)  # conftest pointed DATABASE_URL at the test database
 NAME = f"{URL.database}_inbox_migrate"  # a database of its own: the test database stays at head
+INBOX = ["conversations.read", "conversations.write", "consents.manage", "channels.manage"]
 
 
 @pytest.fixture
@@ -33,6 +34,10 @@ def old_database():
         alembic(url, "upgrade", "0005")
         with engine.begin() as conn:  # make the contacts look like those before the inbox: six fields
             conn.execute(text("DELETE FROM fields WHERE key IN ('source', 'timezone')"))
+            conn.execute(text("UPDATE roles SET capabilities = ARRAY(SELECT c FROM unnest(capabilities) c "
+                              "WHERE c <> ALL(CAST(:caps AS text[])))"), {"caps": INBOX})  # roles of the old days
+            conn.execute(text("INSERT INTO roles (org_id, key, name, capabilities) SELECT id, 'custom', 'Custom', "
+                              "ARRAY['contacts.read'] FROM organizations"))
             one = conn.scalar(text("SELECT o.id FROM objects o JOIN workspaces w ON w.id = o.workspace_id "
                                    "WHERE w.name = 'One' AND o.key = 'contact'"))
             conn.execute(text("INSERT INTO fields (workspace_id, object_id, key, label, type, position) "
@@ -45,6 +50,10 @@ def old_database():
         with admin.connect() as conn:
             conn.execute(text(f'DROP DATABASE IF EXISTS "{NAME}" WITH (FORCE)'))
         admin.dispose()
+
+
+def role_capabilities(conn) -> dict[str, set[str]]:
+    return {key: set(caps) & set(INBOX) for key, caps in conn.execute(text("SELECT key, capabilities FROM roles"))}
 
 
 def contact_fields(conn, workspace: str) -> list[tuple]:
@@ -71,6 +80,27 @@ def test_contacts_get_a_source_and_a_time_zone_and_a_field_of_the_same_key_is_ke
         assert rules == {"timezone": True}
         assert conn.scalar(text("SELECT count(*) FROM fields WHERE key IN ('source', 'timezone') AND object_id IN "
                                 "(SELECT id FROM objects WHERE key <> 'contact')")) == 0  # only contacts
+
+
+def test_the_system_roles_gain_the_inbox_capabilities_and_a_custom_role_is_left_alone(old_database):
+    url, engine = old_database
+    alembic(url, "upgrade", "head")
+    agent = {"conversations.read", "conversations.write", "consents.manage"}
+    with engine.begin() as conn:
+        assert role_capabilities(conn) == {
+            "owner": set(INBOX), "admin": set(INBOX), "manager": agent, "member": agent,
+            "viewer": {"conversations.read"}, "automation": {"conversations.read", "conversations.write"},
+            "custom": set()}
+        assert conn.scalar(text("SELECT capabilities FROM roles WHERE key = 'custom'")) == ["contacts.read"]
+    alembic(url, "downgrade", "0005")
+    with engine.begin() as conn:
+        assert set().union(*role_capabilities(conn).values()) == set()
+        assert conn.scalar(text("SELECT capabilities FROM roles WHERE key = 'custom'")) == ["contacts.read"]
+    alembic(url, "upgrade", "head")
+    with engine.begin() as conn:
+        assert role_capabilities(conn)["manager"] == agent
+        owner = conn.scalar(text("SELECT capabilities FROM roles WHERE key = 'owner'"))
+        assert len(owner) == len(set(owner))  # nothing is granted twice
 
 
 def test_the_migration_reverses_and_runs_again(old_database):
