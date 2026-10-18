@@ -213,6 +213,14 @@ test("bulk delete, restore and tags are one call up to a thousand ids and chunke
   assert.equal((await fails(() => failing.client.remove("contact", ["x"]))).status, 404);
 });
 
+test("bulk update sends the values and the owner, null to unassign, and leaves the owner out when not changed", async () => {
+  const { calls, client } = fake({ "POST /api/v1/objects/contact/records/update": (c) => ({ updated: c.body.ids.length }) });
+  await client.updateMany("contact", ["a", "b"], { owner_id: null });
+  assert.deepEqual([calls.at(-1)!.path, calls.at(-1)!.body], ["/api/v1/objects/contact/records/update", { ids: ["a", "b"], values: {}, owner_id: null }]);
+  await client.updateMany("contact", ["a"], { city: "Austin" });
+  assert.deepEqual(calls.at(-1)!.body, { ids: ["a"], values: { city: "Austin" } });
+});
+
 test("saved views map the filter, the sort and the owner both ways", async () => {
   const view = (extra: object = {}) => ({ id: "v1", object: "contact", name: "Leads", filter: { and: [{ field: "lifecycle", op: "is", value: "lead" }] }, columns: ["display_name", "tags"], sort: ["-created_at"], shared: true, owner_id: "u1", ...extra });
   const { calls, client } = fake({
