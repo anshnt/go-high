@@ -1,5 +1,7 @@
 """Tenancy and auth tables: Organization > Brand > Workspace, users and their memberships, sessions.
 Row Level Security lives in migration 0002; new workspace tables follow the same pattern (see README)."""
+import re
+import secrets
 import uuid
 from datetime import datetime
 
@@ -30,6 +32,12 @@ def created() -> Mapped[datetime]:
     return mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+def new_slug(name: str) -> str:
+    """A public handle for a workspace (`acme-4f2a`): the name, and four random characters so that two workspaces of
+    the same name do not clash."""
+    return f"{re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')[:40] or 'workspace'}-{secrets.token_hex(2)}"
+
+
 class Organization(Base):
     __tablename__ = "organizations"
 
@@ -57,6 +65,9 @@ class Workspace(Base):
     org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
     brand_id: Mapped[uuid.UUID] = mapped_column(index=True)
     name: Mapped[str] = mapped_column(String(200))
+    # in public links (/book/<slug>/...); null only for a row inserted outside the app
+    slug: Mapped[str | None] = mapped_column(String(60), unique=True,
+                                             default=lambda c: new_slug(c.get_current_parameters()["name"]))
     created_at: Mapped[datetime] = created()
 
 

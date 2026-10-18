@@ -5,6 +5,8 @@ import re
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from calendar_api import instant, public_client, visit, weekday_after
+from calendar_helpers import at
 from fastapi.routing import iter_route_contexts
 from fastapi.testclient import TestClient
 from helpers import PASSWORD, add_member, context, link, type_id
@@ -29,7 +31,10 @@ TENANT_TABLES = ["organizations", "brands", "workspaces", "users", "org_members"
                  "notification_prefs",
                  "secrets", "channels", "conversations", "conversation_reads", "messages", "consents",
                  "chat_limits",
-                 "forms", "form_versions", "form_submissions", "form_views", "form_rate"]
+                 "forms", "form_versions", "form_submissions", "form_views", "form_rate",
+                 "calendars", "calendar_hosts",
+                 "resources", "calendar_resources", "availability", "bookings", "booking_resources", "busy_blocks",
+                 "booking_reminders", "booking_attempts", "feed_tokens"]
 NOT_TENANT_DATA = {"jobs", "event_cursors"}  # the queue and the consumer cursors: no tenant rows, no app role access
 
 
@@ -92,6 +97,35 @@ def fill_crm(client, ids: dict, name: str) -> None:
     ids.update(role_id=role["id"], role_key=role["key"])
     ids["team_name"] = f"{title} Secret Team"
     ids["team_id"] = post("/api/v1/teams", name=ids["team_name"])["id"]
+    fill_calendars(client, ids, name, title)
+
+
+def fill_calendars(client, ids: dict, name: str, title: str) -> None:
+    """A calendar with a room, a booking a visitor made (and the contact it made), a day off, an outside busy block
+    and a private feed; the secrets of all of it go into `ids`."""
+    ws = {"X-Workspace-Id": ids["workspace_id"]}
+    ids["calendar_name"], ids["resource_name"] = f"{title} Secret Calendar", f"{title} Secret Room"
+    cal = client.post("/api/v1/calendars", json={"name": ids["calendar_name"], "min_notice": 0, "reminders": [60],
+                                                  "time_zone": "America/New_York"}, headers=ws).json()
+    room = client.post("/api/v1/resources", json={"name": ids["resource_name"]}, headers=ws).json()
+    client.put(f"/api/v1/calendars/{cal['id']}/resources", json=[{"resource_id": room["id"]}], headers=ws)
+    day = weekday_after(14)
+    ids["invitee_email"] = f"{name}.invitee@secret.example"
+    ids["invitee_name"] = f"{title} Secret Invitee"
+    done = visit(public_client(), cal, instant(day, "10:00"), name=ids["invitee_name"],
+                 email=ids["invitee_email"], phone="+14155550123").json()
+    booked = client.get("/api/v1/bookings", headers=ws).json()["data"][0]
+    me = client.get("/api/me").json()["user"]["id"]
+    ids["busy_external"] = f"{name}-secret-event"
+    busy = {"blocks": [{"start": at(str(day), "13:00").isoformat(), "end": at(str(day), "14:00").isoformat(),
+                        "external_id": ids["busy_external"]}]}
+    assert client.post("/api/v1/availability/busy", json=busy, headers=ws).status_code == 200
+    off = client.put(f"/api/v1/availability/users/{me}/overrides/{day}", json={"hours": []}, headers=ws)
+    assert off.status_code == 200
+    feed = client.post("/api/v1/calendars/feed", headers=ws).json()["url"]
+    ids.update(calendar_id=cal["id"], calendar_slug=cal["slug"], public_path=cal["public_path"],
+               resource_id=room["id"], booking_id=booked["id"], booking_token=done["token"], booking_day=str(day),
+               feed_token=feed.rsplit("/", 1)[1].removesuffix(".ics"))
 
 
 def fill_tasks(client, ids: dict, name: str, db) -> None:
@@ -214,8 +248,12 @@ def two_orgs(make_user, db, monkeypatch):
     return a, a_ids, b, b_ids
 
 
+NOT_SECRET = {"booking_day"}  # a date: A's own rows can name the same day
+
+
 def secrets_of(ids: dict) -> list[str]:
-    return [str(v) for v in ids.values() if isinstance(v, str)] + ["bob@example.com", "Bravo Org"]
+    return [str(v) for k, v in ids.items() if isinstance(v, str) and k not in NOT_SECRET] + ["bob@example.com",
+                                                                                              "Bravo Org"]
 
 
 def signin_alice() -> TestClient:
@@ -239,9 +277,17 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
                "provider": "twilio",
                # forms: the public routes are found by key, so B's internal id must find nothing there
                "form_id": b_ids["form_id"], "version_id": b_ids["form_version_id"],
-               "submission_id": b_ids["submission_id"], "public_key": b_ids["form_id"]}
+               "submission_id": b_ids["submission_id"], "public_key": b_ids["form_id"],
+               "calendar_id": b_ids["calendar_id"],
+               "booking_id": b_ids["booking_id"], "resource_id": b_ids["resource_id"]}
     others = {"key": [b_ids["object_key"], "contact"], "field_key": [b_ids["field_key"], "email"],  # B's, and A's own
-              "kind": ["sms"]}
+              "kind": ["sms"],
+              "owner": ["users", "resources"], "owner_id": [b_ids["user_id"], b_ids["resource_id"]],
+              "day": [b_ids["booking_day"]],
+              # the public routes are open to whoever holds a link, by design: so the sweep holds only the parts of
+              # B's links that name B (its workspace handle, the workspace that prefixes a token), never a secret
+              "workspace_slug": [b_ids["public_path"].split("/")[2]], "calendar_slug": ["not-a-calendar"],
+              "token": [b_ids["booking_token"].split(".")[0] + ".not-the-secret"]}
     body = {"name": "x", "brand_id": b_ids["brand_id"], "org_id": b_ids["org_id"], "email": "bob@example.com",
             "workspace_id": b_ids["workspace_id"], "password": "not the password", "token": "bogus",
             "url": "https://hooks.example.com/sweep", "event_types": ["*"], "active": False,
@@ -274,13 +320,22 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
             # forms: B's version, response and resume token in every place a body takes one
             "definition": {"steps": []}, "settings": {"max_responses": 1}, "status": "closed",
             "answers": {"first_name": "Swept"}, "view_token": "swept", "resume_token": b_ids["resume_token"],
-            "step": "s1", "hp": ""}
+            "step": "s1", "hp": "",
+            # calendars: B's calendar, resource, person and booking wherever a body names one
+            "calendar_id": b_ids["calendar_id"], "resource_id": b_ids["resource_id"],
+            "hosts": [{"user_id": b_ids["user_id"]}], "start": at(b_ids["booking_day"], "10:00").isoformat(),
+            "time_zone": "Asia/Tokyo", "weekly": {}, "hours": [], "durations": [30], "reason": "swept",
+            "blocks": [{"start": at(b_ids["booking_day"], "10:00").isoformat(),
+                        "end": at(b_ids["booking_day"], "11:00").isoformat(), "external_id": b_ids["busy_external"]}]}
     tables_of_b = ("objects", "fields", "records", "tags", "record_tags", "association_types", "associations",
                    "saved_views", "event_records", "events", "pipelines", "stages", "board_layouts", "teams",
                    "team_members", "tasks", "notifications", "notification_prefs",
                    "secrets", "channels", "conversations", "conversation_reads", "messages", "consents",
                    "chat_limits",
-                   "forms", "form_versions", "form_submissions", "form_views", "form_rate")
+                   "forms", "form_versions", "form_submissions", "form_views", "form_rate",
+                   "calendars", "calendar_hosts", "resources", "calendar_resources", "availability",
+                   "bookings", "booking_resources", "busy_blocks", "booking_reminders", "booking_attempts",
+                   "feed_tokens")
     snapshot = "SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t::text), '')) FROM {} t WHERE {} = :w"
 
     def rows_of_b():
@@ -326,7 +381,7 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
         "/api/v1/contacts/{contact_id}/consents", "/api/v1/contacts/{contact_id}/consents/{kind}",
         "/api/v1/stream", "/api/hooks/{provider}/{channel_id}", "/api/public/chat/{widget_key}/session",
         "/api/public/chat/{widget_key}/messages", "/api/public/chat/{widget_key}/identify",
-                # forms: the admin API, the analytics and exports, and the public runtime
+        # forms: the admin API, the analytics and exports, and the public runtime
         "/api/v1/forms", "/api/v1/forms/{form_id}", "/api/v1/forms/{form_id}/restore",
         "/api/v1/forms/{form_id}/duplicate", "/api/v1/forms/{form_id}/versions",
         "/api/v1/forms/{form_id}/versions/{version_id}", "/api/v1/forms/{form_id}/publish",
@@ -334,7 +389,20 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
         "/api/v1/forms/{form_id}/submissions/{submission_id}", "/api/v1/forms/{form_id}/analytics",
         "/api/public/forms/{public_key}", "/api/public/forms/{public_key}/views",
         "/api/public/forms/{public_key}/submissions", "/api/public/forms/{public_key}/resume",
-        "/api/public/forms/{public_key}/submissions/{submission_id}/complete"}
+        "/api/public/forms/{public_key}/submissions/{submission_id}/complete",
+        "/api/v1/calendars", "/api/v1/calendars/feed", "/api/v1/calendars/{calendar_id}",
+        "/api/v1/calendars/{calendar_id}/hosts", "/api/v1/calendars/{calendar_id}/resources",
+        "/api/v1/calendars/{calendar_id}/slots", "/api/v1/calendars/{calendar_id}/explain",
+        "/api/v1/calendars/{calendar_id}/simulate", "/api/v1/resources", "/api/v1/resources/{resource_id}",
+        "/api/v1/availability/busy", "/api/v1/availability/{owner}/{owner_id}",
+        "/api/v1/availability/{owner}/{owner_id}/overrides/{day}", "/api/v1/bookings", "/api/v1/bookings/{booking_id}",
+        "/api/v1/bookings/{booking_id}/cancel", "/api/v1/bookings/{booking_id}/reschedule",
+        "/api/v1/bookings/{booking_id}/status", "/api/public/calendars/{workspace_slug}/{calendar_slug}",
+        "/api/public/calendars/{workspace_slug}/{calendar_slug}/slots",
+        "/api/public/calendars/{workspace_slug}/{calendar_slug}/bookings", "/api/public/bookings/{token}",
+        "/api/public/bookings/{token}/slots", "/api/public/bookings/{token}/cancel",
+        "/api/public/bookings/{token}/reschedule", "/api/public/bookings/{token}/ics",
+        "/api/public/feeds/{token}.ics"}
 
     seen_own_data = False
     alice = signin_alice()
@@ -392,6 +460,11 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
     cards = [d for st in alice.get(f"{mine_p}/board", headers=own).json()["stages"] for d in st["deals"]]
     assert [d["display_name"] for d in cards] == [a_ids["deal_name"]]
     assert alice.get(f"{mine_p}/forecast", headers=own).status_code == 200
+    # and A's own calendar, booking and room answer for A, so the 404s for B's mean something
+    assert alice.get(f"/api/v1/calendars/{a_ids['calendar_id']}", headers=own).json()["name"] == a_ids["calendar_name"]
+    assert [b["id"] for b in alice.get("/api/v1/bookings", headers=own).json()["data"]] == [a_ids["booking_id"]]
+    assert [r["name"] for r in alice.get("/api/v1/resources", headers=own).json()["data"]] == [a_ids["resource_name"]]
+    assert alice.get(f"/api/public/bookings/{a_ids['booking_token']}").status_code == 200
     assert alice.get(f"{mine_p}/layout", headers=own).json()["collapsed"] == [a_ids["won_stage_id"]]
     # the inbox: A reaches its own channel, conversation and messages, and nothing of B's comes with them
     inbox = alice.get("/api/v1/conversations", headers=own, params={"limit": 200})
@@ -511,6 +584,7 @@ def test_the_documented_pattern_isolates_a_new_workspace_table(two_orgs):
 
 
 def test_the_app_role_holds_only_the_grants_its_handlers_need():
+    ALL4 = {"SELECT", "INSERT", "UPDATE", "DELETE"}
     wanted = {"events": {"SELECT", "INSERT"}, "webhook_endpoints": {"SELECT", "INSERT", "UPDATE", "DELETE"},
               "webhook_deliveries": {"SELECT", "INSERT"}, "idempotency_keys": {"SELECT", "INSERT", "DELETE"},
               "event_cursors": set(), "jobs": {"INSERT"},  # jobs: add a row and read its id, nothing else
@@ -541,7 +615,13 @@ def test_the_app_role_holds_only_the_grants_its_handlers_need():
               # forms go to the trash and a version is never changed; only the rate counters are deleted
               "forms": {"SELECT", "INSERT", "UPDATE"}, "form_versions": {"SELECT", "INSERT"},
               "form_submissions": {"SELECT", "INSERT", "UPDATE"}, "form_views": {"SELECT", "INSERT", "UPDATE"},
-              "form_rate": {"SELECT", "INSERT", "UPDATE", "DELETE"}}
+              "form_rate": {"SELECT", "INSERT", "UPDATE", "DELETE"},
+              # calendars: a booking is cancelled or moved, never deleted by a request
+              "calendars": ALL4, "calendar_hosts": ALL4, "resources": ALL4, "calendar_resources": ALL4,
+              "availability": ALL4, "bookings": {"SELECT", "INSERT", "UPDATE"},
+              "booking_resources": {"SELECT", "INSERT", "DELETE"}, "busy_blocks": ALL4,
+              "booking_reminders": {"SELECT", "INSERT", "UPDATE"}, "booking_attempts": {"SELECT", "INSERT", "DELETE"},
+              "feed_tokens": {"SELECT", "INSERT", "DELETE"}}
     every = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
     with engine.connect() as conn:
         for table, expected in wanted.items():
@@ -732,10 +812,10 @@ def test_a_user_of_a_gets_404s_for_bs_objects_fields_records_tags_views_and_link
     # what A can list and search is A's: not B's names, not B's tag, not B's count
     page = a.get(contact, params={"count": "true", "include": "tags,company", "limit": 200}, headers=mine).json()
     names = {r["display_name"] for r in page["data"]}  # A's contacts: the person, the texting customer, a chat visitor
-    # and the contact one of A's forms made
+    # the contact one of A's forms made and the invitee of A's booking
     assert (names - {a_ids["customer_phone"]} - {n for n in names if n.startswith("Visitor ")}
-            == {a_ids["record_name"], a_ids["form_answer"]})
-    assert page["total"] == 4
+            == {a_ids["record_name"], a_ids["form_answer"], a_ids["invitee_name"]})
+    assert page["total"] == 5
     assert not any(leak in json.dumps(page) for leak in secrets_of(b_ids))
     for query in ({"q": "bravo"}, {"q": "secret"}, {"q": b_ids["record_name"]}, {"filter": json.dumps({"tag": tag})},
                   {"filter": json.dumps({"tag": b_ids["tag_name"]})},
@@ -866,11 +946,66 @@ def test_the_app_role_cannot_move_a_row_to_another_workspace_or_point_one_across
             assert conn.execute(text("DELETE FROM pipelines WHERE id NOT IN (SELECT pipeline_id FROM stages)")
                                 ).rowcount == 1  # Sales, which has nothing left
             conn.rollback()
-    # as filled, with the inbox's two contacts and the contact a form made
-    assert db.scalar(text("SELECT count(*) FROM records WHERE workspace_id = :w"), {"w": b_ws}) == 8
+    # as filled, with the inbox's two contacts, the contact a form made and the one a booking made
+    assert db.scalar(text("SELECT count(*) FROM records WHERE workspace_id = :w"), {"w": b_ws}) == 9
     assert db.scalar(text("SELECT count(*) FROM stages WHERE workspace_id = :w"), {"w": b_ws}) == 8
     assert db.scalar(text("SELECT count(*) FROM pipelines WHERE workspace_id = :w"), {"w": b_ws}) == 2
     assert db.scalar(text("SELECT count(*) FROM tasks WHERE workspace_id = :w"), {"w": b_ws}) == 2
+
+
+def test_the_app_role_cannot_move_or_point_calendar_rows_across_workspaces(two_orgs, db):
+    _, a_ids, _, b_ids = two_orgs
+    a_ws, b_ws = a_ids["workspace_id"], b_ids["workspace_id"]
+    alice = signin_alice().get("/api/me").json()["user"]["id"]
+    ids = {"a": a_ws, "b": b_ws, "u": alice, "ac": a_ids["calendar_id"], "bc": b_ids["calendar_id"],
+           "br": b_ids["resource_id"], "ar": a_ids["resource_id"], "bb": b_ids["booking_id"],
+           "bk": b_ids["record_id"]}
+    span = "now(), now() + interval '1 hour'"
+    with engine.connect() as conn:
+        for table in ("calendars", "calendar_hosts", "resources", "calendar_resources", "availability", "bookings",
+                      "busy_blocks", "booking_reminders"):  # a row cannot change its workspace
+            with pytest.raises(DBAPIError, match="row-level security"), conn.begin():
+                context(conn, workspace_id=a_ws, user_id=alice)
+                conn.execute(text(f"UPDATE {table} SET workspace_id = :b"), ids)
+        for statement in ("INSERT INTO calendars (workspace_id, name, slug) VALUES (:b, 'x', 'x')",
+                          "INSERT INTO resources (workspace_id, name) VALUES (:b, 'x')",
+                          "INSERT INTO busy_blocks (workspace_id, user_id, starts_at, ends_at) "
+                          f"VALUES (:b, :u, {span})",
+                          "INSERT INTO feed_tokens (workspace_id, user_id, token_hash) VALUES (:b, :u, 'x')",
+                          "INSERT INTO booking_attempts (workspace_id, calendar_id, ip_hash) VALUES (:b, :bc, 'x')"):
+            with pytest.raises(DBAPIError, match="row-level security"), conn.begin():  # nor be put into another
+                context(conn, workspace_id=a_ws, user_id=alice)
+                conn.execute(text(statement), ids)
+        for statement in ("INSERT INTO calendar_hosts (workspace_id, calendar_id, user_id) VALUES (:a, :bc, :u)",
+                          "INSERT INTO calendar_resources (calendar_id, resource_id, workspace_id) "
+                          "VALUES (:bc, :ar, :a)",  # B's calendar (B's own pair with its room exists already)
+                          "INSERT INTO calendar_resources (calendar_id, resource_id, workspace_id) "
+                          "VALUES (:ac, :br, :a)",
+                          "INSERT INTO bookings (workspace_id, calendar_id, host_ids, starts_at, ends_at, token_hash) "
+                          f"VALUES (:a, :bc, '{{}}', {span}, 'tok1')",
+                          "INSERT INTO bookings (workspace_id, calendar_id, host_ids, starts_at, ends_at, token_hash, "
+                          f"contact_id) VALUES (:a, :ac, '{{}}', {span}, 'tok2', :bk)",
+                          "INSERT INTO booking_resources (booking_id, resource_id, workspace_id) VALUES (:bb, :ar, :a)",
+                          "INSERT INTO booking_reminders (workspace_id, booking_id, offset_minutes, due_at) "
+                          "VALUES (:a, :bb, 5, now())",
+                          "INSERT INTO availability (workspace_id, resource_id) VALUES (:a, :br)",
+                          "INSERT INTO booking_attempts (workspace_id, calendar_id, ip_hash) VALUES (:a, :bc, 'x')"):
+            with pytest.raises(DBAPIError, match="foreign key"), conn.begin():  # a row of A cannot name one of B
+                context(conn, workspace_id=a_ws, user_id=alice)
+                conn.execute(text(statement), ids)
+        with pytest.raises(DBAPIError, match="permission denied"), conn.begin():  # a booking is cancelled, not deleted
+            context(conn, workspace_id=a_ws)
+            conn.execute(text("DELETE FROM bookings"))
+        with pytest.raises(DBAPIError, match="permission denied"), conn.begin():  # and its resources stay with it
+            context(conn, workspace_id=a_ws)
+            conn.execute(text("UPDATE booking_resources SET quantity = 9"))
+        with conn.begin():  # what a handler may touch is the caller's workspace only
+            context(conn, workspace_id=a_ws)
+            assert conn.execute(text("UPDATE busy_blocks SET source = 'x'")).rowcount == 1
+            assert conn.execute(text("DELETE FROM feed_tokens")).rowcount == 1
+            conn.rollback()
+    for table, count in (("calendars", 1), ("bookings", 1), ("busy_blocks", 1), ("feed_tokens", 1), ("resources", 1)):
+        assert db.scalar(text(f"SELECT count(*) FROM {table} WHERE workspace_id = :w"), {"w": b_ws}) == count, table
 
 
 def test_a_private_view_is_hidden_from_other_users_in_sql_too(two_orgs):

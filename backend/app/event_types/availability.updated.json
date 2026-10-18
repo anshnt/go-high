@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "availability.updated",
+  "description": "Working hours or busy time of a person or resource changed: `change` says what (weekly, an override date, busy). Subject: the person or resource.",
+  "type": "object",
+  "properties": {
+    "owner": {"type": "string", "enum": ["users", "resources"]},
+    "id": {"type": "string", "format": "uuid"},
+    "change": {"type": "string"}
+  },
+  "required": ["owner", "id", "change"],
+  "additionalProperties": false
+}

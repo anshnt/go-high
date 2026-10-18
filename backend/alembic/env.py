@@ -1,6 +1,7 @@
 from alembic import context
 
 from app import api, events, jobs, models, webhooks  # noqa: F401  (registers tables on Base.metadata)
+from app.calendars import models as calendar_models  # noqa: F401
 from app.db import Base, engine
 from app.forms import models as form_models  # noqa: F401
 from app.inbox import models as inbox_models  # noqa: F401

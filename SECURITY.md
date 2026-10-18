@@ -169,6 +169,36 @@ Row level security separates tenants; what a user may do inside a workspace is `
 - Form versions are immutable: `gohigh_app` can insert but not update or delete them, nor delete forms, responses or
   views (a form goes to the trash); only the per-minute rate counters are deleted by requests.
 
+## Public booking endpoints
+
+`/api/public/calendars`, `/api/public/bookings` and `/api/public/feeds` need no sign in (calendars and booking, module
+16), so they are kept narrow.
+
+- The workspace comes from the link and nothing else: the handler resolves the workspace handle in the pre-auth scope,
+  then narrows the session to that workspace, so row level security confines every later query. A visitor can reach
+  only what a link names: a calendar's public settings (its name, description, lengths, locations, questions, host
+  names for personal, collective and class calendars) and its open times.
+- A booking's link carries a 256 bit secret after the workspace id, and a private feed link carries one too. Only their
+  SHA-256 is stored, so a database read does not give out working links; a feed link is shown once and a new one
+  replaces it. Looking a link up needs the secret: a token with the right workspace and a wrong secret, or another
+  workspace's id, is a 404, the same as no booking.
+- Booking requests are held back by a honeypot field (a filled one gets a believable 201 and stores nothing) and a rate
+  limit per calendar and visitor, with a ceiling per calendar. The visitor is a SHA-256 of their address keyed with
+  `SECRET_KEY`, so the table that counts attempts holds no addresses. Refused and failed attempts count too.
+- Writes by a visitor run as the workspace's Automation role, with no user, so the contact a booking makes or fills in
+  is bound by that role's permissions and appears in the audit log as written by the system. An existing contact is
+  filled in where a field is blank and never overwritten.
+- Two bookings for one time are serialized by row locks taken before anyone reads who is free, and a test books the same
+  time from eight threads at once. Cancel and reschedule links stop working inside the calendar's cutoff and after the
+  meeting.
+- The routes answer any origin (`Access-Control-Allow-Origin: *`) because the booking widget is embedded in other
+  people's sites without an iframe. They set no cookies and read none, so the open origin exposes nothing a link does
+  not, and responses are `Cache-Control: no-store`. Booking events carry ids, times and the calendar name, never the
+  invitee's name, email or phone, which belong to the contact.
+- Inside the app a booking shows the invitee's name, email and phone to anyone with `calendars.read`, as the person
+  who made it gave them for that meeting; the link to the contact record is shown only when the caller's record scope
+  lets them see that contact, and hidden fields stay hidden there.
+
 ## Repository
 
 - `main` is protected: changes arrive by pull request with passing CI; force pushes and deletion are blocked.
