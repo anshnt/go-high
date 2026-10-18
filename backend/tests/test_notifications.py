@@ -1,6 +1,5 @@
 """Notifications: what turns an event into one (per each person's preferences), quiet hours, the due-time job, the
 bell's API and preferences, and that nobody else in the workspace can see them."""
-import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -285,15 +284,28 @@ def due_jobs(db) -> list[dict]:
     return [r._asdict() for r in rows]
 
 
+def elapse(db, task_id) -> None:
+    """Time passes for one task: its due time, and the planned job's copy of it, are a moment ago, and the job is due.
+    (Waiting for a real clock would make these tests depend on how busy the machine is.)"""
+    past = datetime.now(UTC) - timedelta(seconds=1)
+    db.execute(text("UPDATE tasks SET due_at = :d WHERE id = :i"), {"d": past, "i": task_id})
+    db.execute(text("UPDATE jobs SET run_at = now(), payload = jsonb_set(payload, '{due_at}', "
+                    "to_jsonb(CAST(:s AS text))) WHERE kind = 'task.due' AND payload->>'task_id' = :i"),
+               {"s": past.isoformat(), "i": task_id})
+    db.commit()
+
+
+def in_an_hour() -> str:
+    return iso(datetime.now(UTC) + timedelta(hours=1))
+
+
 def test_a_task_due_notification_is_sent_once_at_the_due_time(team, db):
     clients, who, ws = team
-    soon = datetime.now(UTC) + timedelta(seconds=1)
-    task = make(clients["ann"], ws, "Send the quote", assignee_id=who["ben"], due_at=iso(soon))
+    task = make(clients["ann"], ws, "Send the quote", assignee_id=who["ben"], due_at=in_an_hour())
     drain()
     assert [n["kind"] for n in inbox(clients["ben"], ws)] == ["task_assigned"]  # not due yet: the job waits
     assert [j["status"] for j in due_jobs(db)] == ["queued"]
-    time.sleep(1.2)
-    due_now(db)
+    elapse(db, task["id"])
     drain()
     assert [n["kind"] for n in inbox(clients["ben"], ws)] == ["task_due", "task_assigned"]
     note = inbox(clients["ben"], ws)[0]
@@ -309,20 +321,18 @@ def test_a_task_due_notification_is_sent_once_at_the_due_time(team, db):
 def test_a_finished_moved_or_reassigned_task_is_not_announced_as_due(team, db):
     clients, who, ws = team
     ann = clients["ann"]
-    soon = iso(datetime.now(UTC) + timedelta(seconds=1))
-    finished = make(ann, ws, "Finished", assignee_id=who["ben"], due_at=soon)
-    moved = make(ann, ws, "Moved", assignee_id=who["ben"], due_at=soon)
-    dropped = make(ann, ws, "Dropped", assignee_id=who["ben"], due_at=soon)
-    deleted = make(ann, ws, "Deleted", assignee_id=who["ben"], due_at=soon)
+    control, finished, moved, dropped, deleted = (
+        make(ann, ws, title, assignee_id=who["ben"], due_at=in_an_hour())
+        for title in ("Control", "Finished", "Moved", "Dropped", "Deleted"))
     ann.post(f"{T}/{finished['id']}/complete", headers={H: ws})
     ann.patch(f"{T}/{moved['id']}", json={"due_at": iso(datetime.now(UTC) + timedelta(days=1))}, headers={H: ws})
     ann.patch(f"{T}/{dropped['id']}", json={"assignee_id": None}, headers={H: ws})
     ann.delete(f"{T}/{deleted['id']}", headers={H: ws})
     drain()
-    time.sleep(1.2)
+    elapse(db, control["id"])  # the control is really due; every other job runs too, early, and must do nothing
     due_now(db)
     drain()
-    assert "task_due" not in [n["kind"] for n in inbox(clients["ben"], ws, limit=50)]
+    assert [n["title"] for n in inbox(clients["ben"], ws, limit=50) if n["kind"] == "task_due"] == ["Due now: Control"]
 
 
 def test_a_task_without_an_assignee_or_a_time_has_no_due_job(team, db):
@@ -342,9 +352,8 @@ def test_a_task_without_an_assignee_or_a_time_has_no_due_job(team, db):
 def test_scope_all_people_hear_when_any_task_is_due(team, db):
     clients, who, ws = team
     save_prefs(clients["cara"], ws, task_due={"scope": "all"})
-    make(clients["ann"], ws, "Ben's", assignee_id=who["ben"], due_at=iso(datetime.now(UTC) + timedelta(seconds=1)))
-    time.sleep(1.2)
-    due_now(db)
+    task = make(clients["ann"], ws, "Ben's", assignee_id=who["ben"], due_at=in_an_hour())
+    elapse(db, task["id"])
     drain()
     assert [n["kind"] for n in inbox(clients["ben"], ws)] == ["task_due", "task_assigned"]
     assert [n["title"] for n in inbox(clients["cara"], ws)] == ["Due now: Ben's"]
