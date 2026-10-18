@@ -117,7 +117,7 @@ def deliver(db: Session, cache: dict, draft: Draft) -> None:
             workspace_id=draft.workspace_id, user_id=user_id, kind=draft.kind,
             title=draft.to_person if concerned else draft.to_others, body=draft.body, link=draft.link,
             subject_type=draft.subject[0], subject_id=draft.subject[1], dedupe_key=draft.key,
-            created_at=show_at if show_at else func.now()).on_conflict_do_nothing(
+            created_at=show_at if show_at else func.clock_timestamp()).on_conflict_do_nothing(
                 index_elements=["user_id", "dedupe_key"]))
 
 

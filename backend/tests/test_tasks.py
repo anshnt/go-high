@@ -106,7 +106,8 @@ def test_creating_a_task_validates_every_field(crm, db):
     client.delete(f"/api/v1/objects/contact/records/{trashed['id']}", headers={H: ws})
     assert "record_id" in error_fields(post({"title": "a", "record_id": trashed["id"]}))
     outsider = add_member(db, ids["org_id"], "outsider@example.com")
-    assert "assignee_id" in error_fields(post({"title": "a", "assignee_id": outsider.get("/api/me").json()["user"]["id"]}))
+    outsider_id = outsider.get("/api/me").json()["user"]["id"]
+    assert "assignee_id" in error_fields(post({"title": "a", "assignee_id": outsider_id}))
     assert listing(client, ws)["data"] == []  # nothing half-saved
 
 
@@ -366,7 +367,7 @@ def test_count_and_until_end_a_series(crm):
 
 def test_a_timed_recurring_task_keeps_the_readers_wall_clock_through_a_clock_change(crm):
     client, ws, ids = crm
-    task = make(client, ws, "Morning check", due_at="2026-10-31T13:00:00Z", recurrence="FREQ=DAILY")  # 09:00 in New York
+    task = make(client, ws, "Morning check", due_at="2026-10-31T13:00:00Z", recurrence="FREQ=DAILY")  # 9:00 in New York
     following = complete(client, ws, task["id"], tz="America/New_York")["next"]
     assert due(following) == "2026-11-01T14:00:00Z"  # 09:00 EST: the clocks went back that night
     after = complete(client, ws, following["id"], tz="America/New_York")["next"]

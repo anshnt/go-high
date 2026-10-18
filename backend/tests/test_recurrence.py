@@ -1,4 +1,4 @@
-"""Recurrence rules of tasks: parsing, the canonical text, and the next due date for every frequency (pure functions)."""
+"""Recurrence rules of tasks: parsing, the canonical text and the next due date for each frequency (pure functions)."""
 from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
