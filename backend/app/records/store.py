@@ -6,13 +6,14 @@ from collections import defaultdict
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy import update as update_rows
 
 from .. import events, permissions
 from ..api import ApiError
-from ..models import OrgMember, WorkspaceMember
+from ..models import OrgMember, Role, WorkspaceMember
 from ..security import Ctx
+from ..tenancy import ADMIN_ORG_ROLES
 from . import filters, stages, types
 from .models import ObjectDef, Record
 from .schema import Catalog
@@ -22,8 +23,13 @@ UNSET = object()
 
 
 def scope(cat: Catalog, obj: ObjectDef, entity=Record):
-    """What the caller may see of `obj`: the permission scope as a SQL condition (ADR 0004 fills the hook)."""
-    return filters.compile(cat, obj, permissions.scope_filter(cat.c, obj), entity=entity, root="scope")
+    """What the caller may see of `obj`: the permission scope as a SQL condition (ADR 0004)."""
+    return filters.compile(cat, obj, permissions.scope_filter(cat.c, obj), entity=entity, root="scope", trusted=True)
+
+
+def anywhere(cat: Catalog):
+    """The same for records of any live object, for what counts across objects (a tag's usage)."""
+    return or_(false(), *[and_(Record.object_id == o.id, scope(cat, o)) for o in cat.objects()])
 
 
 def live(cat: Catalog, obj: ObjectDef):
@@ -62,8 +68,9 @@ def member_ids(c: Ctx, ids: set[str]) -> set[str]:
     wanted = [uuid.UUID(i) for i in ids]
     members = select(WorkspaceMember.user_id).where(WorkspaceMember.workspace_id == c.workspace.id,
                                                     WorkspaceMember.user_id.in_(wanted))
-    admins = select(OrgMember.user_id).where(OrgMember.org_id == c.workspace.org_id,
-                                             OrgMember.role.in_(("owner", "admin")), OrgMember.user_id.in_(wanted))
+    admins = (select(OrgMember.user_id).join(Role, Role.id == OrgMember.role_id)
+              .where(OrgMember.org_id == c.workspace.org_id, Role.key.in_(ADMIN_ORG_ROLES),
+                     OrgMember.user_id.in_(wanted)))
     return {str(u) for u in c.db.scalars(members.union(admins))}
 
 
@@ -164,14 +171,28 @@ def visible_values(cat: Catalog, obj: ObjectDef, rec: Record) -> dict:
     return permissions.redact(cat.c, obj, {k: v for k, v in rec.values.items() if k in fields})
 
 
+def shown_name(cat: Catalog, obj: ObjectDef, rec: Record) -> str:
+    """The display name as the caller may see it: when a field they cannot read is part of it, it is rebuilt from
+    the fields they can."""
+    if "display_name" not in permissions.hidden(cat.c, obj):
+        return rec.display_name
+    return display_name(obj, cat.fields(obj), visible_values(cat, obj, rec)) or "(hidden)"
+
+
 def record_json(cat: Catalog, obj: ObjectDef, rec: Record) -> dict:
-    return {"id": rec.id, "object": obj.key, "display_name": rec.display_name, "values": visible_values(cat, obj, rec),
+    return {"id": rec.id, "object": obj.key, "display_name": shown_name(cat, obj, rec),
+            "values": visible_values(cat, obj, rec),
             "owner_id": rec.owner_id, "created_by": rec.created_by, "created_at": rec.created_at,
             "updated_at": rec.updated_at, "deleted_at": rec.deleted_at}
 
 
 def brief(obj: ObjectDef, rec: Record) -> dict:
     return {"id": rec.id, "object": obj.key, "display_name": rec.display_name}
+
+
+def glance(cat: Catalog, obj: ObjectDef, rec: Record) -> dict:
+    """`brief` for a response: the name as the caller may see it."""
+    return {**brief(obj, rec), "display_name": shown_name(cat, obj, rec)}
 
 
 def state(cat: Catalog, obj: ObjectDef, rec: Record) -> dict:
@@ -185,9 +206,13 @@ def actor(c: Ctx) -> tuple[str, uuid.UUID]:
     return "user", c.user_id
 
 
-def create(cat: Catalog, obj: ObjectDef, values: dict, owner_id: uuid.UUID | None) -> Record:
+def create(cat: Catalog, obj: ObjectDef, values: dict, owner_id=UNSET) -> Record:
+    """A record starts with the owner sent (null: unassigned). With none sent, it is the creator's, unless their scope
+    would show them an unassigned record, so a person who sees only their own records can see what they create."""
     c = cat.c
     permissions.check_write(c, obj, values)
+    if owner_id is UNSET:
+        owner_id = None if permissions.sees_unowned(c, obj) else c.user_id
     clean = prepare(cat, obj, {}, stages.default(cat, obj, values), owner_id, creating=True)
     fields = cat.fields(obj)
     email, phone = identity(fields, clean)
@@ -234,12 +259,14 @@ def update(cat: Catalog, obj: ObjectDef, rec: Record, patch: dict, owner_id=UNSE
 
 
 def trash(cat: Catalog, obj: ObjectDef, rec: Record) -> None:
+    permissions.require_object(cat.c, obj, "delete")
     rec.deleted_at = func.now()
     cat.db.flush()
     events.emit(cat.db, "record.deleted", "record", rec.id, brief(obj, rec), actor=actor(cat.c))
 
 
 def restore(cat: Catalog, obj: ObjectDef, rec: Record) -> None:
+    permissions.require_object(cat.c, obj, "delete")
     rec.deleted_at = None
     cat.db.flush()
     events.emit(cat.db, "record.restored", "record", rec.id, brief(obj, rec), actor=actor(cat.c))

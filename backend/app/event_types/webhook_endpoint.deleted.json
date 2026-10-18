@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "webhook_endpoint.deleted",
+  "description": "A webhook endpoint was deleted. Subject: the endpoint.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"}
+  },
+  "required": ["id"],
+  "additionalProperties": false
+}

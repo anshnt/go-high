@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "auth.sessions_revoked",
+  "description": "Sessions of a user were ended: `reason` is revoked (one), others_revoked, password_changed or email_verified. Written to every workspace the user can act in. Subject: the user.",
+  "type": "object",
+  "properties": {
+    "user_id": {"type": "string", "format": "uuid"},
+    "count": {"type": "integer"},
+    "reason": {"type": "string"}
+  },
+  "required": ["user_id", "count", "reason"],
+  "additionalProperties": false
+}

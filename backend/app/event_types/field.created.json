@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "field.created",
+  "description": "A field was added to an object. Subject: the field.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "object": {"type": "string"},
+    "key": {"type": "string"},
+    "label": {"type": "string"},
+    "type": {"type": "string"},
+    "options": {"type": "object"},
+    "rules": {"type": "object"},
+    "position": {"type": "integer"}
+  },
+  "required": ["id", "object", "key", "label", "type", "options", "rules", "position"],
+  "additionalProperties": false
+}

@@ -68,17 +68,25 @@ def link(client, ws, record_id: str, other_id: str, association_type: str) -> di
     return r.json()
 
 
+def role_id(db, org_id, key: str):
+    """The id of a role of the organization by its key (owner, admin, manager, member, viewer, automation, or a custom
+    role's)."""
+    found = db.scalar(text("SELECT id FROM roles WHERE org_id = :o AND key = :k"), {"o": org_id, "k": key})
+    assert found, key
+    return found
+
+
 def add_member(db, org_id, email, org_role="member", workspace_id=None, workspace_role="member"):
-    """Creates a user directly (as the owner role) and returns a signed-in client."""
+    """Creates a user directly (as the owner role) and returns a signed-in client. The roles are given by key."""
     from fastapi.testclient import TestClient
 
     from app.main import app
     user_id = db.execute(text("INSERT INTO users (email, name) VALUES (:e, 'M') RETURNING id"), {"e": email}).scalar()
-    db.execute(text("INSERT INTO org_members (user_id, org_id, role) VALUES (:u, :o, :r)"),
-               {"u": user_id, "o": org_id, "r": org_role})
+    db.execute(text("INSERT INTO org_members (user_id, org_id, role_id) VALUES (:u, :o, :r)"),
+               {"u": user_id, "o": org_id, "r": role_id(db, org_id, org_role)})
     if workspace_id:
-        db.execute(text("INSERT INTO workspace_members (user_id, workspace_id, role) VALUES (:u, :w, :r)"),
-                   {"u": user_id, "w": workspace_id, "r": workspace_role})
+        db.execute(text("INSERT INTO workspace_members (user_id, workspace_id, role_id) VALUES (:u, :w, :r)"),
+                   {"u": user_id, "w": workspace_id, "r": role_id(db, org_id, workspace_role)})
     db.commit()
     client = TestClient(app)
     link = client.post("/api/auth/magic-link", json={"email": email}).json()["link"]

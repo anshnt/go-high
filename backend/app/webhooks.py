@@ -1,5 +1,5 @@
 """Webhooks (ADR 0003): endpoints, fan-out of events to deliveries, signed delivery with retries, delivery log, replay.
-Routes are /api/v1/webhooks, for workspace admins. Delivery runs in the worker (see `deliver`)."""
+Routes are /api/v1/webhooks, for the `webhooks.manage` capability. Delivery runs in the worker (see `deliver`)."""
 import hashlib
 import hmac
 import json
@@ -44,10 +44,12 @@ from .api import ApiError, Idem, idempotency, paginate
 from .db import Base
 from .events import Event
 from .models import created, pk
-from .security import Ctx, workspace_admin
+from .permissions import requires
+from .security import Ctx
 
 log = logging.getLogger("webhooks")
 router = APIRouter(prefix="/api/v1/webhooks")
+manage = requires("webhooks.manage")
 
 TIMEOUT = 10  # seconds for one delivery attempt, connect to last byte
 MAX_ATTEMPTS = 12
@@ -155,7 +157,7 @@ def endpoint_or_404(c: Ctx, endpoint_id: uuid.UUID) -> WebhookEndpoint:
 
 
 @router.post("", status_code=201)
-def create_webhook(body: NewWebhook, c: Ctx = Depends(workspace_admin), idem: Idem = Depends(idempotency)):
+def create_webhook(body: NewWebhook, c: Ctx = Depends(manage), idem: Idem = Depends(idempotency)):
     check_url(body.url)
     ep = WebhookEndpoint(workspace_id=c.workspace.id, url=body.url, event_types=body.event_types, filter=body.filter,
                          secret=f"whsec_{secrets.token_urlsafe(32)}", created_by=c.user_id)
@@ -168,20 +170,21 @@ def create_webhook(body: NewWebhook, c: Ctx = Depends(workspace_admin), idem: Id
 
 
 @router.get("")
-def list_webhooks(limit: int = Query(50, ge=1, le=200), cursor: str | None = None, c: Ctx = Depends(workspace_admin)):
+def list_webhooks(limit: int = Query(50, ge=1, le=200), cursor: str | None = None, c: Ctx = Depends(manage)):
     rows, next_cursor = paginate(c.db, select(WebhookEndpoint), WebhookEndpoint, limit, cursor)
     return {"data": [endpoint_json(row[0]) for row in rows], "next_cursor": next_cursor}
 
 
 @router.get("/{endpoint_id}")
-def get_webhook(endpoint_id: uuid.UUID, c: Ctx = Depends(workspace_admin)):
+def get_webhook(endpoint_id: uuid.UUID, c: Ctx = Depends(manage)):
     return endpoint_json(endpoint_or_404(c, endpoint_id))
 
 
 @router.patch("/{endpoint_id}")
-def update_webhook(endpoint_id: uuid.UUID, body: PatchWebhook, c: Ctx = Depends(workspace_admin)):
+def update_webhook(endpoint_id: uuid.UUID, body: PatchWebhook, c: Ctx = Depends(manage)):
     ep = endpoint_or_404(c, endpoint_id)
     changes = {k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None}
+    before = {k: getattr(ep, k) for k in ("event_types", "filter", "active")}
     if "url" in changes:
         check_url(changes["url"])
     for name, value in changes.items():
@@ -190,18 +193,24 @@ def update_webhook(endpoint_id: uuid.UUID, body: PatchWebhook, c: Ctx = Depends(
         ep.failing_since = None
     if changes.get("active"):
         ep.disabled_reason = None
+    changed = events.changes(before, {k: getattr(ep, k) for k in before})
+    if changed or "url" in changes:
+        events.emit(c.db, "webhook_endpoint.updated", "webhook_endpoint", ep.id,
+                    {"id": ep.id, "changes": changed, "url_changed": "url" in changes}, actor=("user", c.user_id))
     c.db.commit()
     return endpoint_json(ep)
 
 
 @router.delete("/{endpoint_id}", status_code=204)
-def delete_webhook(endpoint_id: uuid.UUID, c: Ctx = Depends(workspace_admin)):
-    c.db.delete(endpoint_or_404(c, endpoint_id))
+def delete_webhook(endpoint_id: uuid.UUID, c: Ctx = Depends(manage)):
+    ep = endpoint_or_404(c, endpoint_id)
+    events.emit(c.db, "webhook_endpoint.deleted", "webhook_endpoint", ep.id, {"id": ep.id}, actor=("user", c.user_id))
+    c.db.delete(ep)
     c.db.commit()
 
 
 @router.post("/{endpoint_id}/test", status_code=202)
-def send_test_event(endpoint_id: uuid.UUID, c: Ctx = Depends(workspace_admin), idem: Idem = Depends(idempotency)):
+def send_test_event(endpoint_id: uuid.UUID, c: Ctx = Depends(manage), idem: Idem = Depends(idempotency)):
     """Emits `webhook.test`, which goes to this endpoint only. Follow it in the delivery log."""
     ep = endpoint_or_404(c, endpoint_id)
     if not ep.active:
@@ -215,7 +224,7 @@ def send_test_event(endpoint_id: uuid.UUID, c: Ctx = Depends(workspace_admin), i
 @router.get("/{endpoint_id}/deliveries")
 def list_deliveries(endpoint_id: uuid.UUID, status: Literal["pending", "retrying", "succeeded", "failed"] | None = None,
                     limit: int = Query(50, ge=1, le=200), cursor: str | None = None,
-                    c: Ctx = Depends(workspace_admin)):
+                    c: Ctx = Depends(manage)):
     endpoint_or_404(c, endpoint_id)
     stmt = (select(WebhookDelivery, Event.type).outerjoin(Event, Event.id == WebhookDelivery.event_id)
             .where(WebhookDelivery.endpoint_id == endpoint_id))
@@ -226,7 +235,7 @@ def list_deliveries(endpoint_id: uuid.UUID, status: Literal["pending", "retrying
 
 
 @router.post("/deliveries/{delivery_id}/replay", status_code=202)
-def replay_delivery(delivery_id: uuid.UUID, c: Ctx = Depends(workspace_admin), idem: Idem = Depends(idempotency)):
+def replay_delivery(delivery_id: uuid.UUID, c: Ctx = Depends(manage), idem: Idem = Depends(idempotency)):
     """A new delivery of the same event (same GoHigh-Event-Id, so receivers can dedupe), sent now."""
     old = c.db.get(WebhookDelivery, delivery_id)
     if old is None:

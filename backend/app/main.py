@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from . import api, auth, config, webhooks, workspaces
+from . import api, audit, auth, config, roles, simulator, teams, webhooks, workspaces
 from .db import get_db
 from .logs import setup_logging, trace_id
 from .records import associations, board, forecast, objects, pipelines, tags, timeline, views
@@ -86,7 +86,8 @@ def health(db: Session = Depends(get_db)):
 app.include_router(auth.router)
 app.include_router(workspaces.router)
 app.include_router(webhooks.router)
-for module in (objects, records, associations, tags, views, timeline, pipelines, board, forecast):
+for module in (objects, records, associations, tags, views, timeline, pipelines, board, forecast, roles, teams,
+               simulator, audit):
     app.include_router(module.router)
 
 

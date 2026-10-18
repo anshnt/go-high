@@ -12,7 +12,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from ..api import ApiError, Idem, idempotency, paginate
-from ..security import Ctx, in_workspace
+from ..permissions import requires_object, requires_trash
+from ..security import Ctx
 from . import query, store
 from .models import Record
 from .schema import Catalog
@@ -73,27 +74,29 @@ def search(c: Ctx, key: str, body: RecordQuery) -> dict:
 def list_records(key: str, filter: Annotated[str | None, Query(max_length=8000)] = None, sort: str | None = None,
                  q: Annotated[str | None, Query(max_length=200)] = None, limit: int = Query(50, ge=1, le=200),
                  cursor: str | None = None, include: str | None = None, count: bool = False,
-                 view: uuid.UUID | None = None, c: Ctx = Depends(in_workspace)):
+                 view: uuid.UUID | None = None, c: Ctx = Depends(requires_object("read"))):
     body = RecordQuery(filter=parse_filter(filter), sort=sort, q=q, limit=limit, cursor=cursor,
                        include=[i for i in (include or "").split(",") if i], count=count, view=view)
     return search(c, key, body)
 
 
 @router.post("/objects/{key}/records/query")
-def query_records(key: str, body: RecordQuery, c: Ctx = Depends(in_workspace)):
+def query_records(key: str, body: RecordQuery, c: Ctx = Depends(requires_object("read"))):
     return search(c, key, body)
 
 
 @router.post("/objects/{key}/records", status_code=201)
-def create_record(key: str, body: NewRecord, c: Ctx = Depends(in_workspace), idem: Idem = Depends(idempotency)):
+def create_record(key: str, body: NewRecord, c: Ctx = Depends(requires_object("write")),
+                  idem: Idem = Depends(idempotency)):
     cat = Catalog(c)
     obj = cat.need(key)
-    rec = store.create(cat, obj, body.values, body.owner_id)
+    rec = store.create(cat, obj, body.values, body.owner_id if "owner_id" in body.model_fields_set else store.UNSET)
     return idem.commit(201, store.record_json(cat, obj, rec))
 
 
 @router.get("/objects/{key}/records/{record_id}")
-def get_record(key: str, record_id: uuid.UUID, include: str | None = None, c: Ctx = Depends(in_workspace)):
+def get_record(key: str, record_id: uuid.UUID, include: str | None = None,
+               c: Ctx = Depends(requires_object("read"))):
     cat = Catalog(c)
     obj = cat.need(key)
     rec = store.get(cat, obj, record_id)
@@ -102,7 +105,7 @@ def get_record(key: str, record_id: uuid.UUID, include: str | None = None, c: Ct
 
 
 @router.patch("/objects/{key}/records/{record_id}")
-def update_record(key: str, record_id: uuid.UUID, body: PatchRecord, c: Ctx = Depends(in_workspace)):
+def update_record(key: str, record_id: uuid.UUID, body: PatchRecord, c: Ctx = Depends(requires_object("write"))):
     """Sets the values sent and leaves the rest; a null value clears a field. Nothing changed, no event."""
     cat = Catalog(c)
     obj = cat.need(key)
@@ -113,7 +116,7 @@ def update_record(key: str, record_id: uuid.UUID, body: PatchRecord, c: Ctx = De
 
 
 @router.delete("/objects/{key}/records/{record_id}", status_code=204)
-def delete_record(key: str, record_id: uuid.UUID, c: Ctx = Depends(in_workspace)):
+def delete_record(key: str, record_id: uuid.UUID, c: Ctx = Depends(requires_object("delete"))):
     cat = Catalog(c)
     obj = cat.need(key)
     store.trash(cat, obj, store.get(cat, obj, record_id, lock=True))
@@ -121,7 +124,8 @@ def delete_record(key: str, record_id: uuid.UUID, c: Ctx = Depends(in_workspace)
 
 
 @router.post("/objects/{key}/records/{record_id}/restore")
-def restore_record(key: str, record_id: uuid.UUID, c: Ctx = Depends(in_workspace), idem: Idem = Depends(idempotency)):
+def restore_record(key: str, record_id: uuid.UUID, c: Ctx = Depends(requires_object("delete")),
+                   idem: Idem = Depends(idempotency)):
     cat = Catalog(c)
     obj = cat.need(key)
     rec = store.get(cat, obj, record_id, trashed=True, lock=True)
@@ -133,7 +137,7 @@ def restore_record(key: str, record_id: uuid.UUID, c: Ctx = Depends(in_workspace
 # any age, and `restorable_until` is when the purge will start to take it.
 @router.get("/trash")
 def list_trash(object: str, limit: int = Query(50, ge=1, le=200), cursor: str | None = None,
-               c: Ctx = Depends(in_workspace)):
+               c: Ctx = Depends(requires_trash("delete"))):
     """Trashed records of one object, most recently deleted first."""
     cat = Catalog(c)
     obj = cat.need(object)

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "role.updated",
+  "description": "A role's name, description, capabilities or object rules changed; `changes` maps each to its old and new value. Subject: the role.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "key": {"type": "string"},
+    "name": {"type": "string"},
+    "changes": {"type": "object"}
+  },
+  "required": ["id", "key", "name", "changes"],
+  "additionalProperties": false
+}

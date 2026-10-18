@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "object.created",
+  "description": "A custom object was created. Subject: the object.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "key": {"type": "string"},
+    "singular": {"type": "string"},
+    "plural": {"type": "string"},
+    "icon": {"type": "string"},
+    "primary_fields": {"type": "array", "items": {"type": "string"}}
+  },
+  "required": ["id", "key", "singular", "plural", "icon", "primary_fields"],
+  "additionalProperties": false
+}

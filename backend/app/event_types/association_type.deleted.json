@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "association_type.deleted",
+  "description": "An association type was deleted. Subject: the type.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "from_object": {"type": "string"},
+    "to_object": {"type": "string"},
+    "label": {"type": "string"},
+    "inverse_label": {"type": "string"},
+    "cardinality": {"type": "string"}
+  },
+  "required": ["id", "from_object", "to_object", "label", "inverse_label", "cardinality"],
+  "additionalProperties": false
+}

@@ -34,8 +34,9 @@ SYSTEM_ROLES = {
     "manager": ("Manager", "Works with every record, exports, and looks after tags, views, pipelines and workflows.",
                 MEMBER | records("export") | {"tags.manage", "views.manage", "pipelines.manage", "workflows.publish"}),
     "member": ("Member", "Works with records, tags and views.", MEMBER),
-    "viewer": ("Viewer", "Reads records, and cannot change anything.", {*records("read"), "schema.read", "members.read"}),
-    "automation": ("Automation", "What workflows and AI agents run as: reads and writes records, tags and sends messages.",
+    "viewer": ("Viewer", "Reads records, and cannot change anything.",
+               {*records("read"), "schema.read", "members.read"}),
+    "automation": ("Automation", "What workflows and AI agents run as: reads and writes records, tags, sends messages.",
                    {*records("read", "write"), "schema.read", "tags.write", "messages.send"}),
 }
 

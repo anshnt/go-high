@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "audit.exported",
+  "description": "The audit log was exported as CSV; `filters` are the ones the export used. Subject: the workspace.",
+  "type": "object",
+  "properties": {
+    "rows": {"type": "integer"},
+    "truncated": {"type": "boolean"},
+    "filters": {"type": "object"}
+  },
+  "required": ["rows", "truncated", "filters"],
+  "additionalProperties": false
+}

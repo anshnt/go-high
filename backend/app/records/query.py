@@ -5,9 +5,10 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import NamedTuple
 
-from sqlalchemy import Double, and_, cast, false, func, literal, or_, select
-from sqlalchemy.dialects.postgresql import TSQUERY
+from sqlalchemy import ARRAY, Double, Text, and_, cast, false, func, literal, or_, select
+from sqlalchemy.dialects.postgresql import REGCONFIG, TSQUERY, array
 
+from .. import permissions
 from ..api import ApiError, seal, unseal
 from . import associations, filters, tags, types
 from .models import ObjectDef, Record
@@ -49,14 +50,14 @@ def sort_keys(cat: Catalog, obj: ObjectDef, spec, rank) -> list[Key]:
     items = items or ["-relevance" if rank is not None else "-updated_at"]
     if len(items) > MAX_SORTS:
         raise invalid("sort", f"sort by at most {MAX_SORTS} fields")
-    fields, keys = cat.fields(obj), []
+    fields, keys, hidden = cat.fields(obj), [], permissions.hidden(cat.c, obj)
     for item in items:
         desc, name = item.startswith("-"), item.removeprefix("-")
         if name == "relevance" and rank is not None:
             expr, kind = rank, "float"
-        elif name in COLUMNS:
+        elif name in COLUMNS and name not in hidden:
             expr, kind = COLUMNS[name]
-        elif name in fields and fields[name].type in types.SORTABLE:
+        elif name in fields and name not in hidden and fields[name].type in types.SORTABLE:
             expr, kind = filters.scalar(Record, fields[name]), KINDS.get(fields[name].type, "str")
         else:
             raise invalid("sort", f"cannot sort {obj.key} by {name!r}")
@@ -100,6 +101,21 @@ def read_cursor(cursor: str, keys: list[Key]):
         raise ApiError(400, "invalid_cursor", "The cursor is not valid for this sort") from None
 
 
+def search_vector(cat: Catalog, obj: ObjectDef):
+    """What `q` searches: the indexed column, or, for a role that hides fields of this object, the same text built
+    without them, so a hidden value cannot be found by searching for it.
+    ponytail: that text is built per row, without the index; fine for a role's slice of a workspace, and a partial
+    index per role is the way out if a restricted role searches millions of records."""
+    hidden = permissions.hidden(cat.c, obj)
+    if not hidden:
+        return Record.search
+    values = Record.values.op("-")(cast(array(sorted(hidden - {"display_name"}), type_=Text), ARRAY(Text)))
+    name = literal("") if "display_name" in hidden else func.coalesce(Record.display_name, "")
+    simple = cast(literal("simple"), REGCONFIG)
+    return func.setweight(func.to_tsvector(simple, name), "A").op("||")(
+        func.setweight(func.to_tsvector(simple, values), "B"))
+
+
 def include_names(cat: Catalog, obj: ObjectDef, names: list[str]) -> list[tuple[str, ObjectDef | None]]:
     out = []
     for name in dict.fromkeys(names):
@@ -132,9 +148,10 @@ def run(cat: Catalog, obj: ObjectDef, *, ast=None, sort=None, q: str | None = No
     terms = filters.search_terms(q) if q else None
     tsquery = cast(terms, TSQUERY) if terms else None
     where = [*live(cat, obj), where_of(cat, obj, ast)]
+    vector = search_vector(cat, obj)
     if q:  # a query without words ("!!!") finds nothing
-        where.append(Record.search.bool_op("@@")(tsquery) if terms else false())
-    keys = sort_keys(cat, obj, sort, cast(func.ts_rank(Record.search, tsquery), Double) if terms else None)
+        where.append(vector.bool_op("@@")(tsquery) if terms else false())
+    keys = sort_keys(cat, obj, sort, cast(func.ts_rank(vector, tsquery), Double) if terms else None)
     id_desc = keys[0].desc
     stmt = select(Record, *[k.expr for k in keys]).where(*where)
     if cursor:

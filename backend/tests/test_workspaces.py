@@ -1,4 +1,4 @@
-from helpers import H, add_member
+from helpers import H, add_member, role_id
 from sqlalchemy import text
 
 
@@ -60,8 +60,8 @@ def test_a_member_of_two_orgs_sees_both(make_user, db):
     a, ids = make_user("a@example.com")
     b, other = make_user("b@example.com")
     user_id = db.execute(text("SELECT id FROM users WHERE email = 'a@example.com'")).scalar()
-    db.execute(text("INSERT INTO org_members (user_id, org_id, role) VALUES (:u, :o, 'admin')"),
-               {"u": user_id, "o": other["org_id"]})
+    db.execute(text("INSERT INTO org_members (user_id, org_id, role_id) VALUES (:u, :o, :r)"),
+               {"u": user_id, "o": other["org_id"], "r": role_id(db, other["org_id"], "admin")})
     db.commit()
     assert {o["name"] for o in a.get("/api/me").json()["orgs"]} == {"Org of a@example.com", "Org of b@example.com"}
     assert len(a.get("/api/workspaces").json()) == 2

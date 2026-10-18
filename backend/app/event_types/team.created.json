@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "team.created",
+  "description": "A team was created. Subject: the team.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"},
+    "parent_team_id": {"type": ["string", "null"], "format": "uuid"}
+  },
+  "required": ["id", "name", "parent_team_id"],
+  "additionalProperties": false
+}

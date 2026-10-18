@@ -61,6 +61,21 @@ def tables() -> None:
     op.create_index("ix_team_members_user", "team_members", ["user_id"])
 
 
+MY_WORKSPACES = "SELECT workspace_id FROM workspace_members WHERE user_id = app_user_id()"
+ADMIN_ORGS = {  # the organizations the user owns or administers, as migration 0002 wrote it and as it reads now
+    "strings": "SELECT org_id FROM org_members WHERE user_id = app_user_id() AND role IN ('owner', 'admin')",
+    "roles": "SELECT om.org_id FROM org_members om JOIN roles r ON r.id = om.role_id "
+             "WHERE om.user_id = app_user_id() AND r.key IN ('owner', 'admin')"}
+
+
+def workspace_policies(kind: str) -> None:
+    """The two workspace policies that look at an org member's role. They block dropping the column, so the caller
+    drops them first and they come back here reading the other form."""
+    op.execute(f"CREATE POLICY access_read ON workspaces FOR SELECT USING (id = app_workspace_id() OR "
+               f"id IN ({MY_WORKSPACES}) OR org_id IN ({ADMIN_ORGS[kind]}))")
+    op.execute(f"CREATE POLICY admin_create ON workspaces FOR INSERT WITH CHECK (org_id IN ({ADMIN_ORGS[kind]}))")
+
+
 def members_to_roles() -> None:
     """The fixed role strings become references to the system roles of the same name (owner, admin, member)."""
     for table in ("org_members", "workspace_members"):
@@ -69,12 +84,15 @@ def members_to_roles() -> None:
                "WHERE r.org_id = m.org_id AND r.key = m.role AND r.is_system")
     op.execute("UPDATE workspace_members m SET role_id = r.id FROM roles r JOIN workspaces w ON w.org_id = r.org_id "
                "WHERE w.id = m.workspace_id AND r.key = m.role AND r.is_system")
+    op.execute("DROP POLICY access_read ON workspaces")
+    op.execute("DROP POLICY admin_create ON workspaces")
     for table in ("org_members", "workspace_members"):
         op.alter_column(table, "role_id", nullable=False)
         op.drop_constraint(f"ck_{table}_role", table)
         op.drop_column(table, "role")
     op.create_foreign_key(None, "org_members", "roles", ["role_id", "org_id"], ["id", "org_id"])
     op.create_foreign_key(None, "workspace_members", "roles", ["role_id"], ["id"])
+    workspace_policies("roles")
 
 
 def members_to_strings() -> None:
@@ -85,10 +103,13 @@ def members_to_strings() -> None:
                "ELSE 'member' END FROM roles r WHERE r.id = m.role_id")
     op.execute("UPDATE workspace_members m SET role = CASE WHEN r.key IN ('owner', 'admin') AND r.is_system "
                "THEN 'admin' ELSE 'member' END FROM roles r WHERE r.id = m.role_id")
+    op.execute("DROP POLICY access_read ON workspaces")
+    op.execute("DROP POLICY admin_create ON workspaces")
     for table, allowed in (("org_members", "'owner', 'admin', 'member'"), ("workspace_members", "'admin', 'member'")):
         op.alter_column(table, "role", nullable=False)
         op.create_check_constraint(f"ck_{table}_role", table, f"role IN ({allowed})")
         op.drop_column(table, "role_id")  # takes its foreign key with it
+    workspace_policies("strings")
 
 
 WORKSPACE = "FOR ALL USING (workspace_id = app_workspace_id()) WITH CHECK (workspace_id = app_workspace_id())"

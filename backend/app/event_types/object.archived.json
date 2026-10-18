@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "object.archived",
+  "description": "An object was archived: hidden everywhere, its records kept. Subject: the object.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "key": {"type": "string"}
+  },
+  "required": ["id", "key"],
+  "additionalProperties": false
+}

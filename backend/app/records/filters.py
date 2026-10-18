@@ -4,10 +4,10 @@ segments, workflow conditions and permissions:
     {"and": [{"field": "lifecycle", "op": "is", "value": "lead"},
              {"or": [{"tag": "vip"}, {"field": "deal.amount", "op": "gt", "value": {"amount": 500000}}]}]}
 
-Nodes are `and`, `or`, `not`, `tag` and `field` leaves. A leaf names a field of the object (or of an associated object
-as `company.name`, compiled to EXISTS; `stage.kind` and `stage.pipeline` for a stage field) and an operator its type
-supports. Every field, operator and value is checked against the field's type and a mistake is a FilterError with a
-pointer to the node, so a filter never becomes SQL it did not earn: values are bound parameters and names only ever
+Nodes are `and`, `or`, `not`, `tag`, `team` and `field` leaves. A leaf names a field of the object (or of an associated
+object as `company.name`, compiled to EXISTS; `stage.kind` and `stage.pipeline` for a stage field) and an operator its
+type supports. Every field, operator and value is checked against the field's type and a mistake is a FilterError with
+a pointer to the node, so a filter never becomes SQL it did not earn: values are bound parameters and names only ever
 come from the catalog."""
 import re
 import uuid
@@ -34,6 +34,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import aliased
 
 from .. import permissions
+from ..models import TeamMember
 from . import types
 from .models import STAGE_KINDS, Association, Record, RecordTag, Stage, Tag
 from .schema import Catalog
@@ -86,8 +87,10 @@ def like(value: str, front: bool) -> str:
 
 
 class Compiler:
-    def __init__(self, cat: Catalog):
-        self.cat, self.nodes = cat, 0
+    def __init__(self, cat: Catalog, trusted: bool = False):
+        """`trusted` is for the filters the system writes (a permission scope), which may name fields the caller
+        may not see; whatever a caller sends is checked against what they may see."""
+        self.cat, self.trusted, self.nodes = cat, trusted, 0
 
     def node(self, obj, entity, n, path: str, depth: int):
         self.nodes += 1
@@ -111,9 +114,13 @@ class Compiler:
             if set(n) != {"tag"}:
                 raise FilterError(path, "a tag condition has only a tag")
             return self.tag(entity, n["tag"], f"{path}.tag")
+        if "team" in n:
+            if set(n) != {"team"}:
+                raise FilterError(path, "a team condition has only a team")
+            return self.team(entity, n["team"], f"{path}.team")
         if "field" in n:
             return self.leaf(obj, entity, n, path)
-        raise FilterError(path, "expected one of and, or, not, tag or field")
+        raise FilterError(path, "expected one of and, or, not, tag, team or field")
 
     def tag(self, entity, value, path: str):
         """The record has this tag, given as its id or its name. A tag that no longer exists matches nothing."""
@@ -125,10 +132,20 @@ class Compiler:
             match = func.lower(Tag.name) == value.strip().lower()
         return exists().where(RecordTag.record_id == entity.id, RecordTag.tag_id == Tag.id, match)
 
+    def team(self, entity, value, path: str):
+        """The record's owner is a member of one of these teams (ids; the permission scope of a team uses it)."""
+        try:
+            ids = [uuid.UUID(v) for v in value]
+        except (TypeError, ValueError, AttributeError):
+            ids = []
+        if not ids or not isinstance(value, list) or len(ids) > permissions.MAX_TEAMS:
+            raise FilterError(path, "must be a list of team ids")
+        return exists().where(TeamMember.user_id == entity.owner_id, TeamMember.team_id.in_(ids))
+
     def field(self, obj, key, path: str):
         field = BUILTIN.get(key) or self.cat.fields(obj).get(key)
-        if field is None:
-            raise FilterError(path, f"unknown field {key!r} on {obj.key}")
+        if field is None or (not self.trusted and key in permissions.hidden(self.cat.c, obj)):
+            raise FilterError(path, f"unknown field {key!r} on {obj.key}")  # a hidden field does not exist for them
         return field
 
     def leaf(self, obj, entity, n, path: str):
@@ -188,7 +205,7 @@ class Compiler:
         return ~hit if op in ("is_not", "not_in") else hit
 
     def scope(self, obj, entity):
-        return Compiler(self.cat).node(obj, entity, permissions.scope_filter(self.cat.c, obj), "scope", 0)
+        return Compiler(self.cat, trusted=True).node(obj, entity, permissions.scope_filter(self.cat.c, obj), "scope", 0)
 
     def coerce(self, field, raw, path: str):
         if field.type in types.CHOICES:  # a view may name a choice that was deleted since; that matches nothing
@@ -264,11 +281,11 @@ class Compiler:
         return func.coalesce(test, false())
 
 
-def compile(cat: Catalog, obj, ast, *, entity=Record, root: str = "filter"):
+def compile(cat: Catalog, obj, ast, *, entity=Record, root: str = "filter", trusted: bool = False):
     """The SQL condition for `ast` over `entity` (Record or an alias of it) of object `obj`; {} is everything."""
     if not ast:
         return true()
-    return Compiler(cat).node(obj, entity, ast, root, 0)
+    return Compiler(cat, trusted).node(obj, entity, ast, root, 0)
 
 
 def search_terms(q: str) -> str | None:

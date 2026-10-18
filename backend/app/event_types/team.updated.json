@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "team.updated",
+  "description": "A team was renamed or moved under another team; `changes` maps each to its old and new value. Subject: the team.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"},
+    "parent_team_id": {"type": ["string", "null"], "format": "uuid"},
+    "changes": {"type": "object"}
+  },
+  "required": ["id", "name", "parent_team_id", "changes"],
+  "additionalProperties": false
+}

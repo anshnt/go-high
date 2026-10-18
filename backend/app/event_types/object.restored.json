@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "object.restored",
+  "description": "An archived object was brought back. Subject: the object.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "key": {"type": "string"}
+  },
+  "required": ["id", "key"],
+  "additionalProperties": false
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "object.updated",
+  "description": "An object's names, icon or primary fields changed; `changes` maps each to its old and new value. Subject: the object.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "key": {"type": "string"},
+    "changes": {"type": "object"}
+  },
+  "required": ["id", "key", "changes"],
+  "additionalProperties": false
+}
