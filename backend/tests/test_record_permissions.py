@@ -270,7 +270,8 @@ def test_the_team_scope_with_a_hidden_field_and_a_read_only_field(world):
     w = world
     cy, ws = w.client["cy"], w.ws
     deal = listing(cy, ws, "deal")["data"][0]
-    assert deal["values"] == {"name": deal["display_name"]}  # the amount is on it for everyone else, not for Cy
+    # the amount is on it for everyone else, not for Cy (a deal starts in the first stage of the Sales pipeline)
+    assert set(deal["values"]) == {"name", "stage"} and deal["values"]["name"] == deal["display_name"]
     assert "amount" in listing(w.admin, ws, "deal")["data"][0]["values"]
     r = cy.patch(f"/api/v1/objects/deal/records/{w.rec['deal_cy']['id']}", json={"values": {"amount": {
         "amount": 1, "currency": "USD"}}}, headers={H: ws})
