@@ -34,9 +34,10 @@ Row level security separates tenants; what a user may do inside a workspace is `
   member must be a member of its organization and hold one of its roles. Unless you are an organization owner or
   admin you cannot give someone a role that can do more than yours.
 - Request handlers can read the name and email of the people of their workspace (its members and the owners and
-  admins of its organization) for member lists, team lists and the simulator. The same `users` rows hold password
-  hashes, which handlers never select outside sign in; a SQL level bug could still read a peer's hash. Move hashes to
-  a table of their own if that is a risk you want closed.
+  admins of its organization) for member lists, team lists and the simulator. Password hashes are not in `users`: they
+  are in `user_credentials`, where a session can read and change only its own user's row (sign up, sign in and the
+  first magic link, which run in the pre-auth scope, do the rest), so even a SQL level bug in a handler cannot read a
+  peer's hash. A test reads as a peer and as the app role to check it.
 - The simulator (`/api/v1/permissions/explain`) needs `members.manage`, because it says who owns records the asker
   may not see.
 

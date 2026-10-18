@@ -39,7 +39,8 @@ def test_signup_rejects_short_password_duplicate_and_bad_email(make_user):
 def test_email_is_case_insensitive_and_password_is_scrypt_hashed(make_user, db):
     make_user("Mixed@Example.com")
     assert signin("mixed@example.COM")[1].status_code == 200
-    stored = db.execute(text("SELECT email, password_hash FROM users")).one()
+    stored = db.execute(text("SELECT u.email, c.password_hash FROM users u "
+                             "JOIN user_credentials c ON c.user_id = u.id")).one()
     assert stored.email == "mixed@example.com"
     assert stored.password_hash.startswith("scrypt$") and PASSWORD not in stored.password_hash
 

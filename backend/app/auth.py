@@ -7,13 +7,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, StringConstraints
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from . import config, events, roles_seed, security
 from .db import rescope, scoped
-from .models import AuthSession, Brand, MagicLink, Organization, OrgMember, User, Workspace
+from .models import AuthSession, Brand, MagicLink, Organization, OrgMember, User, UserCredential, Workspace
 from .records.seed import seed_workspace
 from .security import COOKIE, Ctx, system_db, token_hash, user
 from .tenancy import my_orgs, my_workspaces, workspace_data, workspace_ids
@@ -50,9 +51,14 @@ class MagicConsume(BaseModel):
     token: Annotated[str, StringConstraints(max_length=200)]
 
 
-def user_json(u: User) -> dict:
+def user_json(u: User, has_password: bool) -> dict:
     return {"id": u.id, "email": u.email, "name": u.name, "email_verified": u.email_verified_at is not None,
-            "has_password": u.password_hash is not None}
+            "has_password": has_password}
+
+
+def password_of(db: Session, user_id: uuid.UUID) -> str | None:
+    """The user's password hash, if they have a password. Row level security: only their own, or the pre-auth scope."""
+    return db.scalar(select(UserCredential.password_hash).where(UserCredential.user_id == user_id))
 
 
 def sessions_revoked(db: Session, user_id: uuid.UUID, count: int, reason: str) -> None:
@@ -71,8 +77,7 @@ def sessions_revoked(db: Session, user_id: uuid.UUID, count: int, reason: str) -
 
 @router.post("/auth/signup", status_code=201)
 def signup(body: SignUp, request: Request, response: Response, db: Session = Depends(system_db)):
-    account = User(email=body.email, name=body.name, password_hash=security.hash_password(body.password)
-                   if body.password else None)
+    account = User(email=body.email, name=body.name)
     org = Organization(name=body.org_name or f"{body.name}'s organization")
     db.add_all([account, org])
     try:
@@ -80,6 +85,8 @@ def signup(body: SignUp, request: Request, response: Response, db: Session = Dep
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, "An account with this email already exists") from None
+    if body.password:
+        db.add(UserCredential(user_id=account.id, password_hash=security.hash_password(body.password)))
     brand = Brand(org_id=org.id, name="Default")
     roles = roles_seed.add(db, org.id)
     db.add_all([brand, OrgMember(user_id=account.id, org_id=org.id, role_id=roles["owner"])])
@@ -96,7 +103,8 @@ def signup(body: SignUp, request: Request, response: Response, db: Session = Dep
                  "workspace_id": workspace.id}, actor=actor, workspace_id=workspace.id)
     security.start_session(db, response, request, account.id)
     db.commit()
-    return {"user": user_json(account), "org_id": org.id, "brand_id": brand.id, "workspace_id": workspace.id}
+    return {"user": user_json(account, bool(body.password)), "org_id": org.id, "brand_id": brand.id,
+            "workspace_id": workspace.id}
 
 
 @router.post("/auth/signin")
@@ -105,14 +113,14 @@ def signin(body: SignIn, request: Request, response: Response, db: Session = Dep
     if wait := security.retry_after(db, body.email, ip):
         raise HTTPException(429, "Too many failed attempts, try again later", headers={"Retry-After": str(wait)})
     account = db.scalar(select(User).where(User.email == body.email))
-    stored = account.password_hash if account and account.password_hash else security.DUMMY_HASH
-    if not security.verify_password(body.password, stored) or not account or not account.password_hash:
+    stored = password_of(db, account.id) if account else None
+    if not security.verify_password(body.password, stored or security.DUMMY_HASH) or not stored:
         security.record_failure(db, body.email, ip)
         raise HTTPException(401, "Wrong email or password")
     security.clear_failures(db, body.email, ip)
     security.start_session(db, response, request, account.id)
     db.commit()
-    return {"user": user_json(account)}
+    return {"user": user_json(account, True)}
 
 
 @router.post("/auth/signout", status_code=204)
@@ -158,14 +166,14 @@ def consume_magic_link(body: MagicConsume, request: Request, response: Response,
         # The first link proves the address. Sign up does not, so a password or session created before
         # this point may belong to someone who registered the address without owning it: both go.
         account.email_verified_at = func.now()
-        account.password_hash = None
+        db.execute(delete(UserCredential).where(UserCredential.user_id == user_id))
         ended = db.execute(update(AuthSession).where(AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None))
                            .values(revoked_at=func.now())).rowcount
         sessions_revoked(db, user_id, ended, "email_verified")
     security.start_session(db, response, request, user_id)
     db.commit()
     db.refresh(account)
-    return {"user": user_json(account)}
+    return {"user": user_json(account, password_of(db, user_id) is not None)}
 
 
 @router.get("/auth/sessions")
@@ -213,10 +221,11 @@ def set_password(body: PasswordChange, request: Request, c: Ctx = Depends(user))
     stolen old session cannot lock the owner out. Other sessions are signed out either way."""
     account = c.db.get(User, c.user_id)
     ip = security.client_ip(request)
-    if account.password_hash:
+    current = password_of(c.db, c.user_id)
+    if current:
         if wait := security.retry_after(c.db, account.email, ip):
             raise HTTPException(429, "Too many failed attempts, try again later", headers={"Retry-After": str(wait)})
-        if not security.verify_password(body.current_password or "", account.password_hash):
+        if not security.verify_password(body.current_password or "", current):
             with scoped(system="on") as sdb:
                 security.record_failure(sdb, account.email, ip)
             raise HTTPException(403, "Current password is wrong")
@@ -227,9 +236,10 @@ def set_password(body: PasswordChange, request: Request, c: Ctx = Depends(user))
         if fresh is None:
             raise HTTPException(403, "Sign in again with an email link to set a password")
     c.db.commit()
-    with scoped(system="on") as sdb:  # users rows are writable only in the system scope
+    with scoped(system="on") as sdb:  # the pre-auth scope may write credentials
         new_hash = security.hash_password(body.password)
-        sdb.execute(update(User).where(User.id == c.user_id).values(password_hash=new_hash))
+        sdb.execute(pg_insert(UserCredential).values(user_id=c.user_id, password_hash=new_hash).on_conflict_do_update(
+            index_elements=[UserCredential.user_id], set_={"password_hash": new_hash, "updated_at": func.now()}))
         ended = sdb.execute(update(AuthSession).where(
             AuthSession.user_id == c.user_id, AuthSession.id != c.session_id, AuthSession.revoked_at.is_(None))
             .values(revoked_at=func.now())).rowcount
@@ -242,5 +252,6 @@ def set_password(body: PasswordChange, request: Request, c: Ctx = Depends(user))
 
 @router.get("/me")
 def me(c: Ctx = Depends(user)):
-    return {"user": user_json(c.db.get(User, c.user_id)), "orgs": my_orgs(c.db, c.user_id),
+    person = user_json(c.db.get(User, c.user_id), password_of(c.db, c.user_id) is not None)
+    return {"user": person, "orgs": my_orgs(c.db, c.user_id),
             "workspaces": my_workspaces(c.db, c.user_id)}

@@ -67,7 +67,6 @@ class User(Base):
     id: Mapped[uuid.UUID] = pk()
     email: Mapped[str] = mapped_column(String(254), unique=True)
     name: Mapped[str] = mapped_column(String(200))
-    password_hash: Mapped[str | None] = mapped_column(String(300))  # null: magic-link-only user
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # set by the first magic link
     created_at: Mapped[datetime] = created()
 
@@ -108,6 +107,16 @@ class RoleObjectRule(Base):
     scope: Mapped[str] = mapped_column(String(20))
     hidden_fields: Mapped[list[str]] = mapped_column(ARRAY(String(63)), default=list, server_default=EMPTY_ARRAY)
     readonly_fields: Mapped[list[str]] = mapped_column(ARRAY(String(63)), default=list, server_default=EMPTY_ARRAY)
+
+
+class UserCredential(Base):
+    """A user's password hash, apart from `users` so that the people of a workspace can be listed without it. Only
+    the user themselves (and the pre-auth flows) can read or change their row."""
+    __tablename__ = "user_credentials"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    password_hash: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = created()
 
 
 class OrgMember(Base):

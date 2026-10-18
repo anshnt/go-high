@@ -20,7 +20,7 @@ TENANT_TABLES = ["organizations", "brands", "workspaces", "users", "org_members"
                  "auth_sessions", "magic_links", "login_attempts", "events", "webhook_endpoints", "webhook_deliveries",
                  "idempotency_keys", "objects", "fields", "records", "tags", "record_tags", "association_types",
                  "associations", "saved_views", "event_records", "pipelines", "stages", "board_layouts", "roles",
-                 "role_object_rules", "teams", "team_members"]
+                 "role_object_rules", "teams", "team_members", "user_credentials"]
 NOT_TENANT_DATA = {"jobs", "event_cursors"}  # the queue and the consumer cursors: no tenant rows, no app role access
 
 
@@ -354,7 +354,9 @@ def test_the_app_role_holds_only_the_grants_its_handlers_need():
               # roles: UPDATE only on name, description and capabilities (below); a request may not make a system role
               "roles": {"SELECT", "INSERT", "DELETE"}, "role_object_rules": {"SELECT", "INSERT", "UPDATE", "DELETE"},
               "teams": {"SELECT", "INSERT", "UPDATE", "DELETE"}, "team_members": {"SELECT", "INSERT", "DELETE"},
-              "workspace_members": {"SELECT", "INSERT"}}  # and UPDATE of role_id alone
+              "workspace_members": {"SELECT", "INSERT"},  # and UPDATE of role_id alone
+              # one policy per row of a user's own (and the pre-auth scope); the grants are what that scope needs
+              "user_credentials": {"SELECT", "INSERT", "UPDATE", "DELETE"}}
     every = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
     with engine.connect() as conn:
         for table, expected in wanted.items():

@@ -59,6 +59,9 @@ def tables() -> None:
         col("workspace_id", sa.Uuid(), sa.ForeignKey("workspaces.id", ondelete="CASCADE")), created(),
         sa.ForeignKeyConstraint(["team_id", "workspace_id"], ["teams.id", "teams.workspace_id"], ondelete="CASCADE"))
     op.create_index("ix_team_members_user", "team_members", ["user_id"])
+    op.create_table(
+        "user_credentials", col("user_id", sa.Uuid(), sa.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+        col("password_hash", sa.Text()), col("updated_at", TS, server_default=sa.func.now()))
 
 
 MY_WORKSPACES = "SELECT workspace_id FROM workspace_members WHERE user_id = app_user_id()"
@@ -74,6 +77,18 @@ def workspace_policies(kind: str) -> None:
     op.execute(f"CREATE POLICY access_read ON workspaces FOR SELECT USING (id = app_workspace_id() OR "
                f"id IN ({MY_WORKSPACES}) OR org_id IN ({ADMIN_ORGS[kind]}))")
     op.execute(f"CREATE POLICY admin_create ON workspaces FOR INSERT WITH CHECK (org_id IN ({ADMIN_ORGS[kind]}))")
+
+
+def credentials_out() -> None:
+    """Password hashes move out of `users`, which request handlers read for the people of a workspace."""
+    op.execute("INSERT INTO user_credentials (user_id, password_hash) "
+               "SELECT id, password_hash FROM users WHERE password_hash IS NOT NULL")
+    op.drop_column("users", "password_hash")
+
+
+def credentials_back() -> None:
+    op.add_column("users", sa.Column("password_hash", sa.String(300), nullable=True))
+    op.execute("UPDATE users SET password_hash = c.password_hash FROM user_credentials c WHERE c.user_id = users.id")
 
 
 def members_to_roles() -> None:
@@ -141,6 +156,12 @@ RLS = {
         ("member_read", f"FOR SELECT USING ({SEES_ROLES})"),
         ("org_write", f"FOR ALL USING (org_id = app_org_id() AND NOT ({LOCKED_RULES})) "
                       f"WITH CHECK (org_id = app_org_id() AND NOT ({LOCKED_RULES}))")]),
+    # Only the user reads or changes their own row; sign up, sign in and the first magic link (system scope) do
+    # the rest.
+    "user_credentials": ("SELECT, INSERT, UPDATE, DELETE", [
+        ("system", "FOR ALL USING (app_system()) WITH CHECK (app_system())"),
+        ("self_read", "FOR SELECT USING (user_id = app_user_id())"),
+        ("self_update", "FOR UPDATE USING (user_id = app_user_id()) WITH CHECK (user_id = app_user_id())")]),
     "teams": ("SELECT, INSERT, UPDATE, DELETE", [("workspace", WORKSPACE)]),
     "team_members": ("SELECT, INSERT, DELETE", [("workspace", WORKSPACE)]),
 }
@@ -174,6 +195,7 @@ def upgrade() -> None:
     connection = op.get_bind()
     for org_id in connection.execute(sa.text("SELECT id FROM organizations")).scalars().all():
         roles_seed.add(connection, org_id)  # before row level security is on, so the owner role can write
+    credentials_out()
     members_to_roles()
     policies()
     op.execute("SELECT set_config('app.system', '', true)")
@@ -186,6 +208,7 @@ def downgrade() -> None:
     op.execute("DROP POLICY assign ON workspace_members")
     op.execute("REVOKE INSERT, UPDATE ON workspace_members FROM gohigh_app")
     members_to_strings()
-    for table in ("team_members", "teams", "role_object_rules", "roles"):
+    credentials_back()
+    for table in ("user_credentials", "team_members", "teams", "role_object_rules", "roles"):
         op.execute(f"DROP TABLE {table} CASCADE")
     op.execute("SELECT set_config('app.system', '', true)")

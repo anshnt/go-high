@@ -41,6 +41,7 @@ def test_existing_people_get_the_system_roles_and_the_migration_reverses():
         alembic(url, "upgrade", "0004")
         engine = create_engine(url)
         who: dict[str, str] = {}
+        hashes = {"owner": "scrypt$16384$aa$bb", "member": "scrypt$16384$cc$dd"}  # the others sign in by link only
         with engine.begin() as conn:  # an organization with an owner, an admin and two members, as 0002 stored them
             org = conn.scalar(text("INSERT INTO organizations (name) VALUES ('Old') RETURNING id"))
             other = conn.scalar(text("INSERT INTO organizations (name) VALUES ('Other') RETURNING id"))
@@ -53,6 +54,9 @@ def test_existing_people_get_the_system_roles_and_the_migration_reverses():
                                         {"e": f"{name}@example.com", "n": name})
                 conn.execute(text("INSERT INTO org_members (user_id, org_id, role) VALUES (:u, :o, :r)"),
                              {"u": who[name], "o": org_id, "r": role})
+                if name in hashes:
+                    conn.execute(text("UPDATE users SET password_hash = :h WHERE id = :u"),
+                                 {"h": hashes[name], "u": who[name]})
             for name, workspace, role in (("member", "One", "member"), ("wsadmin", "Two", "admin")):
                 conn.execute(text("INSERT INTO workspace_members (user_id, workspace_id, role) VALUES (:u, :w, :r)"),
                              {"u": who[name], "w": workspaces[workspace], "r": role})
@@ -77,6 +81,12 @@ def test_existing_people_get_the_system_roles_and_the_migration_reverses():
             assert [tuple(m) for m in mapped] == [("member", "member"), ("wsadmin", "admin")]
             assert conn.scalar(text("SELECT count(*) FROM information_schema.columns WHERE column_name = 'role' "
                                     "AND table_name IN ('org_members', 'workspace_members')")) == 0
+            # password hashes moved out of users: one row for each user who had one, and no column left behind
+            kept = conn.execute(text("SELECT u.name, c.password_hash FROM user_credentials c "
+                                     "JOIN users u ON u.id = c.user_id ORDER BY u.name")).all()
+            assert [tuple(k) for k in kept] == [("member", hashes["member"]), ("owner", hashes["owner"])]
+            assert conn.scalar(text("SELECT count(*) FROM information_schema.columns "
+                                    "WHERE table_name = 'users' AND column_name = 'password_hash'")) == 0
             flags = conn.execute(text("SELECT relname, relrowsecurity, relforcerowsecurity FROM pg_class WHERE relname "
                                       "IN ('roles', 'role_object_rules', 'teams', 'team_members')")).all()
             assert len(flags) == 4 and all(f[1] and f[2] for f in flags)
@@ -115,12 +125,17 @@ def test_existing_people_get_the_system_roles_and_the_migration_reverses():
                                          "JOIN users u ON u.id = m.user_id ORDER BY u.name")).all()
             assert [tuple(r) for r in ws_roles] == [("member", "member"), ("wsadmin", "member")]
             assert conn.scalar(text("SELECT count(*) FROM workspaces")) == 2  # the rest is untouched
+            back = conn.execute(text("SELECT name, password_hash FROM users WHERE password_hash IS NOT NULL "
+                                     "ORDER BY name")).all()
+            assert [tuple(b) for b in back] == [("member", hashes["member"]), ("owner", hashes["owner"])]
+            assert conn.scalar(text("SELECT count(*) FROM pg_tables WHERE tablename = 'user_credentials'")) == 0
         assert visible_workspaces(engine, who["admin"]) == ["One", "Two"]  # the old policies are back
         assert visible_workspaces(engine, who["member"]) == ["One"]
         assert visible_workspaces(engine, who["stranger"]) == []
         alembic(url, "upgrade", "head")  # and forward again, seeding once more
         with engine.begin() as conn:
             assert conn.scalar(text("SELECT count(*) FROM roles")) == 12
+            assert conn.scalar(text("SELECT count(*) FROM user_credentials")) == 2
             assert conn.scalar(text("SELECT count(*) FROM workspace_members m JOIN roles r ON r.id = m.role_id "
                                     "WHERE r.key = 'member'")) == 2
         assert visible_workspaces(engine, who["admin"]) == ["One", "Two"]

@@ -74,7 +74,7 @@ Background jobs: register a handler with `@jobs.handler("kind")` and call `jobs.
 
 ## Tenancy and auth
 
-Organization > Brand > Workspace. A user belongs to orgs and optionally to single workspaces, each with a role (see [Roles, permissions and audit](#roles-permissions-and-audit)); org owners and admins are admins of every workspace in their org. Sign in with email + password or a magic link (`/api/auth/*`, `/api/me`); the session is an HttpOnly, SameSite=Lax cookie whose SHA-256 is the only thing stored. Sessions have an idle timeout and an absolute expiry, can be listed and revoked (`/api/auth/sessions`), and cookie-authenticated writes whose `Origin` header is not in `PUBLIC_URL` get a 403.
+Organization > Brand > Workspace. A user belongs to orgs and optionally to single workspaces, each with a role (see [Roles, permissions and audit](#roles-permissions-and-audit)); org owners and admins are admins of every workspace in their org. Sign in with email + password or a magic link (`/api/auth/*`, `/api/me`); password hashes are in `user_credentials`, not `users`, where a session reaches only its own user's row; the session is an HttpOnly, SameSite=Lax cookie whose SHA-256 is the only thing stored. Sessions have an idle timeout and an absolute expiry, can be listed and revoked (`/api/auth/sessions`), and cookie-authenticated writes whose `Origin` header is not in `PUBLIC_URL` get a 403.
 
 Choose the workspace per request with the `X-Workspace-Id` header. The `in_workspace` dependency (`app/security.py`) answers 404 for any workspace the user cannot access, then sets `app.workspace_id` and `app.org_id` for the request; routes that only need the user take the `user` dependency. `GET /api/workspaces/current` echoes the active workspace.
 
