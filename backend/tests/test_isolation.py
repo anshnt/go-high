@@ -566,10 +566,15 @@ def test_the_app_role_cannot_move_a_row_to_another_workspace_or_point_one_across
             with pytest.raises(DBAPIError, match="permission denied"), conn.begin():
                 context(conn, workspace_id=a_ws)
                 conn.execute(text(statement))
-        with conn.begin():  # a pipeline and a stage can be deleted, but only in the caller's workspace
+        with pytest.raises(DBAPIError, match="foreign key"), conn.begin():  # a stage that holds a deal stays
             context(conn, workspace_id=a_ws)
-            assert conn.execute(text("DELETE FROM stages")).rowcount == 8  # Sales and the secret pipeline
-            assert conn.execute(text("DELETE FROM pipelines")).rowcount == 2
+            conn.execute(text("DELETE FROM stages"))
+        with conn.begin():  # the others can be deleted, and with them a pipeline, but only in the caller's workspace
+            context(conn, workspace_id=a_ws)
+            held = "SELECT stage_id FROM records WHERE stage_id IS NOT NULL"
+            assert conn.execute(text(f"DELETE FROM stages WHERE id NOT IN ({held})")).rowcount == 7
+            assert conn.execute(text("DELETE FROM pipelines WHERE id NOT IN (SELECT pipeline_id FROM stages)")
+                                ).rowcount == 1  # Sales, which has nothing left
             conn.rollback()
     assert db.scalar(text("SELECT count(*) FROM records WHERE workspace_id = :w"), {"w": b_ws}) == 5  # as filled
     assert db.scalar(text("SELECT count(*) FROM stages WHERE workspace_id = :w"), {"w": b_ws}) == 8
