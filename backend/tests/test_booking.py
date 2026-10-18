@@ -1,7 +1,7 @@
 """Booking through the public page: the open times a visitor sees, booking one, the contact it makes or fills in,
 what staff then see, the checks on the request, and that two requests for one time cannot both win."""
 import threading
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pytest
 from calendar_api import H, instant, make_calendar, page, public_client, public_slots, visit, weekday_after
@@ -9,6 +9,7 @@ from helpers import audit, listing, role_id, user_id_of
 from sqlalchemy import text
 
 from app import config
+from app.calendars import slots
 
 DAY = weekday_after(14)  # a Tuesday two weeks out; New York is on standard time or daylight time, never mid-change
 
@@ -112,6 +113,8 @@ def test_the_request_is_checked_and_a_time_that_is_not_open_is_refused(crm):
     refused(409, start=instant(DAY, "07:00"))  # outside the hours
     refused(409, start=instant(DAY - timedelta(days=40), "10:00"))  # in the past
     refused(409, start=instant(DAY + timedelta(days=1000), "10:00"))  # beyond the window
+    refused(409, start="9999-12-31T23:30:00+00:00")  # the ends of the calendar are refused like any other time,
+    refused(409, start="0001-01-01T00:00:00+00:00")  # not a crash
     refused(409, start=instant(DAY + timedelta(days=4), "10:00"))  # a Saturday
     assert visit(visitor, cal, ok, phone=None, answers={"company": "Acme", "size": "1-10"}).status_code == 201
     [booking] = bookings(admin, ws)
@@ -120,6 +123,23 @@ def test_the_request_is_checked_and_a_time_that_is_not_open_is_refused(crm):
     assert booking["location"] == {"kind": "phone", "value": "We call you"}
     taken = visit(visitor, cal, ok, answers={"company": "Acme"})  # now taken
     assert taken.status_code == 409 and taken.json()["error"]["code"] == "slot_unavailable"
+
+
+def test_days_past_the_booking_window_have_no_times_and_are_not_searched(crm, monkeypatch):
+    """Any visitor may ask for any dates. Past the window nothing is offered, so nothing is read or judged for them,
+    and a date at the end of the calendar is an empty answer, not a crash."""
+    admin, ws, _ = crm
+    cal = make_calendar(admin, ws, window_days=30)
+    visitor = public_client()
+    judged = []
+    real = slots.judge
+    monkeypatch.setattr(slots, "judge", lambda *a: judged.append(a) or real(*a))
+    far = DAY + timedelta(days=400)
+    for first, last in ((far, far + timedelta(days=61)), (date(9999, 11, 1), date(9999, 12, 31))):
+        r = visitor.get(f"{page(cal)}/slots", params={"from": str(first), "to": str(last), "tz": "Pacific/Kiritimati"})
+        assert r.status_code == 200 and r.json()["days"] == {}, r.text
+    assert judged == []
+    assert public_slots(visitor, cal, DAY)  # inside the window, as before
 
 
 def test_two_visitors_cannot_book_the_same_time_and_with_two_hosts_two_can(crm, db):

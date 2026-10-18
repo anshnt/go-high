@@ -34,9 +34,14 @@ def slot_days(db: Session, cal: Calendar, first: date, last: date, tz_name: str,
                        {"to": f"must be on or after from, and at most {MAX_DAYS} days after it"})
     # moving a booking keeps its length, even one the calendar no longer offers
     length = chosen_duration(cal, duration) if ignore is None else duration
-    lo, hi = slots.midnight(first, tz), slots.midnight(last + timedelta(days=1), tz)
-    snap = slots.load(db, cal, lo, hi, now, ignore=ignore)
+    # only the days from today to the end of the booking window can have a time, so only those are read and judged:
+    # anyone may ask for any dates, and a far one would otherwise cost a scan (or, near year 9999, overflow)
     days: dict[str, list[datetime]] = {}
-    for start, _ in slots.open_slots(snap, lo, hi, now, length):
-        days.setdefault(start.astimezone(tz).date().isoformat(), []).append(start)
+    lo_day = max(first, now.astimezone(tz).date())
+    hi_day = min(last, (now + timedelta(days=cal.window_days)).astimezone(tz).date())
+    if lo_day <= hi_day:
+        lo, hi = slots.midnight(lo_day, tz), slots.midnight(hi_day + timedelta(days=1), tz)
+        snap = slots.load(db, cal, lo, hi, now, ignore=ignore)
+        for start, _ in slots.open_slots(snap, lo, hi, now, length):
+            days.setdefault(start.astimezone(tz).date().isoformat(), []).append(start)
     return {"time_zone": tz_name, "duration": length, "from": first, "to": last, "days": days}

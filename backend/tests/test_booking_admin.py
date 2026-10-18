@@ -7,7 +7,7 @@ from datetime import timedelta
 import pytest
 from calendar_api import H, instant, make_calendar, moment, public_client, public_slots, visit, weekday_after
 from calendar_helpers import at
-from helpers import add_member, audit, make_record, user_id_of
+from helpers import add_member, audit, make_record, make_role, rule, user_id_of
 from sqlalchemy import text
 
 from app import config
@@ -119,6 +119,24 @@ def test_staff_cancel_move_and_mark_bookings(crm):
     flipped = audit(admin, ws, type="booking.status_changed")[0]["data"]
     assert flipped["status"] == "no_show" and flipped["from_status"] == "showed"
     assert one["token"] and two["token"]
+
+
+def test_a_role_that_hides_contact_fields_does_not_read_them_off_the_invitee_either(crm, db):
+    """The invitee's email, phone and name are the contact's fields, typed on the booking page: a role that may not
+    read those fields of contacts does not get them from a booking (as in the inbox and in form responses)."""
+    admin, ws, ids = crm
+    cal = make_calendar(admin, ws)
+    assert visit(public_client(), cal, instant(DAY, "10:00")).status_code == 201
+    role = make_role(admin, ws, "No details", rules=[rule(), rule("contact", "all", hidden=["email", "phone",
+                                                                                            "last_name"])])
+    ben = add_member(db, ids["org_id"], "ben@example.com", workspace_id=ws, workspace_role=role["key"])
+    [listed] = ben.get(BOOKINGS, headers={H: ws}).json()["data"]
+    one = ben.get(f"{BOOKINGS}/{listed['id']}", headers={H: ws}).json()
+    for seen in (listed, one):
+        assert seen["invitee"] == {"name": None, "email": None, "phone": None}
+        assert "ada@example.com" not in str(seen) and "4155550100" not in str(seen) and "Lovelace" not in str(seen)
+    [mine] = admin.get(BOOKINGS, headers={H: ws}).json()["data"]
+    assert mine["invitee"] == {"name": "Ada Lovelace", "email": "ada@example.com", "phone": "+14155550100"}
 
 
 def test_a_calendar_that_confirms_by_hand_starts_bookings_as_booked(crm):
