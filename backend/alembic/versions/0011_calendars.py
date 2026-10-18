@@ -119,7 +119,7 @@ def tables() -> None:
         col("host_ids", postgresql.ARRAY(sa.Uuid())), col("contact_id", sa.Uuid(), nullable=True),
         col("starts_at", TS), col("ends_at", TS), col("buffer_before", sa.Integer(), server_default="0"),
         col("buffer_after", sa.Integer(), server_default="0"), col("time_zone", sa.String(64), server_default="UTC"),
-        col("status", sa.String(10), server_default="booked"), col("invitee_name", sa.String(300), server_default=""),
+        col("status", sa.String(12), server_default="booked"), col("invitee_name", sa.String(300), server_default=""),
         col("invitee_email", sa.String(254), nullable=True), col("invitee_phone", sa.String(40), nullable=True),
         col("location", postgresql.JSONB(), server_default=EMPTY_OBJECT),
         col("answers", postgresql.JSONB(), server_default=EMPTY_OBJECT), col("token_hash", sa.String(64)),

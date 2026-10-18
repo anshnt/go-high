@@ -128,7 +128,9 @@ def set_hosts(c: Ctx, cal: Calendar, hosts: list[schemas.HostIn]) -> None:
         row = have.get(user_id)
         if row is None:
             ensure_hours(c, user_id, cal.time_zone)
-            c.db.add(CalendarHost(workspace_id=cal.workspace_id, calendar_id=cal.id, user_id=user_id))
+            # clock_timestamp, not now(): hosts added together keep the order they were sent in, and the first is primary
+            c.db.add(CalendarHost(workspace_id=cal.workspace_id, calendar_id=cal.id, user_id=user_id,
+                                  created_at=func.clock_timestamp()))
             c.db.flush()
             row = c.db.scalar(select(CalendarHost).where(CalendarHost.calendar_id == cal.id,
                                                          CalendarHost.user_id == user_id))

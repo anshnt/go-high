@@ -4,7 +4,6 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
-    ARRAY,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -17,7 +16,7 @@ from sqlalchemy import (
     Uuid,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
@@ -173,7 +172,7 @@ class Booking(Base):
     buffer_before: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # the calendar's, then
     buffer_after: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     time_zone: Mapped[str] = mapped_column(String(64), default="UTC", server_default="UTC")  # the invitee's
-    status: Mapped[str] = mapped_column(String(10), default="booked", server_default="booked")
+    status: Mapped[str] = mapped_column(String(12), default="booked", server_default="booked")
     invitee_name: Mapped[str] = mapped_column(String(300), default="", server_default="")
     invitee_email: Mapped[str | None] = mapped_column(String(254))
     invitee_phone: Mapped[str | None] = mapped_column(String(40))
