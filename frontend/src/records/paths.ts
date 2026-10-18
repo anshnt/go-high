@@ -5,5 +5,5 @@ import type { ObjectDef } from "./types.ts";
 export const objectPath = (o: Pick<ObjectDef, "key" | "plural" | "is_system">) => (o.is_system ? `/${o.plural.toLowerCase()}` : `/objects/${o.key}`);
 export const recordPath = (o: Pick<ObjectDef, "key" | "plural" | "is_system">, id: string) => `${objectPath(o)}/${id}`;
 
-const ICONS: Record<string, LucideIcon> = { users: Users, building: Building2, handshake: Handshake };
+const ICONS: Record<string, LucideIcon> = { user: Users, users: Users, building: Building2, handshake: Handshake };
 export const iconFor = (name: string): LucideIcon => ICONS[name] ?? Box;

@@ -1,10 +1,12 @@
-import type { FieldDef, NewRecord, ObjectDef, Page, QueryParams, RecordRow, SavedView, Tag, TimelineEvent, UserRef } from "./types.ts";
-import { createMemoryClient } from "./memoryClient.ts";
+import type { FieldDef, LinkType, NewRecord, ObjectDef, Page, QueryParams, RecordRow, SavedView, Tag, TimelineEvent, UserRef } from "./types.ts";
+import { createApiClient } from "./apiClient.ts";
+import { api } from "../lib/api";
 import { session } from "../lib/session";
 
 /**
- * Everything the record screens need from the backend. The screens only ever talk to this interface, so the
- * API client (module 07) is a drop-in: same shapes, same errors (RecordsError with `status` and `fields`).
+ * Everything the record screens need from the backend. The screens only ever talk to this interface: the API client
+ * (apiClient.ts) is what the app runs on, and the in-memory client (memoryClient.ts) stands in for it in the public
+ * demo build. Both return the same shapes and the same errors (RecordsError with `status` and `fields`).
  * Rows are immutable: never edit what a call returns, copy it.
  */
 export interface RecordsClient {
@@ -31,20 +33,18 @@ export interface RecordsClient {
   untag(ids: string[], tagId: string): Promise<void>;
   /** Workspace members, for owner and user fields. */
   listUsers(): Promise<UserRef[]>;
+  /** The kinds of link between objects that are not record fields (associations); a record page lists what is linked either way. */
+  listLinkTypes(): Promise<LinkType[]>;
 }
 
-let demo: RecordsClient | undefined;
+// The demo build runs on the in-memory client (seeded data, simulated latency, shared by every screen). Normal builds
+// fold the condition to false, so the dynamic import goes with it and neither the client nor its seed is bundled.
+const me = () => {
+  const s = session.get();
+  return s.status === "ready" ? { id: s.me.user.id, name: s.me.user.name, email: s.me.user.email } : null;
+};
+const demo = import.meta.env.VITE_DEMO === "1" ? (await import("./memoryClient.ts")).createMemoryClient({ latency: 60, me }) : undefined;
 
-// ponytail: the record engine API (module 07) is not built yet, so this returns the in-memory demo client
-// (seeded data, simulated latency, shared by every screen). When the backend lands, return an API-backed
-// RecordsClient here and the memory client drops out of the bundle.
-export function useRecordsClient(): RecordsClient {
-  demo ??= createMemoryClient({
-    latency: 60,
-    me: () => {
-      const s = session.get();
-      return s.status === "ready" ? { id: s.me.user.id, name: s.me.user.name, email: s.me.user.email } : null;
-    },
-  });
-  return demo;
-}
+const live = createApiClient(api, { me });
+
+export const useRecordsClient = (): RecordsClient => demo ?? live;

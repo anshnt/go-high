@@ -6,7 +6,7 @@ import { RecordsError } from "./errors.ts";
 import { compareKeys, decodeCursor, dirsOf, encodeCursor, evaluate, matchesQuery, type Env, type SortKey } from "./engine.ts";
 import { canonical } from "./filter.ts";
 import { isMoney } from "./format.ts";
-import { isComputed, readValue, valueType } from "./schema.ts";
+import { isComputed, nameOf, readValue, valueType } from "./schema.ts";
 import { mulberry32, seedDataset, type Dataset } from "./seed.ts";
 import type { FieldDef, NewRecord, Page, QueryParams, RecordRow, SavedView, Tag, TimelineEvent, UserRef } from "./types.ts";
 import { isEmptyValue, validateValue } from "./validate.ts";
@@ -342,7 +342,7 @@ export function createMemoryClient(opts: MemoryOptions = {}): RecordsClient {
       const rec: RecordRow = {
         id: `${PREFIX[object] ?? "rec"}_${String(n).padStart(4, "0")}`,
         object,
-        display_name: String(values[def.primary_field] ?? ""),
+        display_name: nameOf(def, values),
         values,
         owner_id: input.owner_id === undefined ? (me()?.id ?? null) : input.owner_id,
         created_at: t,
@@ -379,7 +379,7 @@ export function createMemoryClient(opts: MemoryOptions = {}): RecordsClient {
         ...cur,
         values: next,
         owner_id: ownerChanged ? ((owner_id as string | null) ?? null) : cur.owner_id,
-        display_name: String(next[def.primary_field] ?? ""),
+        display_name: nameOf(def, next),
         updated_at: stamp(),
       };
       put(rec);
@@ -459,6 +459,12 @@ export function createMemoryClient(opts: MemoryOptions = {}): RecordsClient {
 
     tag: (ids, tagId) => retag(ids, tagId, true),
     untag: (ids, tagId) => retag(ids, tagId, false),
+
+    // Links here are record fields, which the screens read from the fields themselves: no other kinds exist.
+    async listLinkTypes() {
+      await wait();
+      return [];
+    },
 
     async listUsers() {
       await wait();

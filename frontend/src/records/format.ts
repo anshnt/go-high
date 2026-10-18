@@ -36,12 +36,29 @@ const moneyFormat = (currency: string) => {
   return f;
 };
 
+// From a thousand up the cents are noise ($71,000,000), below it they matter ($19.99). The editor still shows them.
+const wholeFormats = new Map<string, Intl.NumberFormat>();
+const wholeFormat = (currency: string) => {
+  let f = wholeFormats.get(currency);
+  if (!f) {
+    const options = { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 } as const;
+    try {
+      f = new Intl.NumberFormat(LOCALE, options);
+    } catch {
+      f = new Intl.NumberFormat(LOCALE, { ...options, currency: "USD" });
+    }
+    wholeFormats.set(currency, f);
+  }
+  return f;
+};
+
 export const isMoney = (v: unknown): v is Money =>
   typeof v === "object" && v !== null && typeof (v as Money).amount === "number" && typeof (v as Money).currency === "string";
 
-/** {amount: 123450, currency: "USD"} -> "$1,234.50". Amounts are integers in minor units. */
+/** {amount: 99950, currency: "USD"} -> "$999.50"; {amount: 123450, ...} -> "$1,235". Amounts are integers in minor units. */
 export function formatMoney(m: Money): string {
-  return moneyFormat(m.currency).format(m.amount / 10 ** minorDigits(m.currency));
+  const major = m.amount / 10 ** minorDigits(m.currency);
+  return (Math.abs(major) >= 1000 ? wholeFormat(m.currency) : moneyFormat(m.currency)).format(major);
 }
 
 /** What the amount field shows while editing: "1234.50", no grouping. */
@@ -70,6 +87,9 @@ export const formatNumber = (n: number) => new Intl.NumberFormat(LOCALE, { maxim
 
 const DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
 const MS_DAY = 86_400_000;
+
+/** The viewer's time zone ("Europe/Lisbon"): what a day in a date filter on a datetime field means. */
+export const zoneName = (): string => new Intl.DateTimeFormat(LOCALE).resolvedOptions().timeZone;
 
 /** "2026-10-17" -> local midnight; null if it is not a real calendar day. */
 export function parseDay(s: string): Date | null {
@@ -154,7 +174,14 @@ export const dayKey = (iso: string) => toDay(new Date(Date.parse(iso)));
 
 // ---- any value as plain text ----
 
-export type Lookup = { users?: UserRef[]; tags?: Tag[]; /** record id -> display name */ records?: Record<string, string> };
+export type Lookup = {
+  users?: UserRef[];
+  tags?: Tag[];
+  /** record id -> display name */
+  records?: Record<string, string>;
+  /** the viewer's time zone: a day in a condition on a datetime field is a day there, and the summary says so */
+  timeZone?: string;
+};
 
 /** The value in words, for summaries and the timeline. "" when empty. */
 export function valueText(field: Pick<FieldDef, "type" | "options">, value: unknown, lookup: Lookup = {}): string {
@@ -188,9 +215,9 @@ export function valueText(field: Pick<FieldDef, "type" | "options">, value: unkn
 const PLAIN: string[] = ["text", "email", "phone", "url", "number", "money", "select", "stage", "date"];
 
 /** One short line to tell records apart: the first filled field (after the name) of a type that reads as plain text. */
-export function subtitle(values: Record<string, unknown>, fields: Pick<FieldDef, "key" | "type" | "options">[], primary: string): string {
+export function subtitle(values: Record<string, unknown>, fields: Pick<FieldDef, "key" | "type" | "options">[], primary: string[]): string {
   for (const f of fields) {
-    if (f.key === primary || !PLAIN.includes(f.type)) continue;
+    if (primary.includes(f.key) || !PLAIN.includes(f.type)) continue;
     const v = values[f.key];
     if (v !== undefined && v !== null && v !== "") return f.type === "url" ? String(v).replace(/^https?:\/\//i, "").replace(/\/$/, "") : valueText(f, v);
   }

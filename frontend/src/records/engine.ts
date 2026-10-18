@@ -1,5 +1,6 @@
 // What the server does for a query, in plain TypeScript: evaluate the filter AST, order rows, keyset cursors, text search.
-// The memory client runs on this; the real API replaces all of it. Day boundaries are UTC here.
+// The memory client runs on this; the real API replaces all of it. A day named in a filter on a date field is that
+// calendar day; on a datetime field it is that day in the viewer's time zone, as the API client sends it.
 import { RecordsError } from "./errors.ts";
 import { isEmptyValue } from "./validate.ts";
 import { isCondition, isGroup, isTagCondition, groupItems, groupKind, opsFor } from "./filter.ts";
@@ -26,10 +27,17 @@ const PSEUDO: Record<string, FieldDef> = {
 const day = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
 /** A point (an instant, or the start of a calendar day for date fields). */
 const point = (v: unknown): number => Date.parse(day(String(v)) ? `${v}T00:00:00Z` : String(v));
-/** The half-open span a filter operand stands for: a whole day for "2026-10-17", a single millisecond for an instant. */
-function span(v: unknown): [number, number] {
-  const s = point(v);
-  return day(String(v)) ? [s, s + DAY_MS] : [s, s + 1];
+/**
+ * The half-open span a filter operand stands for: a whole day for "2026-10-17" (in the viewer's time zone when `local`,
+ * for a datetime field), a single millisecond for an instant.
+ */
+function span(v: unknown, local = false): [number, number] {
+  if (!day(String(v))) {
+    const s = point(v);
+    return [s, s + 1];
+  }
+  const [y, m, d] = String(v).split("-").map(Number) as [number, number, number];
+  return local ? [new Date(y, m - 1, d).getTime(), new Date(y, m - 1, d + 1).getTime()] : [Date.UTC(y, m - 1, d), Date.UTC(y, m - 1, d) + DAY_MS];
 }
 
 // ---- evaluation ----
@@ -91,7 +99,7 @@ function test(rec: RecordRow, c: FilterCondition, env: Env): boolean {
       return compare(type, v, a, c.op, time);
     case "between": {
       const [from, to] = Array.isArray(a) ? a : [];
-      return time ? timeBetween(v, from, to) : between(type, v, from, to);
+      return time ? timeBetween(v, from, to, type === "datetime") : between(type, v, from, to);
     }
     case "within_last":
     case "older_than": {
@@ -115,7 +123,7 @@ function same(type: string, v: unknown, a: unknown): boolean {
   if (isEmptyValue(v)) return false;
   if (type === "money") return isMoney(v) && isMoney(a) && v.amount === a.amount && v.currency === a.currency;
   if (type === "date" || type === "datetime") {
-    const [s, e] = span(a);
+    const [s, e] = span(a, type === "datetime");
     const p = point(v);
     return p >= s && p < e;
   }
@@ -134,7 +142,7 @@ function compare(type: string, v: unknown, a: unknown, op: "gt" | "gte" | "lt" |
   if (isEmptyValue(v)) return false;
   if (time) {
     const p = point(v);
-    const [s, e] = span(a);
+    const [s, e] = span(a, type === "datetime");
     return op === "gt" ? p >= e : op === "gte" ? p >= s : op === "lt" ? p < s : p < e;
   }
   const d = cmpScalar(type, v, a);
@@ -148,10 +156,10 @@ function between(type: string, v: unknown, lo: unknown, hi: unknown): boolean {
   return x !== null && y !== null && x >= 0 && y <= 0;
 }
 
-function timeBetween(v: unknown, from: unknown, to: unknown): boolean {
+function timeBetween(v: unknown, from: unknown, to: unknown, local: boolean): boolean {
   if (isEmptyValue(v) || isEmptyValue(from) || isEmptyValue(to)) return false;
   const p = point(v);
-  return p >= span(from)[0] && p < span(to)[1];
+  return p >= span(from, local)[0] && p < span(to, local)[1];
 }
 
 // ---- ordering and cursors ----

@@ -10,7 +10,7 @@ import { FieldValue, TagBadge } from "./fields/FieldValue";
 import { relativeTime } from "./format.ts";
 import { canonical } from "./filter.ts";
 import { primeRefs, useMeta } from "./meta.tsx";
-import { isComputed, isReadOnly, readValue, valueType } from "./schema.ts";
+import { isComputed, isReadOnly, nameOf, readValue, valueType } from "./schema.ts";
 import { Timeline } from "./Timeline";
 import type { FieldDef, ObjectDef, RecordRow } from "./types.ts";
 import { isEmptyValue, normalizeText, validateValue } from "./validate.ts";
@@ -25,7 +25,7 @@ const withChange = (row: RecordRow, def: ObjectDef, key: string, value: unknown)
   const values = { ...row.values };
   if (value === undefined) delete values[key];
   else values[key] = value;
-  return { ...row, values, display_name: key === def.primary_field ? String(value ?? "") : row.display_name };
+  return { ...row, values, display_name: def.primary_fields.includes(key) ? nameOf(def, values) : row.display_name };
 };
 
 /** One field: its value, and the right way to change it. Saves go through `save`, which is optimistic and reports a message if it had to roll back. */
@@ -236,11 +236,13 @@ export function RecordDetail({ client, def, id, initial, fields, onClose, onChan
       const run = async (): Promise<string | null> => {
         try {
           const saved = await client.update(def.key, id, { [key]: value ?? null });
+          // the server may have normalized what was typed (an email in lower case, a phone number as +14155550101): show its version
           setRow((r) => ({
             ...r,
             updated_at: saved.updated_at,
             display_name: saved.display_name,
-            values: { ...r.values, ...Object.fromEntries(computedKeys.map((k) => [k, saved.values[k]])) },
+            ...(key === "owner_id" ? { owner_id: saved.owner_id } : {}),
+            values: { ...r.values, ...(key !== "owner_id" && key in saved.values ? { [key]: saved.values[key] } : {}), ...Object.fromEntries(computedKeys.map((k) => [k, saved.values[k]])) },
           }));
           setVersion((v) => v + 1);
           return null;
@@ -372,7 +374,7 @@ export function RecordDetail({ client, def, id, initial, fields, onClose, onChan
           <Timeline client={client} recordId={row.id} version={version} fields={fields} />
         </div>
         <aside className="rec-d-assoc" aria-label="Associations">
-          <Associations client={client} def={def} record={row} />
+          <Associations client={client} def={def} record={row} version={version} />
         </aside>
       </div>
     </section>

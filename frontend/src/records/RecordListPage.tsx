@@ -1,6 +1,8 @@
 import { Filter as FilterIcon, LockKeyhole, MoreHorizontal, Plus, Search, SearchX, Tag as TagIcon, Trash2, TriangleAlert, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, useNavigate, useParams, useSearchParams } from "react-router";
+import { cn } from "../lib/cn";
+import { useMediaQuery } from "../lib/useMediaQuery";
 import { useMe } from "../lib/session";
 import { PageHeader } from "../shell/PageHeader";
 import { TYPING } from "../shell/useShortcuts";
@@ -16,6 +18,7 @@ import { MetaProvider, primeRefs, useFields, useLoadMeta, useMeta } from "./meta
 import { NewRecordDialog } from "./NewRecordDialog";
 import { iconFor, objectPath, recordPath } from "./paths.ts";
 import { RecordDetail } from "./RecordDetail";
+import { DISPLAY_NAME, nameKey } from "./schema.ts";
 import { useRecordsClient, type RecordsClient } from "./client.ts";
 import type { FieldDef, Filter, ObjectDef, RecordRow, SavedView, SortSpec } from "./types.ts";
 import { useDebounced } from "./useDebounced";
@@ -92,7 +95,7 @@ function ListSkeleton() {
 function Loaded({ client, def }: { client: RecordsClient; def: ObjectDef }) {
   const meta = useMeta();
   const fields = useFields(def.key);
-  const refs = useMemo(() => filterFields(def.key, meta.objects, meta.fields), [def.key, meta.objects, meta.fields]);
+  const refs = useMemo(() => filterFields(def.key, meta.objects, meta.fields, meta.links), [def.key, meta.objects, meta.fields, meta.links]);
   const navigate = useNavigate();
   const { id: openId } = useParams();
   const [search, setSearch] = useSearchParams();
@@ -125,7 +128,7 @@ function Loaded({ client, def }: { client: RecordsClient; def: ObjectDef }) {
   const base = useMemo<Working>(
     () =>
       activeView
-        ? { filter: activeView.filter, columns: ensurePrimary(activeView.columns, def.primary_field), sort: activeView.sort.length ? activeView.sort : DEFAULT_SORT }
+        ? { filter: activeView.filter, columns: ensurePrimary(activeView.columns, nameKey(def)), sort: activeView.sort.length ? activeView.sort : DEFAULT_SORT }
         : { filter: null, columns: defaultColumns(def, fields), sort: DEFAULT_SORT },
     [activeView, def, fields],
   );
@@ -379,7 +382,8 @@ function Loaded({ client, def }: { client: RecordsClient; def: ObjectDef }) {
   );
 
   // ---- render ----
-  const columns = useMemo(() => buildColumns(def, fields, working.columns, rail), [def, fields, working.columns, rail]);
+  const phone = useMediaQuery("(max-width: 639px)"); // a phone lists two-line rows instead of a table that scrolls sideways
+  const columns = useMemo(() => buildColumns(def, fields, working.columns, rail, phone), [def, fields, working.columns, rail, phone]);
   const sort: Sort | undefined = working.sort[0] ? { key: working.sort[0].field, dir: working.sort[0].dir } : undefined;
   const filtered = countConditions(working.filter) > 0 || q !== "";
   const loading = (list.status === "loading" && rows.length === 0) || waiting;
@@ -415,7 +419,7 @@ function Loaded({ client, def }: { client: RecordsClient; def: ObjectDef }) {
       />
     );
 
-  const detailFields: FieldDef[] = fields;
+  const detailFields: FieldDef[] = useMemo(() => fields.filter((f) => f.key !== DISPLAY_NAME), [fields]); // the name is edited through its parts
   const objects = meta.objects;
 
   return (
@@ -555,7 +559,7 @@ function Loaded({ client, def }: { client: RecordsClient; def: ObjectDef }) {
       <div className="rec-body" data-open={rail || undefined}>
         <section className="rec-list" aria-label={`${def.plural} list`} data-refreshing={refreshing || undefined}>
           <Table<RecordRow>
-            className="rec-table"
+            className={cn("rec-table", phone && "rec-table-phone")}
             caption={`${def.plural}, ${countText}`}
             columns={columns}
             rows={rows}

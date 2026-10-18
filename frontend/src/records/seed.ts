@@ -84,9 +84,9 @@ const columns = (): FieldDef[] => [
 export function schema(): { objects: ObjectDef[]; fields: Record<string, FieldDef[]> } {
   order = 0;
   const objects: ObjectDef[] = [
-    { key: "contact", singular: "Contact", plural: "Contacts", icon: "users", is_system: true, primary_field: "name" },
-    { key: "company", singular: "Company", plural: "Companies", icon: "building", is_system: true, primary_field: "name" },
-    { key: "deal", singular: "Deal", plural: "Deals", icon: "handshake", is_system: true, primary_field: "name" },
+    { key: "contact", singular: "Contact", plural: "Contacts", icon: "users", is_system: true, primary_fields: ["name"] },
+    { key: "company", singular: "Company", plural: "Companies", icon: "building", is_system: true, primary_fields: ["name"] },
+    { key: "deal", singular: "Deal", plural: "Deals", icon: "handshake", is_system: true, primary_fields: ["name"] },
   ];
   const fields: Record<string, FieldDef[]> = {
     contact: [

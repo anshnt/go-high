@@ -1,19 +1,19 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { RecordsClient } from "./client.ts";
-import type { FieldDef, ObjectDef, RecordRow, Tag, UserRef } from "./types.ts";
+import type { FieldDef, LinkType, ObjectDef, RecordRow, Tag, UserRef } from "./types.ts";
 import { liveFields } from "./schema.ts";
 
-/** What every record screen needs to know about the workspace: its objects, their fields, people and tags. */
-export type Meta = { objects: ObjectDef[]; fields: Record<string, FieldDef[]>; users: UserRef[]; tags: Tag[] };
+/** What every record screen needs to know about the workspace: its objects, their fields, people, tags and the kinds of link between objects. */
+export type Meta = { objects: ObjectDef[]; fields: Record<string, FieldDef[]>; users: UserRef[]; tags: Tag[]; links: LinkType[] };
 
 const loads = new WeakMap<RecordsClient, Promise<Meta>>();
 const loaded = new WeakMap<RecordsClient, Meta>(); // so a screen that opens later renders at once, without a loading flash
 function loadMeta(client: RecordsClient): Promise<Meta> {
   let p = loads.get(client);
   if (!p) {
-    p = Promise.all([client.listObjects(), client.listUsers(), client.listTags()]).then(async ([objects, users, tags]) => {
+    p = Promise.all([client.listObjects(), client.listUsers(), client.listTags(), client.listLinkTypes()]).then(async ([objects, users, tags, links]) => {
       const pairs = await Promise.all(objects.map(async (o) => [o.key, await client.listFields(o.key)] as const));
-      const meta: Meta = { objects, users, tags, fields: Object.fromEntries(pairs) };
+      const meta: Meta = { objects, users, tags, links, fields: Object.fromEntries(pairs) };
       loaded.set(client, meta);
       return meta;
     });
@@ -70,6 +70,7 @@ const cacheOf = (client: RecordsClient): Cache => {
   if (!c) caches.set(client, (c = { map: new Map(), subs: new Map(), all: new Set(), queue: new Map(), scheduled: false }));
   return c;
 };
+const MAX_IN = 100;
 const keyOf = (object: string, id: string) => `${object}/${id}`;
 const notify = (c: Cache, k: string) => {
   c.subs.get(k)?.forEach((fn) => fn());
@@ -94,17 +95,21 @@ function flush(client: RecordsClient, c: Cache) {
   c.scheduled = false;
   for (const [object, ids] of queue) {
     const list = [...ids];
-    const settle = (rows: RecordRow[]) => {
+    const settle = (rows: RecordRow[], wanted: string[]) => {
       const found = new Map(rows.map((r) => [r.id, r]));
-      for (const id of list) {
+      for (const id of wanted) {
         c.map.set(keyOf(object, id), { row: found.get(id) ?? null });
         notify(c, keyOf(object, id));
       }
     };
-    client.query(object, { filter: { field: "id", op: "in", value: list }, limit: Math.min(200, list.length) }).then(
-      (page) => settle(page.data),
-      () => settle([]),
-    );
+    // The server takes at most 100 ids in one condition.
+    for (let i = 0; i < list.length; i += MAX_IN) {
+      const part = list.slice(i, i + MAX_IN);
+      client.query(object, { filter: { field: "id", op: "in", value: part }, limit: part.length }).then(
+        (page) => settle(page.data, part),
+        () => settle([], part),
+      );
+    }
   }
 }
 

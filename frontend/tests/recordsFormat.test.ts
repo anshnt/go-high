@@ -23,10 +23,29 @@ import { schema } from "../src/records/seed.ts";
 const NOON = new Date(2026, 9, 17, 12, 0, 0).getTime();
 const at = (days: number, hours = 0, minutes = 0) => new Date(NOON + days * 86_400_000 + hours * 3_600_000 + minutes * 60_000).toISOString();
 
+test("money from a thousand up has no cents, smaller amounts keep them", () => {
+  assert.equal(formatMoney({ amount: 7_100_000_000, currency: "USD" }), "$71,000,000");
+  assert.equal(formatMoney({ amount: 100_000, currency: "USD" }), "$1,000");
+  assert.equal(formatMoney({ amount: 99_999, currency: "USD" }), "$999.99");
+  assert.equal(formatMoney({ amount: 123_450, currency: "USD" }), "$1,235");
+  assert.equal(formatMoney({ amount: 123_449, currency: "USD" }), "$1,234");
+  assert.equal(formatMoney({ amount: 5_000_050, currency: "USD" }), "$50,001"); // rounded, not cut: 50,000.50
+  assert.equal(formatMoney({ amount: -250_000, currency: "USD" }), "-$2,500");
+  assert.equal(formatMoney({ amount: -99_900, currency: "USD" }), "-$999.00");
+  assert.equal(formatMoney({ amount: 0, currency: "USD" }), "$0.00");
+  assert.equal(formatMoney({ amount: 800_000, currency: "EUR" }), "€8,000");
+  assert.equal(formatMoney({ amount: 12_345_678, currency: "KWD" }).normalize("NFKC"), "KWD 12,346");
+  assert.equal(formatMoney({ amount: 999, currency: "JPY" }), "¥999");
+  assert.equal(formatMoney({ amount: 2_000, currency: "NOPE" }), "$20.00");
+  assert.equal(formatMoney({ amount: 200_000, currency: "NOPE" }), "$2,000");
+  // the editor still shows every cent
+  assert.equal(moneyToInput({ amount: 123_450, currency: "USD" }), "1234.50");
+});
+
 test("money is formatted from integer minor units in its own currency", () => {
-  assert.equal(formatMoney({ amount: 123450, currency: "USD" }), "$1,234.50");
+  assert.equal(formatMoney({ amount: 123450, currency: "USD" }), "$1,235");
   assert.equal(formatMoney({ amount: 5, currency: "USD" }), "$0.05");
-  assert.equal(formatMoney({ amount: 800000, currency: "EUR" }), "€8,000.00");
+  assert.equal(formatMoney({ amount: 800000, currency: "EUR" }), "€8,000");
   assert.equal(formatMoney({ amount: 1500, currency: "JPY" }), "¥1,500");
   assert.equal(formatMoney({ amount: 12345, currency: "KWD" }).normalize("NFKC"), "KWD 12.345");
   assert.equal(formatMoney({ amount: -2500, currency: "USD" }), "-$25.00");
@@ -115,7 +134,7 @@ test("any value as words", () => {
   assert.equal(valueText(f.email!, ""), "");
   assert.equal(valueText(f.email!, undefined), "");
   const rollup = schema().fields.company!.find((x) => x.key === "open_value")!;
-  assert.equal(valueText(rollup, { amount: 300000, currency: "USD" }), "$3,000.00");
+  assert.equal(valueText(rollup, { amount: 300000, currency: "USD" }), "$3,000");
 });
 
 test("validation messages", () => {

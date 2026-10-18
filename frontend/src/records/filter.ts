@@ -1,8 +1,8 @@
 // The filter AST (ADR 0002): which operators each field type offers, how to tidy a half-built filter,
 // plain-language summaries, and the list of fields (own and through associations) a filter can use.
-import type { FieldDef, FieldType, Filter, FilterCondition, FilterGroup, FilterTag, ObjectDef, Op } from "./types.ts";
+import type { FieldDef, FieldType, Filter, FilterCondition, FilterGroup, FilterTag, LinkType, ObjectDef, Op } from "./types.ts";
 import { formatMoney, isMoney, valueText, type Lookup } from "./format.ts";
-import { valueType, isComputed } from "./schema.ts";
+import { valueType, isComputed, DISPLAY_NAME } from "./schema.ts";
 
 export const isGroup = (f: Filter): f is FilterGroup => "and" in f || "or" in f;
 export const isTagCondition = (f: Filter): f is FilterTag => "tag" in f;
@@ -178,6 +178,7 @@ const humanize = (key: string) => {
   return s.charAt(0).toUpperCase() + s.slice(1);
 };
 const TEXTUAL: FieldType[] = ["text", "long_text", "email", "phone", "url"];
+const DAY_OPS: Op[] = ["is", "gt", "gte", "lt", "lte", "between"];
 
 type Labelled = Pick<FieldDef, "key" | "label" | "type" | "options">;
 
@@ -199,12 +200,14 @@ export function filterToText(ast: Filter | null | undefined, fields: Labelled[],
       const t = valueText(field, v, ctx);
       return TEXTUAL.includes(type) ? `"${t}"` : t;
     };
+    // "on or after Oct 1" on a datetime field is Oct 1 where the viewer is; "within the last 30 days" is a span, the same everywhere
+    const zone = ctx.timeZone && type === "datetime" && DAY_OPS.includes(c.op) ? ` (your time zone: ${ctx.timeZone})` : "";
     switch (valueKind(c.op)) {
       case "none":
         return `${label} ${opText}`;
       case "range": {
         const [a, b] = Array.isArray(c.value) ? c.value : [];
-        return `${label} ${opText} ${one(a)} and ${one(b)}`;
+        return `${label} ${opText} ${one(a)} and ${one(b)}${zone}`;
       }
       case "list":
         return `${label} ${opText} ${(Array.isArray(c.value) ? c.value : []).map(one).join(", ")}`;
@@ -213,7 +216,7 @@ export function filterToText(ast: Filter | null | undefined, fields: Labelled[],
         return `${label} ${opText} ${d} ${d === 1 ? "day" : "days"}`;
       }
       default:
-        return `${label} ${opText} ${isMoney(c.value) ? formatMoney(c.value) : one(c.value)}`;
+        return `${label} ${opText} ${isMoney(c.value) ? formatMoney(c.value) : one(c.value)}${zone}`;
     }
   };
 
@@ -246,13 +249,14 @@ const lowerFirst = (s: string) => (s.length > 1 && s[1] === s[1]!.toUpperCase() 
  * Own fields, then one hop of associations: through each record field ("company.name") and, from the other
  * side, through objects that link here ("deal.amount"). Computed fields are not offered across a link.
  */
-export function filterFields(object: string, objects: ObjectDef[], fields: Record<string, FieldDef[]>): FieldRef[] {
+export function filterFields(object: string, objects: ObjectDef[], fields: Record<string, FieldDef[]>, links: LinkType[] = []): FieldRef[] {
   const self = objects.find((o) => o.key === object);
   const own = (fields[object] ?? []).filter((f) => !f.archived);
   const out: FieldRef[] = own.map((f) => ({ path: f.key, label: f.label, group: self?.singular ?? object, field: f }));
   const through = (prefix: string, groupLabel: string, nameLabel: string, target: string) => {
-    for (const f of (fields[target] ?? []).filter((x) => !x.archived && x.type !== "record" && !isComputed(x))) {
+    for (const f of (fields[target] ?? []).filter((x) => !x.archived && x.type !== "record" && !isComputed(x) && x.key !== DISPLAY_NAME)) {
       const path = `${prefix}.${f.key}`;
+      if (out.some((r) => r.path === path)) continue; // a record field and an association can reach the same object
       const label = `${nameLabel} ${lowerFirst(f.label)}`;
       out.push({ path, label: f.label, group: groupLabel, field: { ...f, key: path, label } });
     }
@@ -260,7 +264,8 @@ export function filterFields(object: string, objects: ObjectDef[], fields: Recor
   for (const f of own) if (f.type === "record" && f.options.object) through(f.key, f.label, f.label, f.options.object);
   for (const o of objects) {
     if (o.key === object) continue;
-    if ((fields[o.key] ?? []).some((f) => f.type === "record" && f.options.object === object && !f.archived)) through(o.key, o.plural, o.singular, o.key);
+    const linked = links.some((t) => (t.from === object && t.to === o.key) || (t.to === object && t.from === o.key));
+    if (linked || (fields[o.key] ?? []).some((f) => f.type === "record" && f.options.object === object && !f.archived)) through(o.key, o.plural, o.singular, o.key);
   }
   return out;
 }

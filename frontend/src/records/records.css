@@ -948,6 +948,25 @@ a.rec-chip:hover {
   }
 }
 
+/* ---- phone list: two-line rows, so nothing scrolls sideways ---- */
+.rec-table-phone {
+  --row-h: 64px;
+}
+.rec-phone-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.rec-phone-sub {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.rec-tl-link {
+  font-style: normal;
+  font-weight: 500;
+}
+
 /* ---- phones ---- */
 @media (max-width: 767px) {
   .rec-page {

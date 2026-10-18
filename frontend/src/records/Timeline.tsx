@@ -1,8 +1,8 @@
-import { ArrowRight, History, Pencil, Plus, Tag as TagIcon } from "lucide-react";
+import { ArrowRight, History, Link2, Pencil, Plus, Tag as TagIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, EmptyState, Skeleton } from "../ui";
 import type { RecordsClient } from "./client.ts";
-import { FieldValue, TagBadge } from "./fields/FieldValue";
+import { FieldValue, RecordChip, TagBadge } from "./fields/FieldValue";
 import { dayHeading, dayKey, formatDateTime, LOCALE } from "./format.ts";
 import { errorMessage } from "./errors.ts";
 import { useMeta } from "./meta.tsx";
@@ -55,7 +55,7 @@ function Event({ e, fields }: { e: TimelineEvent; fields: Map<string, FieldDef> 
   const { users } = useMeta();
   const who = e.actor_id ? (users.find((u) => u.id === e.actor_id)?.name ?? "Someone") : "System";
   const at = Date.parse(e.at);
-  const Icon = e.type === "created" ? Plus : e.type === "updated" ? Pencil : TagIcon;
+  const Icon = e.type === "created" ? Plus : e.type === "updated" ? Pencil : e.type === "linked" || e.type === "unlinked" ? Link2 : TagIcon;
   return (
     <li className="rec-tl-item">
       <span className="rec-tl-icon" aria-hidden>
@@ -74,6 +74,11 @@ function Event({ e, fields }: { e: TimelineEvent; fields: Map<string, FieldDef> 
           {e.type === "untagged" && (
             <>
               removed the tag {e.tag && <TagBadge tag={e.tag} />}
+            </>
+          )}
+          {(e.type === "linked" || e.type === "unlinked") && e.link && (
+            <>
+              {e.type === "linked" ? "added" : "removed"} the link <em className="rec-tl-link">{e.link.label}</em> <RecordChip object={e.link.object} id={e.link.id} />
             </>
           )}
           <time className="rec-tl-time" dateTime={e.at} title={formatDateTime(e.at)}>

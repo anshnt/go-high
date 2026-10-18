@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { Button, Checkbox, Select } from "../ui";
 import { Popover } from "../ui/Popover";
 import { TAGS_KEY } from "./columns";
-import { isSortable, valueType } from "./schema.ts";
+import { isSortable, nameKey, valueType } from "./schema.ts";
 import type { FieldDef, FieldType, ObjectDef, SortSpec } from "./types.ts";
 
 const dirLabels = (t: FieldType): [string, string] =>
@@ -66,14 +66,15 @@ export function SortMenu({ fields, sort, onChange }: { fields: FieldDef[]; sort:
 /** Show, hide and reorder columns. The name stays first. */
 export function ColumnsMenu({ def, fields, columns, onChange }: { def: ObjectDef; fields: FieldDef[]; columns: string[]; onChange: (c: string[]) => void }) {
   const [q, setQ] = useState("");
-  const label = (k: string) => (k === TAGS_KEY ? "Tags" : (fields.find((f) => f.key === k)?.label ?? k));
+  const first = nameKey(def);
+  const label = (k: string) => (k === TAGS_KEY ? "Tags" : (fields.find((f) => f.key === k)?.label ?? (k === first ? "Name" : k)));
   const all = useMemo(() => [...fields.map((f) => f.key), TAGS_KEY], [fields]);
-  const shown = columns.filter((k) => k !== def.primary_field && all.includes(k));
-  const hidden = all.filter((k) => k !== def.primary_field && !shown.includes(k));
+  const shown = columns.filter((k) => k !== first && all.includes(k));
+  const hidden = all.filter((k) => k !== first && !shown.includes(k));
   const move = (i: number, by: number) => {
     const next = shown.slice();
     [next[i], next[i + by]] = [next[i + by]!, next[i]!];
-    onChange([def.primary_field, ...next]);
+    onChange([first, ...next]);
   };
   const match = (k: string) => label(k).toLowerCase().includes(q.trim().toLowerCase());
   return (
@@ -92,14 +93,14 @@ export function ColumnsMenu({ def, fields, columns, onChange }: { def: ObjectDef
         <ul className="rec-cols-list" aria-label="Columns">
           <li className="rec-cols-row">
             <Lock size={14} aria-hidden className="rec-cols-lock" />
-            <span className="rec-cols-name">{label(def.primary_field)}</span>
+            <span className="rec-cols-name">{label(first)}</span>
             <span className="rec-cols-note">always first</span>
           </li>
           {shown.filter(match).map((k) => {
             const i = shown.indexOf(k);
             return (
               <li key={k} className="rec-cols-row">
-                <Checkbox aria-label={`Show ${label(k)}`} checked onCheckedChange={() => onChange([def.primary_field, ...shown.filter((x) => x !== k)])} />
+                <Checkbox aria-label={`Show ${label(k)}`} checked onCheckedChange={() => onChange([first, ...shown.filter((x) => x !== k)])} />
                 <span className="rec-cols-name">{label(k)}</span>
                 <Button variant="ghost" size="icon" aria-label={`Move ${label(k)} left`} disabled={i === 0} onClick={() => move(i, -1)}>
                   <ArrowUp size={14} aria-hidden />
@@ -117,7 +118,7 @@ export function ColumnsMenu({ def, fields, columns, onChange }: { def: ObjectDef
             <ul className="rec-cols-list" aria-label="Hidden columns">
               {hidden.filter(match).map((k) => (
                 <li key={k} className="rec-cols-row">
-                  <Checkbox aria-label={`Show ${label(k)}`} checked={false} onCheckedChange={() => onChange([def.primary_field, ...shown, k])} />
+                  <Checkbox aria-label={`Show ${label(k)}`} checked={false} onCheckedChange={() => onChange([first, ...shown, k])} />
                   <span className="rec-cols-name">{label(k)}</span>
                 </li>
               ))}

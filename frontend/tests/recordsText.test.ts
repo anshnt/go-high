@@ -34,7 +34,7 @@ test("tags and money", () => {
   assert.equal(text({ tag: "tag_vip" }), "Tagged VIP");
   assert.equal(text({ tag: "tag_gone" }), "Tagged tag_gone");
   const deal = filterFields("deal", objects, fields).map((r) => r.field);
-  assert.equal(filterToText({ field: "amount", op: "gt", value: { amount: 500000, currency: "USD" } }, deal), "Amount is greater than $5,000.00");
+  assert.equal(filterToText({ field: "amount", op: "gt", value: { amount: 500000, currency: "USD" } }, deal), "Amount is greater than $5,000");
   assert.equal(filterToText({ field: "amount", op: "between", value: [{ amount: 100, currency: "EUR" }, { amount: 20000, currency: "EUR" }] }, deal), "Amount is between €1.00 and €200.00");
 });
 
@@ -46,7 +46,7 @@ test("groups: and, or, nesting with brackets, empties dropped", () => {
       { or: [{ tag: "tag_vip" }, { field: "deal.amount", op: "gt", value: { amount: 500000, currency: "USD" } }] },
     ],
   };
-  assert.equal(text(ast), "Lifecycle is Customer and Created is within the last 30 days and (Tagged VIP or Deal amount is greater than $5,000.00)");
+  assert.equal(text(ast), "Lifecycle is Customer and Created is within the last 30 days and (Tagged VIP or Deal amount is greater than $5,000)");
   assert.equal(text({ or: [{ tag: "tag_vip" }, { tag: "tag_partner" }] }), "Tagged VIP or Tagged Partner");
   assert.equal(text({ and: [{ and: [] }, { tag: "tag_vip" }] }), "Tagged VIP");
   assert.equal(text({ and: [{ or: [{ tag: "tag_vip" }] }] }), "Tagged VIP");

@@ -22,6 +22,7 @@ import {
   valueKind,
   type FieldRef,
 } from "./filter.ts";
+import { zoneName } from "./format.ts";
 import { useMeta, useRecordNames } from "./meta.tsx";
 import { valueType } from "./schema.ts";
 import type { FieldDef, Filter, FilterCondition, FilterGroup, FilterTag, Money, Op, Tag } from "./types.ts";
@@ -299,7 +300,7 @@ export function FilterChips({ value, refs, onChange, onEdit }: { value: Filter |
   const chips: ReactNode[] = [];
   items.forEach((it, i) => {
     if (i > 0) chips.push(<span key={`j${i}`} className="rec-chips-join">{kind === "and" ? "and" : "or"}</span>);
-    const text = filterToText(it, fields, { tags, users, records });
+    const text = filterToText(it, fields, { tags, users, records, timeZone: zoneName() });
     chips.push(
       <span key={i} className={cn("rec-filter-chip")}>
         <button type="button" className="rec-filter-chip-text" onClick={onEdit} title="Edit this filter">

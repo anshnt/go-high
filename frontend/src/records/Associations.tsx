@@ -3,16 +3,16 @@ import { Link } from "react-router";
 import { Avatar, Button, Skeleton } from "../ui";
 import type { RecordsClient } from "./client.ts";
 import { subtitle } from "./format.ts";
-import { primeRefs, useMeta, useRecordRef } from "./meta.tsx";
+import { primeRefs, useMeta, type Meta } from "./meta.tsx";
 import { recordPath } from "./paths.ts";
 import { liveFields } from "./schema.ts";
-import type { FieldDef, ObjectDef, RecordRow } from "./types.ts";
+import type { FieldDef, Filter, ObjectDef, RecordRow } from "./types.ts";
 
 const SHOWN = 4;
 const FETCH = 25;
 
 function Item({ def, fields, row }: { def: ObjectDef; fields: FieldDef[]; row: RecordRow }) {
-  const sub = subtitle(row.values, fields, def.primary_field);
+  const sub = subtitle(row.values, fields, def.primary_fields);
   return (
     <li>
       <Link to={recordPath(def, row.id)} className="rec-assoc-item">
@@ -26,30 +26,36 @@ function Item({ def, fields, row }: { def: ObjectDef; fields: FieldDef[]; row: R
   );
 }
 
-/** The company a contact works at: a field that links out. */
-function Forward({ client, field, id }: { client: RecordsClient; field: FieldDef; id: string }) {
-  const meta = useMeta();
-  const target = field.options.object!;
-  const row = useRecordRef(client, target, id);
-  const def = meta.objects.find((o) => o.key === target);
-  if (!def) return null;
-  return (
-    <section className="rec-assoc" aria-label={field.label}>
-      <h3 className="rec-section-title">{field.label}</h3>
-      {row === undefined ? <Skeleton style={{ width: "70%" }} /> : row === null ? <p className="rec-assoc-none">Deleted record</p> : <ul className="rec-assoc-list"><Item def={def} fields={liveFields(meta.fields[target] ?? [])} row={row} /></ul>}
-    </section>
-  );
+/**
+ * The records of `other` that are linked to this one, whichever way the link was made: a record field (a contact's
+ * company), a record field on the other side (the contacts whose company is this one) or an association. One condition
+ * per way, joined with "or", so the server finds each record once however many ways link it. Null when nothing can link them.
+ */
+export function linkedFilter(meta: Meta, def: ObjectDef, record: RecordRow, other: ObjectDef): Filter | null {
+  const ways: Filter[] = [];
+  if (meta.links.some((t) => (t.from === def.key && t.to === other.key) || (t.to === def.key && t.from === other.key))) {
+    ways.push({ field: `${def.key}.id`, op: "is", value: record.id });
+  }
+  for (const f of liveFields(meta.fields[other.key] ?? [])) {
+    if (f.type === "record" && f.options.object === def.key) ways.push({ field: f.key, op: "is", value: record.id });
+  }
+  for (const f of liveFields(meta.fields[def.key] ?? [])) {
+    const id = record.values[f.key];
+    if (f.type === "record" && f.options.object === other.key && typeof id === "string") ways.push({ field: "id", op: "is", value: id });
+  }
+  return ways.length === 0 ? null : ways.length === 1 ? ways[0]! : { or: ways };
 }
 
-/** Contacts of a company, deals of a contact: records elsewhere that link here. */
-function Reverse({ client, from, field, id }: { client: RecordsClient; from: ObjectDef; field: FieldDef; id: string }) {
+/** One kind of linked record: contacts of a company, deals of a contact. */
+function Linked({ client, other, filter, version }: { client: RecordsClient; other: ObjectDef; filter: Filter; version: number }) {
   const meta = useMeta();
   const [state, setState] = useState<{ rows: RecordRow[]; total: number; status: "loading" | "ready" | "error" }>({ rows: [], total: 0, status: "loading" });
   const [all, setAll] = useState(false);
+  const key = JSON.stringify(filter);
   useEffect(() => {
     let live = true;
     setState((s) => ({ ...s, status: "loading" }));
-    client.query(from.key, { filter: { field: field.key, op: "is", value: id }, limit: FETCH, sort: [{ field: "updated_at", dir: "desc" }] }).then(
+    client.query(other.key, { filter, limit: FETCH, sort: [{ field: "updated_at", dir: "desc" }] }).then(
       (p) => {
         if (!live) return;
         primeRefs(client, p.data);
@@ -60,21 +66,22 @@ function Reverse({ client, from, field, id }: { client: RecordsClient; from: Obj
     return () => {
       live = false;
     };
-  }, [client, from.key, field.key, id]);
-  const fields = useMemo(() => liveFields(meta.fields[from.key] ?? []), [meta.fields, from.key]);
+    // `key` stands for `filter`; `version` moves on when the record was saved, which may have changed its links
+  }, [client, other.key, key, version]);
+  const fields = useMemo(() => liveFields(meta.fields[other.key] ?? []), [meta.fields, other.key]);
   const shown = all ? state.rows : state.rows.slice(0, SHOWN);
   return (
-    <section className="rec-assoc" aria-label={from.plural}>
+    <section className="rec-assoc" aria-label={other.plural}>
       <h3 className="rec-section-title">
-        {from.plural} {state.status === "ready" && <span className="rec-count-pill">{state.total}</span>}
+        {other.plural} {state.status === "ready" && <span className="rec-count-pill">{state.total}</span>}
       </h3>
       {state.status === "loading" && state.rows.length === 0 && <Skeleton style={{ width: "70%" }} />}
-      {state.status === "error" && <p className="rec-assoc-none">Could not load {from.plural.toLowerCase()}.</p>}
-      {state.status === "ready" && state.rows.length === 0 && <p className="rec-assoc-none">No {from.plural.toLowerCase()} linked yet.</p>}
+      {state.status === "error" && <p className="rec-assoc-none">Could not load {other.plural.toLowerCase()}.</p>}
+      {state.status === "ready" && state.rows.length === 0 && <p className="rec-assoc-none">No {other.plural.toLowerCase()} linked yet.</p>}
       {shown.length > 0 && (
         <ul className="rec-assoc-list">
           {shown.map((r) => (
-            <Item key={r.id} def={from} fields={fields} row={r} />
+            <Item key={r.id} def={other} fields={fields} row={r} />
           ))}
         </ul>
       )}
@@ -88,27 +95,16 @@ function Reverse({ client, from, field, id }: { client: RecordsClient; from: Obj
   );
 }
 
-export function Associations({ client, def, record }: { client: RecordsClient; def: ObjectDef; record: RecordRow }) {
+export function Associations({ client, def, record, version }: { client: RecordsClient; def: ObjectDef; record: RecordRow; version: number }) {
   const meta = useMeta();
-  const forward = liveFields(meta.fields[def.key] ?? []).filter((f) => f.type === "record" && f.options.object);
-  const reverse = meta.objects.flatMap((o) =>
-    o.key === def.key ? [] : liveFields(meta.fields[o.key] ?? []).filter((f) => f.type === "record" && f.options.object === def.key).map((f) => ({ from: o, field: f })),
-  );
+  const groups = meta.objects.flatMap((other) => {
+    const filter = linkedFilter(meta, def, record, other);
+    return filter ? [{ other, filter }] : [];
+  });
   return (
     <div className="rec-assocs">
-      {forward.map((f) => {
-        const id = record.values[f.key];
-        return typeof id === "string" ? (
-          <Forward key={f.key} client={client} field={f} id={id} />
-        ) : (
-          <section key={f.key} className="rec-assoc" aria-label={f.label}>
-            <h3 className="rec-section-title">{f.label}</h3>
-            <p className="rec-assoc-none">No {f.label.toLowerCase()} linked yet.</p>
-          </section>
-        );
-      })}
-      {reverse.map(({ from, field }) => (
-        <Reverse key={`${from.key}.${field.key}`} client={client} from={from} field={field} id={record.id} />
+      {groups.map(({ other, filter }) => (
+        <Linked key={other.key} client={client} other={other} filter={filter} version={version} />
       ))}
     </div>
   );

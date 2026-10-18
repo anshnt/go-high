@@ -60,11 +60,15 @@ export type ObjectDef = {
   key: string;
   singular: string;
   plural: string;
-  /** a name from records/icons.ts */
+  /** a name from records/paths.ts */
   icon: string;
   is_system: boolean;
-  primary_field: string;
+  /** the fields that make up a record's name (a contact's first and last name); the name itself is `display_name` */
+  primary_fields: string[];
 };
+
+/** A kind of link between two objects ("contact works at company"); `label` reads from `from`, `inverse_label` from `to`. */
+export type LinkType = { from: string; to: string; label: string; inverse_label: string };
 
 export type Tag = { id: string; name: string; color: ColorName };
 export type UserRef = { id: string; name: string; email?: string };
@@ -150,11 +154,13 @@ export type TimelineEvent = {
   record_id: string;
   at: string;
   actor_id: string | null;
-  type: "created" | "updated" | "tagged" | "untagged";
+  type: "created" | "updated" | "tagged" | "untagged" | "linked" | "unlinked";
   /** updated */
   changes?: { field: string; from: unknown; to: unknown }[];
   /** tagged, untagged */
   tag?: Tag;
+  /** linked, unlinked: the other record and the label as seen from this one ("works at") */
+  link?: { label: string; object: string; id: string };
 };
 
 export type NewRecord = { values: Record<string, unknown>; owner_id?: string | null; tags?: string[] };

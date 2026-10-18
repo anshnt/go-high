@@ -28,8 +28,10 @@ export function NewRecordDialog({ client, def, fields, open, onOpenChange, onCre
   const toast = useToast();
   const formId = useId();
   const editable = useMemo(() => fields.filter((f) => !isReadOnly(f)), [fields]);
-  const required = editable.filter((f) => f.rules.required);
-  const more = editable.filter((f) => !f.rules.required);
+  // what a record needs to exist comes first: required fields and the ones that make up its name (a contact's first and last name)
+  const needed = (f: FieldDef) => f.rules.required || def.primary_fields.includes(f.key);
+  const required = editable.filter(needed);
+  const more = editable.filter((f) => !needed(f));
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showMore, setShowMore] = useState(false);
@@ -84,12 +86,17 @@ export function NewRecordDialog({ client, def, fields, open, onOpenChange, onCre
         setRound((n) => n + 1);
       } else onOpenChange(false);
     } catch (err) {
-      if (err instanceof RecordsError && err.fields) setErrors(err.fields);
-      else toast({ title: `Could not create the ${def.singular.toLowerCase()}`, description: errorMessage(err), tone: "danger" });
+      if (err instanceof RecordsError && err.fields) {
+        setErrors(err.fields);
+        if (Object.keys(err.fields).some((k) => more.some((f) => f.key === k))) setShowMore(true);
+      } else toast({ title: `Could not create the ${def.singular.toLowerCase()}`, description: errorMessage(err), tone: "danger" });
     } finally {
       setBusy(false);
     }
   };
+
+  // what the server says about the record as a whole ("a contact needs a name") belongs to no field
+  const general = Object.entries(errors).filter(([k]) => !editable.some((f) => f.key === k)).map((e) => e[1]);
 
   const row = (f: FieldDef, first: boolean) => (
     <div key={`${f.key}-${round}`} className="ui-field">
@@ -125,6 +132,11 @@ export function NewRecordDialog({ client, def, fields, open, onOpenChange, onCre
       }
     >
       <form id={formId} className="rec-form" onSubmit={submit} noValidate>
+        {general.length > 0 && (
+          <p className="ui-hint" data-tone="danger" role="alert">
+            {general.join(" ")}
+          </p>
+        )}
         {required.map((f, i) => row(f, i === 0))}
         {more.length > 0 && (
           <>
