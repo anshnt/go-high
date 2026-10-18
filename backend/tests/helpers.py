@@ -18,6 +18,30 @@ def make_record(client, ws, object_key="contact", owner_id=None, **values) -> di
     return r.json()
 
 
+def stage_ids(client, ws) -> dict[str, str]:
+    """Stage ids of the workspace's first pipeline (Sales), by lower case name: lead, qualified, proposal,
+    negotiation, won, lost."""
+    first = client.get("/api/v1/pipelines", headers={H: ws}).json()["data"][0]
+    return {s["name"].lower(): s["id"] for s in first["stages"]}
+
+
+def make_deal(client, ws, name, stage=None, amount=None, close_date=None, owner_id=None, currency="USD", **values):
+    """Creates a deal through the API. `stage` is a stage id (left out: the first stage of the default pipeline),
+    `amount` is in minor units."""
+    body = {"name": name, **values}
+    if stage:
+        body["stage"] = stage
+    if amount is not None:
+        body["amount"] = {"amount": amount, "currency": currency}
+    if close_date:
+        body["close_date"] = close_date
+    return make_record(client, ws, "deal", owner_id=owner_id, **body)
+
+
+def move(client, ws, deal_id, stage_id, **body):
+    return client.post(f"/api/v1/deals/{deal_id}/move", json={"stage_id": stage_id, **body}, headers={H: ws})
+
+
 def listing(client, ws, object_key="contact", **params) -> dict:
     r = client.get(f"/api/v1/objects/{object_key}/records", params=params, headers={H: ws})
     assert r.status_code == 200, r.text

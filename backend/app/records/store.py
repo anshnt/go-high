@@ -3,6 +3,7 @@ columns, save, emit the event in the same transaction. Every read of a single re
 applies the permission scope; the API, imports, forms and workflows share this module."""
 import uuid
 from collections import defaultdict
+from decimal import Decimal
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -12,7 +13,7 @@ from .. import events, permissions
 from ..api import ApiError
 from ..models import OrgMember, WorkspaceMember
 from ..security import Ctx
-from . import filters, types
+from . import filters, stages, types
 from .models import ObjectDef, Record
 from .schema import Catalog
 
@@ -66,17 +67,24 @@ def member_ids(c: Ctx, ids: set[str]) -> set[str]:
     return {str(u) for u in c.db.scalars(members.union(admins))}
 
 
-def check_links(cat: Catalog, fields: dict, changed: dict, owner_id: uuid.UUID | None) -> dict[str, str]:
-    """Errors for user and record values that point at nobody: the ids must be people of this workspace and live
-    records of the linked object that the caller may see."""
+def check_links(cat: Catalog, obj: ObjectDef, fields: dict, changed: dict,
+                owner_id: uuid.UUID | None) -> dict[str, str]:
+    """Errors for user, record and stage values that point at nothing: the ids must be people of this workspace,
+    live records of the linked object that the caller may see, and stages of a live pipeline of the object."""
     errors: dict[str, str] = {}
     people: dict[str, list[str]] = defaultdict(list)
     linked: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
+    staged: dict[str, list[str]] = defaultdict(list)
     for key, value in changed.items():
         if fields[key].type == "user":
             people[value].append(f"values.{key}")
         elif fields[key].type == "record":
             linked[fields[key].options["object"]][value].append(key)
+        elif fields[key].type == "stage":
+            staged[value].append(key)
+    if staged:
+        gone = stages.unusable(cat, obj, set(staged))
+        errors |= {f"values.{key}": "is not a stage of an active pipeline" for who in gone for key in staged[who]}
     if owner_id:
         people[str(owner_id)].append("owner_id")
     if people:
@@ -138,7 +146,9 @@ def prepare(cat: Catalog, obj: ObjectDef, current: dict, patch: dict, owner_id=N
         if field.rules.get("required") and key not in merged and (creating or key in patch):
             errors[f"values.{key}"] = f"{field.label} is required"
     if not errors:
-        errors = check_links(cat, fields, changed, owner_id)
+        errors = check_links(cat, obj, fields, changed, owner_id)
+    if not errors:
+        stages.settle(cat, obj, current, merged, patch, errors)
     if not errors and not display_name(obj, fields, merged):
         needs = [*obj.primary_fields, *(f.key for f in fields.values() if f.type in ("email", "phone"))]
         errors["values"] = f"A {obj.singular.lower()} needs a name: fill in one of {', '.join(needs)}"
@@ -178,19 +188,23 @@ def actor(c: Ctx) -> tuple[str, uuid.UUID]:
 def create(cat: Catalog, obj: ObjectDef, values: dict, owner_id: uuid.UUID | None) -> Record:
     c = cat.c
     permissions.check_write(c, obj, values)
-    clean = prepare(cat, obj, {}, values, owner_id, creating=True)
+    clean = prepare(cat, obj, {}, stages.default(cat, obj, values), owner_id, creating=True)
     fields = cat.fields(obj)
     email, phone = identity(fields, clean)
     rec = Record(workspace_id=c.workspace.id, object_id=obj.id, values=clean, owner_id=owner_id, created_by=c.user_id,
-                 display_name=display_name(obj, fields, clean), email_norm=email, phone_e164=phone)
+                 display_name=display_name(obj, fields, clean), email_norm=email, phone_e164=phone,
+                 stage_id=stages.stage_id(obj, clean), board_position=stages.place(cat, obj, {}, clean, None))
     c.db.add(rec)
     c.db.flush()
     events.emit(c.db, "record.created", "record", rec.id, state(cat, obj, rec), actor=actor(c))
     return rec
 
 
-def update(cat: Catalog, obj: ObjectDef, rec: Record, patch: dict, owner_id=UNSET) -> bool:
-    """Applies a partial change to a locked record; returns whether anything changed (no change, no event)."""
+def update(cat: Catalog, obj: ObjectDef, rec: Record, patch: dict, owner_id=UNSET,
+           position: Decimal | None = None) -> bool:
+    """Applies a partial change to a locked record; returns whether anything changed (no change, no event). A deal
+    that changes stage goes to the top of the new one, or to `position`; `position` alone reorders a card on its
+    board and is not a change of the record (no event, no new update time)."""
     c = cat.c
     permissions.check_write(c, obj, patch)
     new_owner = rec.owner_id if owner_id is UNSET else owner_id
@@ -199,16 +213,23 @@ def update(cat: Catalog, obj: ObjectDef, rec: Record, patch: dict, owner_id=UNSE
                if rec.values.get(k) != merged.get(k)}
     if new_owner != rec.owner_id:
         changes["owner_id"] = {"old": rec.owner_id, "new": new_owner}
+    move = stages.moving(cat, obj, rec, merged, new_owner, display_name(obj, cat.fields(obj), merged))
+    spot = stages.place(cat, obj, rec.values, merged, position)
+    if spot is not None:
+        rec.board_position = spot
     if not changes:
+        c.db.flush()
         return False
     fields = cat.fields(obj)
-    rec.values, rec.owner_id = merged, new_owner
+    rec.values, rec.owner_id, rec.stage_id = merged, new_owner, stages.stage_id(obj, merged)
     rec.display_name = display_name(obj, fields, merged)
     rec.email_norm, rec.phone_e164 = identity(fields, merged)
     rec.updated_at = func.now()
     c.db.flush()
     c.db.refresh(rec, ["updated_at"])
     events.emit(c.db, "record.updated", "record", rec.id, {**state(cat, obj, rec), "changes": changes}, actor=actor(c))
+    if move:
+        stages.emit_moved(cat, obj, rec, move)
     return True
 
 

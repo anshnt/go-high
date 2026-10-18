@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "deal.stage_changed",
+  "description": "A deal moved to another stage (or got its first one). `seconds_in_stage` is how long it had been in the stage it left, null when it had none; it is counted from the deal's previous stage change, else from its creation. It comes with a `record.updated` for the same change. Subject: the deal record.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "object": {"type": "string"},
+    "display_name": {"type": "string"},
+    "pipeline_id": {"type": "string", "format": "uuid"},
+    "from_stage_id": {"type": ["string", "null"], "format": "uuid"},
+    "from_stage": {"type": ["string", "null"]},
+    "from_kind": {"type": ["string", "null"], "enum": ["open", "won", "lost", null]},
+    "to_stage_id": {"type": "string", "format": "uuid"},
+    "to_stage": {"type": "string"},
+    "to_kind": {"type": "string", "enum": ["open", "won", "lost"]},
+    "seconds_in_stage": {"type": ["integer", "null"]}
+  },
+  "required": ["id", "object", "display_name", "pipeline_id", "from_stage_id", "from_stage", "from_kind", "to_stage_id",
+               "to_stage", "to_kind", "seconds_in_stage"],
+  "additionalProperties": false
+}

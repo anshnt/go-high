@@ -167,13 +167,13 @@ Milestones: **M0 Foundations**, **M1 Core CRM** (first sellable product), **M2 G
 - Multiple pipelines and stages, board and list views, card fields, lost reasons, forecasting in Labs, opportunities need a contact.
 
 **Better**
-- [ ] Deals can exist without a contact and link many contacts with roles
-- [ ] Board with drag, swimlanes, rotting and aging indicators, per-stage probability
-- [ ] Stage exit rules (required fields), mandatory structured lost reasons
+- [x] Deals can exist without a contact and link many contacts with roles (a role is an association type between deal and contact, as in module 07)
+- [ ] Board with drag, swimlanes, rotting and aging indicators, per-stage probability (the server side is done: stage columns with counts and sums, drag ordering in one write, days in stage, rotting flags and probabilities; swimlanes and the board screen are not)
+- [x] Stage exit rules (required fields), mandatory structured lost reasons
 - [ ] Line items from the product catalog, quotes
-- [ ] Forecast view: weighted, commit, best case, history of changes, quota per rep
-- [ ] Board layouts saved per user and team on the server
-- [ ] Card shows last message and next task
+- [ ] Forecast view: weighted, commit, best case, history of changes, quota per rep (weighted, commit and best case by month or quarter, currency and owner are done, and stage changes are events; the history view and quotas are not)
+- [ ] Board layouts saved per user and team on the server (per user is done; teams come with module 03)
+- [ ] Card shows last message and next task (it has the time of the last timeline entry; messages and tasks come with modules 11 and 12)
 
 **Done when** a deal can be dragged through stages with exit rules enforced and the forecast updates live.
 
