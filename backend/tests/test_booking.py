@@ -5,8 +5,7 @@ from datetime import timedelta
 
 import pytest
 from calendar_api import H, instant, make_calendar, page, public_client, public_slots, visit, weekday_after
-from calendar_helpers import at
-from helpers import audit, drain, listing, user_id_of
+from helpers import audit, listing, role_id, user_id_of
 from sqlalchemy import text
 
 from app import config
@@ -43,7 +42,8 @@ def test_a_visitor_sees_the_open_times_books_one_and_staff_see_the_booking(crm):
     assert r.status_code == 201, r.text
     done = r.json()
     assert done["status"] == "confirmed" and done["location"]["value"] == "https://meet.example.com/intro"
-    assert done["token"] and done["manage_path"] == f"/booking/{done['token']}" and done["invitee"]["name"] == "Ada Lovelace"
+    assert done["token"] and done["manage_path"] == f"/booking/{done['token']}"
+    assert done["invitee"]["name"] == "Ada Lovelace"
     assert instant(DAY, "10:00") not in public_slots(visitor, cal, DAY) and len(public_slots(visitor, cal, DAY)) == 15
 
     [booking] = bookings(admin, ws, calendar_id=cal["id"])
@@ -131,10 +131,25 @@ def test_two_visitors_cannot_book_the_same_time_and_with_two_hosts_two_can(crm, 
     def go(n):
         visitor = public_client()
         gate.wait()
-        results.append(visit(visitor, cal, start, email=f"visitor{n}@example.com", phone=f"+1415555010{n}").status_code)
+        r = visit(visitor, cal, start, email=f"visitor{n}@example.com", phone=f"+1415555010{n}")
+        results.append(r.status_code)
 
     threads = [threading.Thread(target=go, args=(n,)) for n in range(8)]
     [t.start() for t in threads]
     [t.join() for t in threads]
     assert sorted(results) == [201] + [409] * 7
     assert db.scalar(text("SELECT count(*) FROM bookings WHERE status <> 'cancelled'")) == 1
+
+
+def test_a_workspace_whose_automation_role_cannot_write_contacts_cannot_take_bookings(crm, db):
+    admin, ws, ids = crm
+    cal = make_calendar(admin, ws)
+    automation = role_id(db, ids["org_id"], "automation")
+    r = admin.patch(f"/api/v1/roles/{automation}", json={"capabilities": ["contacts.read"]}, headers={H: ws})
+    assert r.status_code == 200, r.text
+    refused = visit(public_client(), cal, instant(DAY, "10:00"))
+    assert refused.status_code == 503 and "contacts.write" not in refused.text  # the visitor is not told why
+    assert db.scalar(text("SELECT count(*) FROM bookings")) == 0
+    admin.patch(f"/api/v1/roles/{automation}", json={"capabilities": ["contacts.read", "contacts.write"]},
+                headers={H: ws})
+    assert visit(public_client(), cal, instant(DAY, "10:00")).status_code == 201

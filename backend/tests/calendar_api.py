@@ -18,7 +18,7 @@ def weekday_after(days: int, weekday: int = 1) -> date:
 
 
 def make_calendar(client, ws, **body) -> dict:
-    """A calendar through the API: a 30 minute call for the signed-in user, in New York, with no notice or reminders."""
+    """A calendar through the API: a 30 minute call for the signed-in user, in New York, no notice, no reminders."""
     body = {"name": "Intro call", "time_zone": "America/New_York", "min_notice": 0, "window_days": 365,
             "reminders": [], **body}
     r = client.post("/api/v1/calendars", json=body, headers={H: ws})

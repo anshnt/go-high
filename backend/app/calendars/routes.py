@@ -128,7 +128,7 @@ def set_hosts(c: Ctx, cal: Calendar, hosts: list[schemas.HostIn]) -> None:
         row = have.get(user_id)
         if row is None:
             ensure_hours(c, user_id, cal.time_zone)
-            # clock_timestamp, not now(): hosts added together keep the order they were sent in, and the first is primary
+            # clock_timestamp, not now(): hosts added together keep the order sent, and the first is primary
             c.db.add(CalendarHost(workspace_id=cal.workspace_id, calendar_id=cal.id, user_id=user_id,
                                   created_at=func.clock_timestamp()))
             c.db.flush()
@@ -175,7 +175,7 @@ class NewCalendar(schemas.Settings):
 def list_calendars(archived: bool = False, c: Ctx = Depends(read)):
     """Every calendar of the workspace (archived ones too with `archived=true`), by name.
     ponytail: not paged, a workspace has dozens of calendars; add the cursor when one has thousands."""
-    stmt = select(Calendar).order_by(func.lower(Calendar.name), Calendar.id)
+    stmt = select(Calendar).order_by(func.lower(Calendar.name), Calendar.created_at, Calendar.id)
     if not archived:
         stmt = stmt.where(Calendar.status != "archived")
     cals = list(c.db.scalars(stmt))

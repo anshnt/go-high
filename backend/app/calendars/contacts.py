@@ -61,7 +61,9 @@ def find(cat: Catalog, who: Invitee) -> Record | None:
 
 
 def attach(cat: Catalog, who: Invitee, host_id: uuid.UUID | None) -> Record:
-    """The contact for this person: created (owned by the host) or, if it exists, filled in where it is blank."""
+    """The contact for this person: created (owned by the host) or, if it exists, filled in where it is blank.
+    ponytail: two bookings by a new person at the same moment make two contacts, as two forms would; the dedupe queue
+    (module 09) merges them. Lock on the email if that ever shows up."""
     obj = cat.need("contact")
     wanted = {**split(who.name), **{k: v for k, v in (("email", who.email), ("phone", who.phone)) if v}}
     found = find(cat, who)

@@ -79,10 +79,12 @@ def sync_json(row: Availability | None, now: datetime) -> dict:
 
 
 def availability_json(owner: str, owner_id: uuid.UUID, row: Availability | None, now: datetime) -> dict:
-    return {"owner": owner, "id": owner_id, "saved": row is not None,
-            "time_zone": row.time_zone if row else "UTC", "weekly": row.weekly if row else DEFAULT_WEEKLY,
-            "overrides": row.overrides if row else {}, "sync": sync_json(row, now) if owner == "users" else None,
-            "updated_at": row.updated_at if row else None}
+    """A row that only carries sync health (its week is empty, not seven empty days) reads like no row: the usual week
+    and `saved: false`."""
+    saved = row is not None and bool(row.weekly)
+    return {"owner": owner, "id": owner_id, "saved": saved, "time_zone": row.time_zone if row else "UTC",
+            "weekly": row.weekly if saved else DEFAULT_WEEKLY, "overrides": row.overrides if row else {},
+            "sync": sync_json(row, now) if owner == "users" else None, "updated_at": row.updated_at if row else None}
 
 
 def row_for(c: Ctx, owner: str, owner_id: uuid.UUID, *, lock: bool = False) -> Availability | None:
@@ -106,7 +108,7 @@ def check_owner(c: Ctx, owner: str, owner_id: uuid.UUID, *, change: bool) -> Non
             permissions.require(c, "calendars.manage")
 
 
-def emit(c: Ctx, owner: str, owner_id: uuid.UUID, what: str) -> None:
+def announce(c: Ctx, owner: str, owner_id: uuid.UUID, what: str) -> None:
     events.emit(c.db, "availability.updated", "availability", owner_id,
                 {"owner": owner, "id": owner_id, "change": what}, actor=("user", c.user_id))
 
@@ -147,7 +149,7 @@ def import_busy(body: Busy, c: Ctx = Depends(requires("calendars.write"))):
     row.sync_status, row.synced_at = body.status, now()
     row.sync_error = body.error if body.status == "error" else None
     c.db.flush()
-    emit(c, "users", owner_id, "busy")
+    announce(c, "users", owner_id, "busy")
     c.db.commit()
     return {"imported": len(body.blocks), "sync": sync_json(row, now())}
 
@@ -172,7 +174,7 @@ def put_availability(owner: Literal["users", "resources"], owner_id: uuid.UUID, 
         c.db.add(row)
     row.time_zone, row.weekly, row.updated_at = body.time_zone, body.weekly, now()
     c.db.flush()
-    emit(c, owner, owner_id, "weekly")
+    announce(c, owner, owner_id, "weekly")
     c.db.commit()
     return availability_json(owner, owner_id, row, now())
 
@@ -193,7 +195,7 @@ def put_override(owner: Literal["users", "resources"], owner_id: uuid.UUID, day:
         c.db.add(row)
     row.overrides, row.updated_at = {**row.overrides, day_key(day): body.hours}, now()
     c.db.flush()
-    emit(c, owner, owner_id, f"override {day_key(day)}")
+    announce(c, owner, owner_id, f"override {day_key(day)}")
     c.db.commit()
     return availability_json(owner, owner_id, row, now())
 
@@ -209,6 +211,6 @@ def delete_override(owner: Literal["users", "resources"], owner_id: uuid.UUID, d
     row.overrides = {k: v for k, v in row.overrides.items() if k != day_key(day)}
     row.updated_at = now()
     c.db.flush()
-    emit(c, owner, owner_id, f"override {day_key(day)} removed")
+    announce(c, owner, owner_id, f"override {day_key(day)} removed")
     c.db.commit()
     return availability_json(owner, owner_id, row, now())

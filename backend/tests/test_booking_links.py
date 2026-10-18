@@ -20,7 +20,6 @@ from sqlalchemy import text
 
 from app import config
 from app.calendars.reminders import remind
-from app.db import SessionLocal
 
 DAY = weekday_after(14)
 NEXT = DAY + timedelta(days=1)
@@ -108,7 +107,8 @@ def test_links_stop_working_inside_the_cutoff_and_after_the_meeting(crm, db):
     cal = make_calendar(admin, ws, cutoff_hours=72)
     visitor = public_client()
     done = book(visitor, cal, weekday_after(1), "10:00")  # inside 72 hours when the day is close, so move it by SQL
-    db.execute(text("UPDATE bookings SET starts_at = now() + interval '10 hours', ends_at = now() + interval '11 hours'"))
+    db.execute(text("UPDATE bookings SET starts_at = now() + interval '10 hours', "
+                    "ends_at = now() + interval '11 hours'"))
     db.commit()
     seen = visitor.get(link(done)).json()
     assert not seen["can_change"]
@@ -143,7 +143,8 @@ def test_the_ics_file_is_valid_and_has_the_right_times(crm):
     assert datetime.strptime(event["DTSTART"], "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC) == start
     visitor.post(f"{link(done)}/reschedule", json={"start": instant(NEXT, "09:00"), "time_zone": "UTC"})
     [moved] = parse_ics(visitor.get(f"{link(done)}/ics").text)
-    assert moved["UID"] == event["UID"] and moved["SEQUENCE"] == "1" and moved["DTSTART"].startswith(NEXT.strftime("%Y%m%d"))
+    assert moved["UID"] == event["UID"] and moved["SEQUENCE"] == "1"
+    assert moved["DTSTART"].startswith(NEXT.strftime("%Y%m%d"))
     visitor.post(f"{link(done)}/cancel", json={})
     [cancelled] = parse_ics(visitor.get(f"{link(done)}/ics").text)
     assert cancelled["STATUS"] == "CANCELLED" and cancelled["SEQUENCE"] == "2"
@@ -203,7 +204,8 @@ def test_reminders_are_scheduled_per_offset_and_recorded_once_when_due(crm, db):
     due = audit(admin, ws, type="booking.reminder_due")
     assert sorted(e["data"]["offset_minutes"] for e in due) == [60, 1440]
     assert {s for _, s, _ in reminders(db)} == {"sent"}
-    payload = {"id": db.scalar(text("SELECT id::text FROM booking_reminders LIMIT 1")), "due": "2020-01-01T00:00:00+00:00"}
+    first = db.scalar(text("SELECT id::text FROM booking_reminders LIMIT 1"))
+    payload = {"id": first, "due": "2020-01-01T00:00:00+00:00"}
     remind(db, payload)  # a duplicate or stale job finds nothing pending at that time
     db.commit()
     assert len(audit(admin, ws, type="booking.reminder_due")) == 2
@@ -211,7 +213,7 @@ def test_reminders_are_scheduled_per_offset_and_recorded_once_when_due(crm, db):
 
 def test_a_reminder_already_past_when_booked_is_not_scheduled(crm, db):
     admin, ws, _ = crm
-    cal = make_calendar(admin, ws, reminders=[60, 14 * 24 * 60])  # the second is 14 days before: past for a booking within a week
+    cal = make_calendar(admin, ws, reminders=[60, 14 * 24 * 60])  # 14 days before is past within a week
     book(public_client(), cal, weekday_after(1))
     assert [o for o, _, _ in reminders(db)] == [60]
 
@@ -225,7 +227,8 @@ def test_moving_a_booking_moves_its_reminders_and_a_job_for_the_old_time_does_no
     r = visitor.post(f"{link(done)}/reschedule", json={"start": instant(NEXT, "13:00"), "time_zone": "UTC"})
     assert r.status_code == 200, r.text
     start = at(str(NEXT), "13:00")
-    assert reminders(db) == [(1440, "pending", start - timedelta(hours=24)), (60, "pending", start - timedelta(hours=1))]
+    assert reminders(db) == [(1440, "pending", start - timedelta(hours=24)),
+                             (60, "pending", start - timedelta(hours=1))]
     assert db.scalar(text("SELECT count(*) FROM jobs WHERE kind = 'calendars.reminder'")) == 4  # old two and new two
     for payload in old_jobs:
         remind(db, payload)  # the time they were made for is not the reminder's time any more
@@ -256,7 +259,8 @@ def test_a_filled_honeypot_gets_a_believable_answer_and_stores_nothing(crm, db):
     visitor = public_client()
     r = visit(visitor, cal, instant(DAY, "10:00"), website="http://spam.example.com")
     assert r.status_code == 201 and r.json()["token"] and r.json()["status"] == "booked"
-    assert db.scalar(text("SELECT count(*) FROM bookings")) == 0 and db.scalar(text("SELECT count(*) FROM records")) == 0
+    assert db.scalar(text("SELECT count(*) FROM bookings")) == 0
+    assert db.scalar(text("SELECT count(*) FROM records")) == 0
     assert instant(DAY, "10:00") in public_slots(visitor, cal, DAY)
     assert visitor.get(f"/api/public/bookings/{r.json()['token']}").status_code == 404  # the link goes nowhere
 
@@ -280,4 +284,5 @@ def test_one_visitor_is_limited_per_calendar_and_the_calendar_has_a_ceiling_of_i
     db.execute(text("UPDATE booking_attempts SET created_at = now() - interval '1 hour'"))
     db.commit()
     assert visit(visitor, cal, instant(DAY, "16:30"), email="z@example.com").status_code == 201  # the window passed
-    assert db.scalar(text("SELECT bool_and(ip_hash ~ '^[0-9a-f]{64}$') FROM booking_attempts"))  # a hash, not an address
+    # a hash, not an address
+    assert db.scalar(text("SELECT bool_and(ip_hash ~ '^[0-9a-f]{64}$') FROM booking_attempts"))

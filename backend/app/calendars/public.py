@@ -8,6 +8,7 @@ A booking request is held back by a honeypot field (a real visitor never fills i
 answer and nothing is stored) and by a rate limit per calendar and visitor (a hash of their address, so the address
 itself is not kept) with a ceiling for the calendar as a whole. Both count every attempt, the failed ones too."""
 import hashlib
+import logging
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -27,6 +28,7 @@ from ..security import client_ip, token_hash
 from . import booking, contacts, days, ics, slots
 from .models import Booking, BookingAttempt, Calendar, CalendarHost, FeedToken
 
+log = logging.getLogger("calendars")
 router = APIRouter(prefix="/api/public")
 pages = APIRouter()
 FEED_PAST = timedelta(days=30)
@@ -196,10 +198,17 @@ def book(workspace_slug: str, calendar_slug: str, body: NewBooking, request: Req
                        {"time_zone": "is not a time zone"}) from None
     answers = clean_answers(cal, body)
     c = contacts.system_ctx(db, ws)
-    b, token = booking.create(
-        c, cal, start=body.start.astimezone(UTC), duration=days.chosen_duration(cal, body.duration),
-        who=contacts.Invitee(body.name, body.email, body.phone), answers=answers, location=body.location,
-        time_zone=body.time_zone, source="page", now=at)
+    try:
+        b, token = booking.create(
+            c, cal, start=body.start.astimezone(UTC), duration=days.chosen_duration(cal, body.duration),
+            who=contacts.Invitee(body.name, body.email, body.phone), answers=answers, location=body.location,
+            time_zone=body.time_zone, source="page", now=at)
+    except ApiError as e:
+        if e.status_code != 403:
+            raise
+        # the Automation role was edited so that it cannot write contacts: the visitor is not told which capability
+        log.warning("booking refused: the Automation role of workspace %s cannot write contacts", ws.id)
+        raise ApiError(503, "unavailable", "This booking page cannot take bookings right now") from None
     db.commit()
     return booked(ws, b, cal, token)
 

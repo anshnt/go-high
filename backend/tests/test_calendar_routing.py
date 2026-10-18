@@ -63,7 +63,8 @@ def test_the_contact_owner_keeps_their_contact_even_when_the_rotation_says_other
     snap = snapshot(calendar(kind="round_robin"), a, b)
     plan = run(snap, 3, owner=b.user_id, now=at("2026-10-19"))
     assert winners(plan) == ["B", "B", "B"] and plan["rounds"][0]["reason"] == "owns the contact"
-    b.busy.add(slots.Span(at(TUESDAY, "09:00"), at(TUESDAY, "09:30"), kind="busy"))  # an owner who is not free loses it
+    # an owner who is not free at the time loses the contact to the host who is
+    b.busy.add(slots.Span(at(TUESDAY, "09:00"), at(TUESDAY, "09:30"), kind="busy"))
     plan = run(snapshot(calendar(kind="round_robin"), a, b), 1, owner=b.user_id, now=at(TUESDAY))
     assert winners(plan) == ["A"] and plan["rounds"][0]["reason"] == "the only host free"
 
