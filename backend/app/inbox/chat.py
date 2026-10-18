@@ -86,8 +86,8 @@ def hit(c: Chat, bucket: str, limit: int) -> None:
 def limit(c: Chat, request: Request, kind: str) -> None:
     key, ip = (config.CHAT_SEND_PER_KEY, config.CHAT_SEND_PER_IP) if kind == "send" else (
         config.CHAT_POLL_PER_KEY, config.CHAT_POLL_PER_IP)
-    hit(c, f"{kind}:{c.channel.id}", key)
-    hit(c, f"{kind}:{c.channel.id}:{client_ip(request)}", ip)
+    hit(c, f"{kind}:{c.channel.id}:{client_ip(request)}", ip)  # first: one address's refused calls must not use up
+    hit(c, f"{kind}:{c.channel.id}", key)  # the budget of everyone else
 
 
 def token_for(channel: Channel, visitor: uuid.UUID) -> str:
@@ -187,9 +187,14 @@ def identify(body: Identify, request: Request, c: Chat = Depends(chat_for),
     obj = cat.need("contact")
     patch = {k: v for k, v in (("email", body.email), ("phone", body.phone)) if v}
     if body.name:
-        patch |= {"first_name": body.name, "last_name": None}
+        first, _, last = body.name.partition(" ")
+        patch |= {"first_name": first, "last_name": last.strip() or None}
     if patch:
-        store.update(cat, obj, store.get(cat, obj, conv.contact_id, lock=True), patch)
+        try:
+            store.update(cat, obj, store.get(cat, obj, conv.contact_id, lock=True), patch)
+        except ApiError as e:  # the public routes have no field list: say which one in the message
+            raise HTTPException(422, "; ".join(f"{k.removeprefix('values.')} {v}" for k, v in (e.fields or {}).items())
+                                or str(e.detail)) from None
     c.db.commit()
     return {"ok": True}
 

@@ -37,7 +37,8 @@ REPLIES = {"stop": "You have been unsubscribed and will get no more messages. Re
 CONSENT = {"stop": ("opted_out", "stop"), "start": ("opted_in", "start")}
 
 
-@router.api_route("/api/hooks/{provider}/{channel_id}", methods=["GET", "POST"])
+@router.get("/api/hooks/{provider}/{channel_id}")
+@router.post("/api/hooks/{provider}/{channel_id}")
 async def hook(provider: str, channel_id: uuid.UUID, request: Request):
     """Where a provider reports messages and delivery. The signature is checked against the URL as it is configured
     in the provider (the first PUBLIC_URL origin), not the internal one a proxy forwards."""
