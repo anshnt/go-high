@@ -14,11 +14,11 @@ from sqlalchemy.orm import Session
 
 from . import api, audit, auth, config, roles, simulator, teams, webhooks, workspaces
 from .db import get_db
-from .inbox import channels, chat, consent, conversations, inbound, outbound, stream
 from .forms import admin as forms
 from .forms import analytics as form_analytics
 from .forms import public as form_public
 from .forms import responses as form_responses
+from .inbox import channels, chat, consent, conversations, inbound, outbound, stream
 from .logs import setup_logging, trace_id
 from .notifications import routes as notifications
 from .records import associations, board, forecast, objects, pipelines, tags, timeline, views
