@@ -91,7 +91,7 @@ Milestones: **M0 Foundations**, **M1 Core CRM** (first sellable product), **M2 G
 - [x] Webhook subscriptions with filters, signed (HMAC), retries with backoff, delivery log with status filter and replay
 - [ ] Delivery log search by event type and date, bulk replay of failed deliveries, email to admins when an endpoint is disabled
 - [ ] API keys per workspace with scopes; OAuth apps for third parties
-- [ ] Event stream (SSE) for realtime integrations
+- [ ] Event stream (SSE) for realtime integrations (`GET /api/v1/stream` serves the signed-in inbox, ids only; integrations need API keys first)
 
 **Done when** creating a contact through the UI emits `contact.created`, a subscribed webhook receives a signed payload, and a failed delivery can be replayed from the log.
 
@@ -123,7 +123,7 @@ Milestones: **M0 Foundations**, **M1 Core CRM** (first sellable product), **M2 G
 - [ ] Typed fields: text, number, money (currency aware), date, select, multi-select, user, record link, file, formula, rollup; validation; conditional visibility and required rules; per-field history (all of these but file are typed and validated, with required, length and range rules; formula and rollup are stored but not computed; conditional rules and field history are not)
 - [ ] Workspace variables (custom values) kept separate from fields and named clearly
 - [x] Tags with groups, colors, descriptions, usage counts, rename and merge with preview
-- [ ] Consent and eligibility card per channel: source, timestamp, DND, quiet hours, "can I contact now?"
+- [ ] Consent and eligibility card per channel: source, timestamp, DND, quiet hours, "can I contact now?" (the consent rows, DND and the refusal reasons are in the API under `/api/v1/contacts/{id}/consents`; the card is not built)
 - [ ] Configurable lead scoring with decay and an explainable breakdown
 - [ ] Trash with 30-day restore for every record type (trash and restore work for every object; the purge after 30 days is not built)
 - [ ] Record page per [UI.md](UI.md): properties, timeline, associations, tasks, AI summary
@@ -201,15 +201,15 @@ Milestones: **M0 Foundations**, **M1 Core CRM** (first sellable product), **M2 G
 - Four-panel inbox across SMS, email, WhatsApp, Messenger, Instagram, GBP chat, live chat, calls and voicemail; internal comments; snippets; assignment; unread and starred filters.
 
 **Better**
-- [ ] One conversation model; channels are adapters with delivery receipts, retries and guaranteed ordering
-- [ ] Keyboard-first: `j/k`, `e` close, `a` assign, `s` snooze, `r` reply; optimistic UI under 100 ms
-- [ ] Saved views with live unread counts; snooze; follow-up SLAs with breach alerts
-- [ ] Assignment rules: round robin, load based, skills, hours
-- [ ] Internal comments with @mentions that can be edited; "someone is replying" collision guard
+- [x] One conversation model; channels are adapters with delivery receipts, retries and guaranteed ordering
+- [ ] Keyboard-first: `j/k`, `e` close, `a` assign, `s` snooze, `r` reply; optimistic UI under 100 ms (the API has a route for each of these actions; the screen is not built)
+- [ ] Saved views with live unread counts; snooze; follow-up SLAs with breach alerts (the built in views, their live counts, per-user unread and snooze are done; custom saved views and SLAs are not)
+- [ ] Assignment rules: round robin, load based, skills, hours (conversations are assigned by hand to a member or a team id; no rules)
+- [ ] Internal comments with @mentions that can be edited; "someone is replying" collision guard (internal notes that only their author edits are done; mentions and the collision guard are not)
 - [ ] Snippets with variables; paste images; scheduled send
 - [ ] AI: reply suggestions, thread summary, intent and sentiment tags, translation with original toggle
-- [ ] Trash for conversations; search inside conversations
-- [ ] Live chat widget (deferred load, under 30 KB) as the first channel
+- [ ] Trash for conversations; search inside conversations (search over message text, notes and the contact's name, email and phone, and inside one conversation, is done; a conversation goes with its contact to the trash and has no trash of its own)
+- [x] Live chat widget (deferred load, under 30 KB) as the first channel (a 9 KB script that builds its panel on the first click, signed visitor tokens, rate limits and a honeypot)
 
 **Done when** a support agent can triage 50 conversations from the keyboard alone, and a chat widget message arrives live.
 
@@ -221,8 +221,8 @@ Milestones: **M0 Foundations**, **M1 Core CRM** (first sellable product), **M2 G
 
 **Better**
 - [ ] Gmail and Microsoft 365 two-way sync with domain and contact exclusions
-- [ ] Sending through SES, Mailgun or SMTP adapters; per-workspace sending domain
-- [ ] Reply-to, per-user signatures, send-as aliases, threading that matches mail clients
+- [x] Sending through SES, Mailgun or SMTP adapters; per-workspace sending domain (each channel has its own host or domain; delivery events from SES are not read)
+- [ ] Reply-to, per-user signatures, send-as aliases, threading that matches mail clients (reply-to per channel and threading by In-Reply-To and References, both ways, are done; signatures and aliases are not)
 - [ ] Open and click tracking with per-message opt out
 - [ ] Domain auth wizard that checks SPF, DKIM and DMARC live
 
@@ -235,12 +235,12 @@ Milestones: **M0 Foundations**, **M1 Core CRM** (first sellable product), **M2 G
 - LC Phone (Twilio) numbers, A2P 10DLC registration per sub-account with 60+ rejection codes, toll-free verification, STOP handling, DND.
 
 **Better**
-- [ ] Carrier adapters: Twilio and Telnyx
+- [x] Carrier adapters: Twilio and Telnyx
 - [ ] Buy, port and release numbers in-app
 - [ ] A2P readiness wizard that pre-checks website, privacy policy, opt-in language and brand data before submitting; status tracking with plain-language next steps
 - [ ] Brand profile inherited from the org with per-workspace overrides
-- [ ] Opt-in evidence stored per contact; STOP/START/HELP; quiet hours and frequency caps; content checks
-- [ ] Segment count and cost shown while typing
+- [ ] Opt-in evidence stored per contact; STOP/START/HELP; quiet hours and frequency caps; content checks (STOP, START and HELP, opt-outs and do not disturb per channel, quiet hours in the contact's time zone and frequency caps are done; evidence is only the START mark, and the content checks are not run on a reply yet)
+- [ ] Segment count and cost shown while typing (every SMS reply answers with both and `POST /api/v1/channels/{id}/estimate` does it for a draft; the composer does not show it yet)
 
 **Done when** a new workspace can register, get approved and send compliant SMS without reading a help article.
 

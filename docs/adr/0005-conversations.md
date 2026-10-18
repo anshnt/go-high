@@ -72,3 +72,30 @@ A refusal returns a reason the composer shows ("Opted out by STOP on Oct 3"). In
 - One thread per contact keeps the inbox simple. Businesses that want separate threads per channel or per topic get "split conversation" later as a view, not a schema change.
 - Per-conversation `seq` needs a row lock on the conversation while inserting a message, which is fine at conversation scale. Bulk sends insert into many conversations, not one.
 - The SSE design means a busy workspace refetches small lists often; the inbox list endpoint must stay cheap (p95 under 100 ms).
+
+## As built in the backend slice (2026-10-18)
+
+Where the code differs from the sketch above:
+
+- A contact has at most one *live* (open or snoozed) conversation, enforced by a partial unique index; the next message
+  reopens the contact's closed conversation instead of making a second one, so in practice a contact has one
+  conversation. Conversations also keep the columns the list needs (`last_seq`, `last_inbound_seq`, `last_channel_id`,
+  `last_preview`, `last_direction`) and a `visitor_id` for a webchat visitor.
+- Unread is `last_inbound_seq > read mark`: only the contact's messages are unread, so a reply, a note or a colleague's
+  message never lights a conversation up. Notes and system lines take a `seq` but do not move the conversation in the list.
+- Consent has its own table, `consents (contact, channel kind, status: opted_out | opted_in | dnd, source, time)`, and
+  the webchat rate counters their own, `chat_limits`. `messages` also keep `attempts`, `segments` and `cost`.
+- `secret_ref` points at a row of `secrets` whose ciphertext the request role cannot read (column grants); the worker and
+  the verify, send and test code read it on the owner role. The channel API creates `sms`, `email`, `webchat` and `whatsapp`
+  channels; the other kinds are allowed by the table for later.
+- STOP, START and HELP are stored as `system` lines (so a retried webhook cannot answer twice), do not emit
+  `message.received` and, for a stranger, start no open conversation. The auto reply is a `system` message sent without
+  the consent check, because it answers the STOP itself.
+- The contact's time zone for quiet hours is its `timezone` value when the workspace has such a field, else the zones its
+  phone number can be in. Quiet hours do not bind a contact who wrote in the last 24 hours, email or chat. The A2P status of
+  the sending number is not checked until the readiness wizard exists.
+- Teams do not exist yet (module 03), so `team_id` is stored as given. The contact `source` of ADR 0002 is filled in only
+  when the workspace has a text field with that key; the system objects do not define one.
+- The stream's `LISTEN` connection is read on a thread inside one asyncio task: psycopg's async API needs a selector event
+  loop, which Windows does not use by default. A process keeps its last 1000 notifications for `Last-Event-ID`.
+

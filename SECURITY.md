@@ -84,6 +84,47 @@ Row level security separates tenants; what a user may do inside a workspace is `
 - Request handlers (`gohigh_app`) can append to the event log and the job queue but cannot read the queue or
   change or delete events; only the worker (owner role) records delivery attempts.
 
+## Inbound webhooks (messaging)
+
+- `/api/hooks/<provider>/<channel id>` is public, so nothing but the provider's signature lets a request in. The
+  adapter verifies it on the raw body before the body is parsed, with a constant-time comparison: Twilio
+  `X-Twilio-Signature` (HMAC-SHA1 over the URL as configured in the console and the parameters), Telnyx Ed25519 over
+  `timestamp|body`, Mailgun HMAC-SHA256 over `timestamp + token`, Meta `X-Hub-Signature-256` (HMAC-SHA256). Where the
+  provider sends a timestamp, one more than 5 minutes off is refused. Unsigned, wrongly signed, stale or tampered
+  requests are a 401 and a log line that names the channel and carries neither the body nor any secret. An SMTP channel
+  has no webhook, so every call to it is refused.
+- The channel is found by its unguessable id in the system scope (a read-only policy on `channels`); the request moves
+  into the channel's workspace only after the signature verified. An unknown, disabled or other provider's channel
+  is a 404. Meta's handshake echoes the challenge only when the verify token matches and the challenge is a plain token.
+- A replayed webhook (Mailgun's token is not remembered) changes nothing: a message is unique per channel and provider
+  message id, and a delivery report only moves a message forward.
+- STOP, START and HELP are handled before the inbox. An opt-out (STOP, an email unsubscribe or complaint) blocks sends on
+  that channel kind until the contact's own START, and staff cannot clear it. Consent is checked when a reply is queued
+  and again when the worker sends it.
+
+## Secrets at rest
+
+- A channel's API keys and passwords are encrypted with AES-256-GCM under a key derived (HKDF-SHA256) from `SECRET_KEY`,
+  with the row and workspace as associated data, so a ciphertext copied to another row does not open. They are never in
+  a channel's `config`, which refuses settings it does not know.
+- Request handlers (`gohigh_app`) can write the `secrets` table but have no `SELECT` on its ciphertext column, so a bug in
+  a route cannot return one. Only the worker and the code that verifies a webhook, sends or tests a channel decrypt, on
+  the owner role. No API response, event, job payload or log line carries a secret; the API says only whether a channel
+  has any.
+- Set `SECRET_KEY` in production, to the same value on every replica and the worker. Changing it makes stored secrets
+  unreadable until they are re-encrypted (there is no rotation job yet). The signing secrets of webhook endpoints
+  (above) are still stored readable.
+
+## Webchat and realtime
+
+- The public chat endpoints take no cookie. A visitor is a token signed with `SECRET_KEY` for one widget key and 30 days;
+  it reads only its own conversation and never internal notes. Any origin may call them because there is no ambient
+  credential to abuse. Requests are limited per minute per IP and per widget key in Postgres (refused calls from one IP do
+  not use up the widget's budget), and a hidden field that only a bot fills in is dropped silently. The widget renders
+  text with `textContent` only. A widget key is public by design: it opens a chat, nothing else.
+- `GET /api/v1/stream` carries ids only and no content, so permissions apply when the client refetches. A stream ends
+  after 30 minutes, which is when a revoked session stops it.
+
 ## Repository
 
 - `main` is protected: changes arrive by pull request with passing CI; force pushes and deletion are blocked.
