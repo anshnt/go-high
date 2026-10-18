@@ -158,6 +158,29 @@ def crowded(c: Ctx, t: AssociationType, a: Record, b: Record) -> bool:
     return c.db.scalar(select(exists().where(Association.type_id == t.id, clash)))
 
 
+def link_records(c: Ctx, t: AssociationType, a: Record, b: Record) -> Association:
+    """Links `a` to `b` through type `t` (the type's from side first) and shows it on both timelines. A link the
+    type's cardinality or an existing one forbids is a 409."""
+    if crowded(c, t, a, b):
+        raise ApiError(409, "cardinality_violated", f"This {t.cardinality.replace('_', ' ')} association is taken")
+    link = Association(workspace_id=c.workspace.id, type_id=t.id, from_record_id=a.id, to_record_id=b.id)
+    try:
+        with c.db.begin_nested():
+            c.db.add(link)
+    except IntegrityError:
+        raise ApiError(409, "already_associated", "These records are already linked this way") from None
+    timeline.link(c.db, events.emit(c.db, "association.created", "association", link.id, link_data(link, t),
+                                    actor=store.actor(c)), [a.id, b.id])
+    return link
+
+
+def unlink_records(c: Ctx, link: Association, t: AssociationType) -> None:
+    """Removes a link (the caller commits) and shows that on both timelines."""
+    timeline.link(c.db, events.emit(c.db, "association.deleted", "association", link.id, link_data(link, t),
+                                    actor=store.actor(c)), [link.from_record_id, link.to_record_id])
+    c.db.delete(link)
+
+
 @router.post("/records/{record_id}/associations", status_code=201)
 def create_link(record_id: uuid.UUID, body: NewLink, c: Ctx = Depends(requires_records("write")),
                 idem: Idem = Depends(idempotency)):
@@ -180,16 +203,7 @@ def create_link(record_id: uuid.UUID, body: NewLink, c: Ctx = Depends(requires_r
     a, b = (rec, other) if forward else (other, rec)
     if a.id == b.id:
         raise ApiError(422, "validation_failed", "The link is not valid", {"other_id": "cannot be the record itself"})
-    if crowded(c, t, a, b):
-        raise ApiError(409, "cardinality_violated", f"This {t.cardinality.replace('_', ' ')} association is taken")
-    link = Association(workspace_id=c.workspace.id, type_id=t.id, from_record_id=a.id, to_record_id=b.id)
-    try:
-        with c.db.begin_nested():
-            c.db.add(link)
-    except IntegrityError:
-        raise ApiError(409, "already_associated", "These records are already linked this way") from None
-    timeline.link(c.db, events.emit(c.db, "association.created", "association", link.id, link_data(link, t),
-                                    actor=store.actor(c)), [a.id, b.id])
+    link = link_records(c, t, a, b)
     return idem.commit(201, {**link_data(link, t), "created_at": link.created_at})
 
 
@@ -201,8 +215,39 @@ def delete_link(association_id: uuid.UUID, c: Ctx = Depends(requires_records("wr
         raise HTTPException(404, "Association not found")
     for end in (link.from_record_id, link.to_record_id):
         permissions.require_object(c, store.find(cat, end, trashed=None)[1], "write")  # and may see and change both
-    t = c.db.get(AssociationType, link.type_id)
-    timeline.link(c.db, events.emit(c.db, "association.deleted", "association", link.id, link_data(link, t),
-                                    actor=store.actor(c)), [link.from_record_id, link.to_record_id])
-    c.db.delete(link)
+    unlink_records(c, link, c.db.get(AssociationType, link.type_id))
     c.db.commit()
+
+
+def sync_field_links(cat: Catalog, obj: ObjectDef, rec: Record, before: dict) -> None:
+    """After a write, the associations follow the record fields that stand for one: a `record` field named like the
+    object it links to (a contact's `company`), when a type goes from this object to that one (the built in "works
+    at"; the oldest if there are several). A new value adds the link if it is missing, and a changed or cleared one
+    removes the link to the old record, so the company a contact moves from stops listing it. Links made through
+    POST /associations stay while the field does not change. Same transaction as the write.
+    ponytail: the other direction is not followed: a link made with POST /associations leaves the field empty, and
+    the screens read both. A link that a custom type's cardinality forbids is skipped, not an error."""
+    c = cat.c
+    for f in cat.fields(obj).values():
+        old, new = before.get(f.key), rec.values.get(f.key)
+        if f.type != "record" or f.key != f.options.get("object") or old == new:
+            continue
+        target = cat.object(f.key)
+        t = target and c.db.scalar(select(AssociationType).where(
+            AssociationType.from_object_id == obj.id, AssociationType.to_object_id == target.id)
+            .order_by(AssociationType.created_at, AssociationType.id).limit(1))
+        if not t:
+            continue
+        if old:
+            link = c.db.scalar(select(Association).where(
+                Association.type_id == t.id, Association.from_record_id == rec.id,
+                Association.to_record_id == uuid.UUID(old)))
+            if link:
+                unlink_records(c, link, t)
+        if new:
+            other = c.db.get(Record, uuid.UUID(new))  # a live record of the target: the write checked it
+            taken = c.db.scalar(select(exists().where(
+                Association.type_id == t.id, Association.from_record_id == rec.id,
+                Association.to_record_id == other.id)))
+            if not taken and not crowded(c, t, rec, other):
+                link_records(c, t, rec, other)

@@ -144,7 +144,8 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
             "lost_reason": "price", "collapsed": [b_ids["stage_id"]], "card_fields": ["amount"],
             # permissions: B's role and team in every place a body takes one
             "copy_from": b_ids["role_key"], "role_id": b_ids["role_id"], "capabilities": ["contacts.read"],
-            "object_rules": [], "parent_team_id": b_ids["team_id"], "description": "x"}
+            "object_rules": [], "parent_team_id": b_ids["team_id"], "description": "x",
+            "ids": [b_ids["record_id"], b_ids["trashed_id"], b_ids["company_id"]]}  # bulk delete and restore
     tables_of_b = ("objects", "fields", "records", "tags", "record_tags", "association_types", "associations",
                    "saved_views", "event_records", "events", "pipelines", "stages", "board_layouts", "teams",
                    "team_members")
@@ -178,7 +179,8 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
         "/api/v1/pipelines/{pipeline_id}/layout", "/api/v1/deals/{deal_id}/move", "/api/v1/roles",
         "/api/v1/roles/{role_id}", "/api/v1/teams", "/api/v1/teams/{team_id}",
         "/api/v1/teams/{team_id}/members/{user_id}", "/api/v1/members", "/api/v1/members/{user_id}",
-        "/api/v1/permissions/explain", "/api/v1/audit", "/api/v1/audit/export"}
+        "/api/v1/permissions/explain", "/api/v1/audit", "/api/v1/audit/export",
+        "/api/v1/objects/{key}/records/delete", "/api/v1/objects/{key}/records/restore"}
 
     seen_own_data = False
     alice = signin_alice()
@@ -482,6 +484,12 @@ def test_a_user_of_a_gets_404s_for_bs_objects_fields_records_tags_views_and_link
         ("PUT", f"/api/v1/members/{a_ids['user_id']}", {"role_id": b_ids["role_id"]}),
         ("GET", f"/api/v1/permissions/explain?user_id={b_ids['user_id']}", None),
         ("GET", f"/api/v1/permissions/explain?record_id={record}", None),
+        ("POST", f"{contact}/delete", {"ids": [record]}),
+        ("POST", f"{contact}/restore", {"ids": [b_ids["trashed_id"]]}),
+        ("POST", f"{theirs}/records/delete", {"ids": [b_ids["vault_id"]]}),
+        ("POST", "/api/v1/objects/company/records/delete", {"ids": [b_ids["company_id"]]}),
+        ("GET", f"{contact}/{record}?include=tags", None),
+        ("PATCH", f"{contact}/{record}?include=tags", {"values": {}}),
     ]
     for method, path, body in attempts:
         r = a.request(method, path, json=body, headers=mine)
@@ -512,7 +520,11 @@ def test_a_user_of_a_gets_404s_for_bs_objects_fields_records_tags_views_and_link
             ("POST", f"/api/v1/pipelines/{a_ids['pipeline_id']}/stages/reorder",
              {"stage_ids": [stage, a_ids["stage_id"], a_ids["won_stage_id"]]}, 422),
             ("POST", "/api/v1/teams", {"name": "x", "parent_team_id": b_ids["team_id"]}, 422),
-            ("POST", "/api/v1/roles", {"name": "x", "copy_from": b_ids["role_key"]}, 422)]:
+            ("POST", "/api/v1/roles", {"name": "x", "copy_from": b_ids["role_key"]}, 422),
+            # a bulk change that mixes A's own ids with B's is refused whole: A's record stays where it is
+            ("POST", f"{contact}/delete", {"ids": [a_ids["record_id"], record]}, 404),
+            ("POST", f"{contact}/restore", {"ids": [a_ids["trashed_id"], b_ids["trashed_id"]]}, 404),
+            ("POST", f"{contact}/delete", {"ids": [b_ids["company_id"]]}, 404)]:
         r = a.request(method, path, json=body, headers=mine)
         assert r.status_code == status, (method, path, r.status_code, r.text[:200])
         assert not any(leak in r.text for leak in secrets_of(b_ids)), (method, path)
@@ -543,6 +555,13 @@ def test_a_user_of_a_gets_404s_for_bs_objects_fields_records_tags_views_and_link
         found = a.get(deals, params={"filter": json.dumps(filter_)}, headers=mine).json()["data"]
         assert b_ids["deal_name"] not in json.dumps(found) and all(
             d["display_name"] == a_ids["deal_name"] for d in found), filter_
+    assert a.get(f"{contact}/{a_ids['record_id']}", headers=mine).status_code == 200  # the mixed delete did nothing
+    assert [t["display_name"] for t in a.get("/api/v1/trash", params={"object": "contact"}, headers=mine).json()["data"]
+            ] == [a_ids["trashed_name"]]
+    # the people A can list are A's, and A cannot ask for B's workspace
+    members = a.get("/api/v1/members", headers=mine).json()["data"]
+    assert [m["email"] for m in members] == ["alice@example.com"]
+    assert a.get("/api/v1/members", headers={"X-Workspace-Id": b_ids["workspace_id"]}).status_code == 404
     # and B still has all of it
     theirs_h = {"X-Workspace-Id": b_ids["workspace_id"]}
     assert b.get(f"{contact}/{record}", headers=theirs_h).json()["display_name"] == b_ids["record_name"]

@@ -26,12 +26,14 @@ import {
 } from "lucide-react";
 import { persisted } from "./store";
 
-export type NavItem = { id: string; label: string; path: string; icon: LucideIcon; gKey?: string; blurb: string };
+export type NavItem = { id: string; label: string; path: string; icon: LucideIcon; gKey?: string; blurb: string; /** other places that belong to this item, so it stays highlighted there */ also?: string[] };
+
+export const inArea = (item: NavItem, pathname: string) => [item.path, ...(item.also ?? [])].some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
 // The small default core. Order here is the default sidebar order.
 export const CORE: NavItem[] = [
   { id: "inbox", label: "Inbox", path: "/inbox", icon: Inbox, gKey: "i", blurb: "Every conversation from SMS, email, calls and chat in one place, assigned and answered fast." },
-  { id: "contacts", label: "Contacts", path: "/contacts", icon: Users, gKey: "c", blurb: "People and companies with custom fields, tags, a full timeline and saved views." },
+  { id: "contacts", label: "Contacts", path: "/contacts", also: ["/companies", "/deals", "/objects"], icon: Users, gKey: "c", blurb: "People and companies with custom fields, tags, a full timeline and saved views." },
   { id: "pipeline", label: "Pipeline", path: "/pipeline", icon: Kanban, gKey: "p", blurb: "Deals on a board you can drag, with stages, values and clear next steps." },
   { id: "calendar", label: "Calendar", path: "/calendar", icon: CalendarDays, gKey: "k", blurb: "Booking pages, team availability and appointments synced with Google and Microsoft." },
   { id: "automations", label: "Automations", path: "/automations", icon: Workflow, gKey: "a", blurb: "Visual workflows that follow up, route leads and update records while you sleep." },

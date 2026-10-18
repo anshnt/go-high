@@ -75,8 +75,7 @@ def book(crm):
     link(client, ws, deals["Code audit"]["id"], people["alan"]["id"], contact_deal)
     link(client, ws, deals["Code audit"]["id"], people["grace"]["id"], contact_deal)
     works_at = type_id(client, ws, "contact", "company")
-    link(client, ws, people["grace"]["id"], acme["id"], works_at)
-    link(client, ws, people["alan"]["id"], bletchley["id"], works_at)
+    link(client, ws, people["grace"]["id"], acme["id"], works_at)  # Ada and Alan are linked by their company field
     return client, ws, {"people": people, "tags": tags, "me": me, "acme": acme, "bletchley": bletchley,
                         "deals": deals, "stages": stages}
 
@@ -277,8 +276,8 @@ def test_association_paths_look_through_links_in_both_directions(book):
     client, ws, d = book
     proposal, won = d["stages"]["proposal"], d["stages"]["won"]
     # contact -> company ("works at" is stored from the contact) and deal -> contact (stored from the deal);
-    # the `company` field of Ada and Alan is a plain value, not an association, so a path does not see it
-    assert find(client, ws, leaf("company.name", "is", "Acme")) == ["Grace Hopper"]
+    # the `company` field of Ada and Alan made their "works at" links, Grace's was made by hand
+    assert find(client, ws, leaf("company.name", "is", "Acme")) == ["Ada Lovelace", "Grace Hopper"]
     assert find(client, ws, leaf("company.industry", "contains", "code")) == ["Alan Turing"]
     assert find(client, ws, leaf("deal.amount", "gt", usd(500000))) == ["Ada Lovelace"]
     assert find(client, ws, leaf("deal.stage", "is", proposal)) == ["Alan Turing", "Grace Hopper"]
@@ -291,7 +290,8 @@ def test_association_paths_look_through_links_in_both_directions(book):
     # from the other side
     assert find(client, ws, leaf("contact.lifecycle", "is", "customer"), key="company") == ["Acme"]
     assert find(client, ws, leaf("contact.first_name", "is", "Alan"), key="company") == ["Bletchley"]
-    assert find(client, ws, leaf("contact.first_name", "is", "Ada"), key="company") == []
+    assert find(client, ws, leaf("contact.first_name", "is", "Ada"), key="company") == ["Acme"]
+    assert find(client, ws, leaf("contact.first_name", "is", "Linus"), key="company") == []
     assert find(client, ws, leaf("contact.display_name", "contains", "a"), key="deal") == ["Code audit", "Engine order"]
     assert find(client, ws, leaf("contact.email", "is", "ada@example.com"), key="deal") == ["Engine order"]
     # an association to a trashed record no longer counts
@@ -449,3 +449,31 @@ def test_search_words_become_quoted_prefix_literals():
     assert filters.search_terms("!!! ???") is None
     assert filters.search_terms("ada@example.com +1415") == "'ada@example.com':* & '+1415':*"
     assert len(filters.search_terms("w " * 30).split(" & ")) == 8
+
+
+def test_records_are_found_by_id_in_one_batch_for_the_names_behind_links(book):
+    client, ws, data = book
+    people = data["people"]
+    ada, grace, alan = (people[k]["id"] for k in ("ada", "grace", "alan"))
+    assert find(client, ws, leaf("id", "in", [ada, alan, "9d4c0000-0000-4000-8000-000000000000"])) == [
+        "Ada Lovelace", "Alan Turing"]
+    assert find(client, ws, leaf("id", "is", grace)) == ["Grace Hopper"]
+    assert find(client, ws, leaf("id", "is", grace.upper())) == ["Grace Hopper"]
+    assert len(find(client, ws, leaf("id", "not_in", [ada, grace]))) == 6
+    assert len(find(client, ws, leaf("id", "is_not", ada))) == 7
+    assert len(find(client, ws, leaf("id", "is_not_empty"))) == 8 and find(client, ws, leaf("id", "is_empty")) == []
+    # a hundred ids at most, like every list of values; another object's ids find nothing here
+    assert len(find(client, ws, leaf("id", "in", [ada] * 100))) == 1
+    assert find(client, ws, leaf("id", "in", [data["acme"]["id"]])) == []
+    assert find(client, ws, leaf("id", "in", [data["acme"]["id"]]), key="company") == ["Acme"]
+    # and through a link, so a company's contacts are one query: linked here by id
+    assert find(client, ws, leaf("company.id", "is", data["acme"]["id"])) == ["Ada Lovelace", "Grace Hopper"]
+    assert find(client, ws, leaf("company.id", "is", data["bletchley"]["id"])) == ["Alan Turing"]
+    for bad, pointer in ((leaf("id", "in", [ada] * 101), "filter.value"), (leaf("id", "is", "nope"), "filter.value"),
+                         (leaf("id", "contains", "a"), "filter.op"), (leaf("id", "in", []), "filter.value")):
+        r = client.get(R, params={"filter": json.dumps(bad)}, headers={H: ws})
+        assert r.status_code == 400 and pointer in r.json()["error"]["fields"], bad
+    # the id is a filter column only: it cannot be sorted by, or be a custom field's key
+    assert client.get(R, params={"sort": "id"}, headers={H: ws}).status_code == 400
+    taken = client.post(f"{OBJECTS}/contact/fields", json={"key": "id", "label": "Id", "type": "text"}, headers={H: ws})
+    assert taken.status_code == 422

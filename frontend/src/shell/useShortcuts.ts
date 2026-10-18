@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router";
 import { CORE } from "../lib/nav";
 
-const TYPING = 'input, textarea, select, [contenteditable], [role="menu"], [role="listbox"], [role="combobox"]';
+export const TYPING = 'input, textarea, select, [contenteditable], [role="menu"], [role="listbox"], [role="combobox"]';
 
 /** Ctrl/Cmd+K, `?` and Linear-style `g` then a letter. Single keys never fire while typing or inside a dialog. */
 export function useShortcuts({ togglePalette, openShortcuts }: { togglePalette: () => void; openShortcuts: () => void }) {

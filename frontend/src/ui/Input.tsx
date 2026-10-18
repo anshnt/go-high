@@ -1,4 +1,4 @@
-import { useId, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
+import { useId, type InputHTMLAttributes, type ReactNode, type Ref, type TextareaHTMLAttributes } from "react";
 import { cn } from "../lib/cn";
 
 type FieldProps = { label?: string; hint?: string; error?: string };
@@ -30,7 +30,8 @@ const describe = (id: string, p: FieldProps) => ({
   "aria-describedby": p.error || p.hint ? `${id}-msg` : undefined,
 });
 
-export function Input({ label, hint, error, className, id, ...rest }: InputHTMLAttributes<HTMLInputElement> & FieldProps) {
+/** `ref` reaches the <input> (React 19 passes it as a prop). */
+export function Input({ label, hint, error, className, id, ...rest }: InputHTMLAttributes<HTMLInputElement> & FieldProps & { ref?: Ref<HTMLInputElement> }) {
   const auto = useId();
   const fid = id ?? auto;
   return (

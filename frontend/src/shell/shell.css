@@ -683,3 +683,13 @@
   max-width: 24rem;
   margin-top: var(--space-3);
 }
+
+/* ---- Public demo ---- */
+.sh-demo-banner {
+  margin: 0;
+  padding: var(--space-1) var(--space-4);
+  background: var(--accent-soft, var(--surface-2));
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  text-align: center;
+}

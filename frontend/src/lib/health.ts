@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { api } from "./api";
 
 export type Health = { state: "checking" | "ok" | "degraded" | "down"; version?: string };
 
@@ -8,8 +9,8 @@ export function useHealth(): Health {
   useEffect(() => {
     let alive = true;
     const check = () =>
-      fetch("/api/health")
-        .then((r) => r.json())
+      api
+        .get<{ status: string; database: boolean; version: string }>("/api/health")
         .then((h: { status: string; database: boolean; version: string }) => {
           if (alive) setHealth({ state: h.status === "ok" && h.database ? "ok" : "degraded", version: h.version });
         })
@@ -25,4 +26,6 @@ export function useHealth(): Health {
 }
 
 export const healthLabel = (h: Health) =>
-  h.state === "checking" ? "Checking API" : h.state === "ok" ? `API healthy${h.version ? `, v${h.version}` : ""}` : h.state === "degraded" ? "API degraded" : "API unreachable";
+  h.version === "demo"
+    ? "Demo with fictional data"
+    : h.state === "checking" ? "Checking API" : h.state === "ok" ? `API healthy${h.version ? `, v${h.version}` : ""}` : h.state === "degraded" ? "API degraded" : "API unreachable";

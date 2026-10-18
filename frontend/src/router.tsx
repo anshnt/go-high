@@ -7,6 +7,8 @@ import { ModulePage } from "./pages/ModulePage";
 import { NotFound } from "./pages/NotFound";
 import { SettingsPage, SettingsSectionPage } from "./pages/SettingsPage";
 
+const home = import.meta.env.VITE_DEMO === "1" ? "/contacts" : "/inbox"; // the demo opens where its data is
+
 export const router = createBrowserRouter([
   // Public screens, outside the shell.
   { path: "/signin", element: <SignIn /> },
@@ -17,8 +19,13 @@ export const router = createBrowserRouter([
     element: <RequireAuth />,
     HydrateFallback: () => null,
     children: [
-      { index: true, loader: () => redirect("/inbox") },
-      ...CORE.map((item) => ({ path: item.path.slice(1), element: <ModulePage item={item} /> })),
+      { index: true, loader: () => redirect(home) },
+      // Contacts is the records area: /contacts, /companies, /deals and custom objects, all one screen (src/records).
+      ...CORE.filter((item) => item.id !== "contacts").map((item) => ({ path: item.path.slice(1), element: <ModulePage item={item} /> })),
+      { path: "contacts/:id?", lazy: async () => ({ Component: (await import("./pages/RecordPages")).ContactsPage }) },
+      { path: "companies/:id?", lazy: async () => ({ Component: (await import("./pages/RecordPages")).CompaniesPage }) },
+      { path: "deals/:id?", lazy: async () => ({ Component: (await import("./pages/RecordPages")).DealsPage }) },
+      { path: "objects/:object/:id?", lazy: async () => ({ Component: (await import("./pages/RecordPages")).ObjectPage }) },
       { path: "apps", element: <AppsPage /> },
       { path: "settings", element: <SettingsPage /> },
       { path: "settings/security", lazy: async () => ({ Component: (await import("./pages/SecuritySettings")).SecuritySettings }) },
@@ -28,4 +35,4 @@ export const router = createBrowserRouter([
       { path: "*", element: <NotFound /> },
     ],
   },
-]);
+], { basename: import.meta.env.BASE_URL.replace(/\/$/, "") || "/" });
