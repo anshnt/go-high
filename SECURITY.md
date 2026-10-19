@@ -199,6 +199,41 @@ Row level security separates tenants; what a user may do inside a workspace is `
   who made it gave them for that meeting; the link to the contact record is shown only when the caller's record scope
   lets them see that contact, and hidden fields stay hidden there.
 
+## Workflows
+
+- A workflow acts as a named actor with a role, never as a superuser: its steps run as the organization's Automation
+  role (ADR 0004) through the record engine's own write paths, so what a workflow may do is what that role may do, and an
+  admin can read and edit it. Every change it makes is an event with `actor_type` `workflow` and the workflow's id, so
+  the timeline and the audit log say "by workflow X" (the audit filter by actor finds all of a workflow's work). Taking
+  `tags.write`, `tasks.write`, `contacts.write` or `messages.send` from Automation makes those steps fail naming the
+  capability; its record scope and hidden or read-only fields apply to what a step reads and writes.
+- A workflow cannot be used to read or write what its author may not: the filters, update values and `{{field_key}}`
+  text of a graph are checked against the fields the author can see when it is saved (a hidden field does not exist for
+  them), and a hidden field of the Automation role cannot be merged into text at run time either.
+- Runs and traces are shown only while the caller may see the run's record (a 404 otherwise, so a run does not give its
+  record away), and a role that hides any field gets the trace without its `input` and `output`, which carry what was
+  set and sent. A test run of a record needs the same visibility. Reading workflows is `workflows.read`; editing,
+  testing, cancelling and retrying is `workflows.write`; publishing, pausing, resuming, archiving, rotating the signing
+  secret and changing the settings of a live workflow is `workflows.publish`.
+- The webhook action leaves the system with workspace data, so it is as guarded as a webhook: the address must be https
+  and resolve to public addresses only, checked when the version is saved, again when the step queues the delivery and
+  again, after DNS, when the worker posts (no redirects, 10 second deadline, 2 KB of the response kept; the same switches
+  as webhooks for local development). What leaves is the run, the record's id, type and name, and only the `payload`
+  keys the author mapped. A delivery is signed with the workflow's own secret (`whsec_...`, shown once when the workflow
+  is created, replaced by `rotate-secret`; stored readable because signing needs it, like a webhook endpoint's) and
+  carries an idempotency key, so a receiver can drop a repeat. Request handlers can queue deliveries but only the worker
+  updates them.
+- Sending is exactly once and consent-bound: a message is queued through the inbox's own path, with the opt-out, do not
+  disturb, frequency cap and quiet hours checks of any reply (again when the worker sends), under a unique idempotency
+  key `run:node`; a step that runs twice finds its row. A STOP is never overridden by a workflow.
+- Enrollment is confined by row level security (the consumer works inside `acting`, the same scope a request gets), a
+  workflow's own changes cannot start it, workflow events cannot start workflows, and a broken workflow is a logged miss,
+  never an error that holds back the event consumers. Per workspace, at most `WORKFLOW_CONCURRENCY` steps run at once and
+  a run is cut off at 500 steps.
+- Versions are immutable (request handlers can insert them and set only the time one was published), the trace is append
+  only, and nothing is deleted by a request; the check log is pruned by the worker after 7 days. A test of the sweep in
+  `tests/test_isolation.py` calls every workflow route with another tenant's ids and checks every table and grant.
+
 ## Repository
 
 - `main` is protected: changes arrive by pull request with passing CI; force pushes and deletion are blocked.

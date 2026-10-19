@@ -264,7 +264,7 @@ def trace(db: Session, run: Run, node_id: str, status: str, input_: dict, output
     """Appends a step to the run's trace (and counts it for the loop guard)."""
     run.steps += 1
     step = Step(workspace_id=run.workspace_id, run_id=run.id, seq=run.steps, node_id=node_id, status=status,
-                input=jsonable_encoder(input_), output=jsonable_encoder(output), error=error,
+                input=jsonable_encoder(input_), output=jsonable_encoder(output), error=error and error[:500],
                 started_at=started or func.clock_timestamp(), finished_at=func.clock_timestamp())
     db.add(step)
     return step

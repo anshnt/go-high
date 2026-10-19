@@ -14,6 +14,7 @@ or a bad action config is refused when the version is saved, never discovered by
 
 A node with `next: null` (or a branch to null) ends the run. A goal is entered by a jump when its condition becomes
 true, so nothing needs to lead to it. Node ids are `^[a-z][a-z0-9_]{0,39}$`."""
+import json
 import re
 import uuid
 from typing import Annotated, Any, Literal
@@ -27,6 +28,7 @@ from .registry import ACTIONS, Offset, SignedOffset
 
 NODE_ID = re.compile(r"[a-z][a-z0-9_]{0,39}")
 MAX_NODES = 200
+MAX_BYTES = 250_000  # of the saved graph: a version is a workflow, not an upload
 MAX_STEPS = 500  # per run: the loop guard of the engine
 Scalar = str | int | float | bool | None
 UNION_TAGS = re.compile(r"(str|int|float|bool|none|uuid|literal\[.*|list.*|dict.*)")
@@ -266,7 +268,10 @@ def validate(graph: Any) -> dict:
         link(start, nodes, configs, errors)
     if errors:
         raise GraphError(errors)
-    return {"trigger": trigger.model_dump(mode="json"), "start": start, "nodes": nodes}
+    clean = {"trigger": trigger.model_dump(mode="json"), "start": start, "nodes": nodes}
+    if len(json.dumps(clean)) > MAX_BYTES:
+        raise GraphError({"nodes": f"the workflow is larger than {MAX_BYTES // 1000} KB"})
+    return clean
 
 
 def keep(nid: str, node: dict, path: str, errors: dict[str, str], nodes: dict, configs: dict) -> None:

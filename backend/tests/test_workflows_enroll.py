@@ -34,8 +34,8 @@ LEAD = {"field": "lifecycle", "op": "is", "value": "lead"}
 
 def checks(db, workflow_id=None):
     where = "WHERE workflow_id = :w" if workflow_id else ""
-    return sql(db, f"SELECT event_type, matched, outcome, reason FROM workflow_trigger_checks {where} ORDER BY event_id, id",
-               w=workflow_id)
+    return sql(db, f"SELECT event_type, matched, outcome, reason FROM workflow_trigger_checks {where} "
+                   "ORDER BY event_id, id", w=workflow_id)
 
 
 def test_a_new_contact_that_passes_the_filter_enters_and_one_that_does_not_is_logged_with_the_clause_that_failed(
@@ -55,7 +55,8 @@ def test_a_new_contact_that_passes_the_filter_enters_and_one_that_does_not_is_lo
     rows = sql(db, "SELECT record_id::text, matched, outcome, event_type, run_id IS NOT NULL FROM "
                    "workflow_trigger_checks WHERE workflow_id = :w", w=wf["id"])
     assert {(r[0], r[1], r[2], r[3], r[4]) for r in rows} == {
-        (lead["id"], True, "entered", "record.created", True), (customer["id"], False, "filter", "record.created", False),
+        (lead["id"], True, "entered", "record.created", True),
+        (customer["id"], False, "filter", "record.created", False),
         (odd["id"], False, "filter", "record.created", False)}
     assert tags_of(client, ws, lead["id"]) == ["welcome"] and tags_of(client, ws, customer["id"]) == []
 
@@ -239,7 +240,8 @@ def test_a_filter_that_stopped_working_is_a_logged_miss_and_does_not_stop_the_co
     contact(client, ws)
     pump(db)
     miss = checks(db, broken["id"])[0]
-    assert miss[1:3] == (False, "error") and miss[3].startswith("the trigger's filter no longer works: trigger.filter.field")
+    assert miss[1:3] == (False, "error")
+    assert miss[3].startswith("the trigger's filter no longer works: trigger.filter.field")
     assert [c[2] for c in checks(db, fine["id"])] == ["entered"]  # and the consumer went on with the others
     assert sql(db, "SELECT count(*) FROM jobs WHERE status = 'dead'")[0][0] == 0
 
@@ -305,7 +307,8 @@ def test_explain_answers_why_a_record_did_not_enter_from_the_log_or_by_judging_i
     late = contact(client, ws, first_name="Bob", email="bob@example.com", lifecycle="customer")
     pump(db)
     miss = explain(late)
-    assert miss["evaluation"] is None and miss["checks"][0]["outcome"] == "filter" and miss["checks"][0]["matched"] is False
+    assert miss["evaluation"] is None and miss["checks"][0]["outcome"] == "filter"
+    assert miss["checks"][0]["matched"] is False
     assert miss["answer"].startswith('Did not enter when record.created was read at ')
     assert miss["answer"].endswith('Lifecycle stage is "lead" did not hold (it is "customer")')
     in_flow = contact(client, ws, first_name="Cy", email="cy@example.com", lifecycle="lead")

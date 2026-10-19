@@ -1,5 +1,5 @@
-"""The actions, one by one: what each does through the record engine's own write paths as the Automation role, what shows
-in the trace, and how each fails (a step that cannot do its job says why, and the run stops there)."""
+"""The actions, one by one: what each does through the record engine's own write paths as the Automation role, what
+shows in the trace, and how each fails (a step that cannot do its job says why, and the run stops there)."""
 from datetime import UTC, datetime, timedelta
 
 from helpers import H, add_member, make_deal, stage_ids, user_id_of
@@ -269,7 +269,8 @@ def test_task_create_can_name_the_assignee_and_fails_for_one_who_is_not_a_member
     contact(client, ws, first_name="Bob", email="bob@example.com")
     pump(db)
     bad = next(r for r in runs(client, ws) if r["status"] == "failed")
-    assert detail(client, ws, bad["id"])["error"] == "The task is not valid: assignee_id: is not a member of this workspace"
+    assert detail(client, ws, bad["id"])["error"] == (
+        "The task is not valid: assignee_id: is not a member of this workspace")
 
 
 def test_task_create_is_bound_by_the_tasks_capability_of_the_automation_role(crm, db):

@@ -181,16 +181,29 @@ def read(db: Session, ws: Workspace, batch: list[Event]) -> bool:
         for wf, version, live_since in candidates:
             if wf.trigger_event != e.type or (wf.id, e.id) in done or e.occurred_at < live_since:
                 continue
-            outcome, reason = evaluate(cat, rec, version.graph["trigger"], e, wf.id)
+            outcome, reason = (("no_record", "the event does not name a record") if rid is None
+                               else evaluate(cat, rec, version.graph["trigger"], e, wf.id))
             run = None
             if outcome == "ok":
                 outcome, reason, run = admit(db, wf, version, rec, e)
             checks.append(TriggerCheck(
                 workspace_id=ws.id, workflow_id=wf.id, version_id=version.id, event_id=e.id, event_type=e.type,
-                record_id=rid, matched=outcome in HITS, outcome=outcome, reason=reason, run_id=run.id if run else None))
+                record_id=rid, matched=outcome in HITS, outcome=outcome, reason=reason and reason[:500],
+                run_id=run.id if run else None))
     db.add_all(checks)
     db.flush()
     return bool(checks)
+
+
+def interested(db: Session, ws_id: uuid.UUID, batch: list[Event]) -> bool:
+    """Whether these events of a workspace can matter: a published workflow starts on one of them, or a run is in
+    flight for one of their records. Two indexed lookups, so a workspace with no workflows costs nothing more."""
+    rids = {r for e in batch if (r := record_of(e))}
+    starts = exists().where(Workflow.workspace_id == ws_id, Workflow.status == "published",
+                            Workflow.trigger_event.in_({e.type for e in batch}))
+    running = exists().where(Run.workspace_id == ws_id, Run.record_id.in_(rids), Run.status.in_(ACTIVE),
+                             Run.test.is_(False))
+    return bool(db.scalar(select(starts)) or (rids and db.scalar(select(running))))
 
 
 @events.consumer("workflows")
@@ -198,9 +211,10 @@ def consume(db: Session, batch: list[Event]) -> None:
     batch = [e for e in batch if not e.type.startswith("workflow.")]  # workflows never start on workflow events
     wrote = False
     for ws_id in dict.fromkeys(e.workspace_id for e in batch):
+        mine = [e for e in batch if e.workspace_id == ws_id]
         ws = db.get(Workspace, ws_id)
-        if ws is not None:
+        if ws is not None and interested(db, ws_id, mine):
             with acting(db, workspace_id=ws.id, org_id=ws.org_id):
-                wrote |= read(db, ws, [e for e in batch if e.workspace_id == ws_id])
+                wrote |= read(db, ws, mine)
     if wrote:  # the owner role again: requests may not delete
         db.execute(delete(TriggerCheck).where(TriggerCheck.created_at < func.now() - KEEP))

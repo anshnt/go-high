@@ -176,7 +176,8 @@ def test_a_graph_is_checked_against_the_workspace_and_every_error_points_into_it
     assert found["graph.nodes.t2.config.values.email"].startswith("Email ")
     assert found["graph.nodes.t3.config.stage_id"] == (
         "moving a stage works on deals; this workflow's records are contacts")
-    assert found["graph.nodes.t4.config.channel_id"] == "workflows send on sms, email and whatsapp channels, not webchat"
+    assert found["graph.nodes.t4.config.channel_id"] == (
+        "workflows send on sms, email and whatsapp channels, not webchat")
     assert found["graph.nodes.t5.config.channel_id"] == "is not a channel of this workspace"
     assert found["graph.nodes.t6.config.subject"] == "is required to send an email"
     assert found["graph.nodes.t7.config.round_robin.1"] == "is not a member of this workspace"
@@ -221,7 +222,8 @@ def test_publishing_needs_a_version_with_something_to_run_and_points_the_workflo
         "graph.nodes.s.type": "subflows are not built yet: they can be saved but not published"}
     post(client, ws, f"/{wf['id']}/versions", {"graph": graph({"go": END})}, status=201)
     done = post(client, ws, f"/{wf['id']}/publish")
-    assert done["status"] == "published" and done["published_version"] == 3 and done["trigger_event"] == "record.created"
+    assert (done["status"], done["published_version"], done["trigger_event"]) == (
+        "published", 3, "record.created")
     assert done["publish"] == {"in_flight": 0, "same_node": 0, "removed_nodes": [], "moved": 0, "exited": 0,
                                "dry_run": False}
     published = sql(db, "SELECT data FROM events WHERE type = 'workflow.published'")[0][0]
@@ -481,4 +483,5 @@ def test_the_catalog_route_serves_what_the_builder_is_made_of(crm):
     assert {a["key"] for a in catalog["actions"]} == {
         "record.update", "tag.add", "tag.remove", "owner.assign", "deal.move_stage", "task.create", "message.send",
         "notify.user", "webhook.send"}
-    assert [n["type"] for n in catalog["nodes"]][:2] == ["action", "wait"] and catalog["limits"]["max_steps_per_run"] == 500
+    assert [n["type"] for n in catalog["nodes"]][:2] == ["action", "wait"]
+    assert catalog["limits"]["max_steps_per_run"] == 500

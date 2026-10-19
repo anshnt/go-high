@@ -1,11 +1,26 @@
-"""Test runs: a version walked for one record on a virtual clock, the real actions inside a savepoint that is rolled back,
-messages and webhooks described and never sent, and a trace like a live run's."""
+"""Test runs: a version walked for one record on a virtual clock, the real actions inside a savepoint that is rolled
+back, messages and webhooks described and never sent, and a trace like a live run's."""
 import hashlib
 from datetime import UTC, datetime, timedelta
 
 from helpers import H, add_member, stage_ids, user_id_of
 from inbox_helpers import add_channel, point
-from workflow_helpers import ROOT, act, ask, contact, create, graph, live, make_tag, pause, pump, runs, sql, tag, tags_of
+from workflow_helpers import (
+    ROOT,
+    act,
+    ask,
+    contact,
+    create,
+    graph,
+    live,
+    make_tag,
+    pause,
+    pump,
+    runs,
+    sql,
+    tag,
+    tags_of,
+)
 
 from app.inbox import consent
 
@@ -51,7 +66,7 @@ def test_a_test_run_with_a_two_day_wait_finishes_at_once_with_a_full_trace_and_c
     done = try_flow(client, ws, wf["id"], ada["id"])
     assert world(db) == before  # nothing of the world changed: the record, its tags, tasks, messages, events...
     run = done["run"]
-    assert run["test"] is True and run["status"] == "completed" and run["node_id"] is None and run["workflow"] == "Welcome"
+    assert (run["test"], run["status"], run["node_id"], run["workflow"]) == (True, "completed", None, "Welcome")
     assert [(s["seq"], s["node_id"], s["status"]) for s in done["steps"]] == [
         (1, "tag", "completed"), (2, "set", "completed"), (3, "owner", "completed"), (4, "look", "completed"),
         (5, "hold", "waiting"), (6, "hold", "completed"), (7, "send", "completed"), (8, "hook", "completed"),
@@ -184,5 +199,5 @@ def test_a_draft_is_tested_without_being_published_and_a_live_workflow_is_untouc
     live_one = try_flow(client, ws, wf["id"], ada["id"], version=1)
     assert live_one["steps"][0]["input"]["tag"] == "one"
     pump(db)
-    assert tags_of(client, ws, ada["id"]) == ["one"]  # the real run of the published version, and nothing from the tests
+    assert tags_of(client, ws, ada["id"]) == ["one"]  # the real run of the published version, none of the tests
     assert len(runs(client, ws)) == 1 and len(runs(client, ws, test="true")) == 2

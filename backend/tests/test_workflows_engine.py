@@ -1,5 +1,5 @@
-"""The engine: a run walks its graph one step per job and leaves a trace; waits park it and the queue wakes it; conditions,
-splits and goals decide where it goes; the loop guard and the step slots hold it back."""
+"""The engine: a run walks its graph one step per job and leaves a trace; waits park it and the queue wakes it;
+conditions, splits and goals decide where it goes; the loop guard and the step slots hold it back."""
 import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -259,7 +259,8 @@ def test_the_loop_guard_stops_a_run_at_500_steps(crm, db):
     stopped = only_run(client, ws)
     assert stopped["status"] == "failed" and stopped["error"] == "Loop guard: the run has taken 500 steps"
     assert stopped["steps"][-1]["status"] == "failed" and stopped["node_id"] == "hold"
-    assert sql(db, "SELECT count(*) FROM events WHERE type IN ('workflow.step_failed', 'workflow.run_failed')")[0][0] == 2
+    failures = "SELECT count(*) FROM events WHERE type IN ('workflow.step_failed', 'workflow.run_failed')"
+    assert sql(db, failures)[0][0] == 2
     assert tags_of(client, ws, ada["id"]) == ["again"]
 
 

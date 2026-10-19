@@ -107,7 +107,8 @@ def test_action_configs_are_validated_by_their_schema_with_a_pointer_to_each_pro
                "n": act("notify.user", {"user_id": "somebody", "title": "x"}, "g"), "g": tag("")})
     found = errors(g)
     assert found["nodes.t.config.title"] == "is required"
-    assert found["nodes.t.config.notes"] and found["nodes.t.config.due.days"] == "Input should be greater than or equal to 1"
+    assert found["nodes.t.config.notes"]
+    assert found["nodes.t.config.due.days"] == "Input should be greater than or equal to 1"
     assert found["nodes.t.config.priority"].startswith("Input should be")
     assert found["nodes.t.config.boss"] == "is not a known setting"
     assert found["nodes.m.config.body"].startswith("String should have at least 1 character")
@@ -148,7 +149,9 @@ def test_wait_split_condition_and_end_configs_are_checked():
     assert node_errors(pause({"until_field": {"field": "x", "at": "25:61"}}))["nodes.n.config.until_field.at"]
     assert node_errors({"type": "wait", "config": {"event": {"event": "tag.added", "timeout": {"days": 1}}},
                         "next": None})["nodes.n.branches"] == "must have exactly the branches event, timeout"
-    split = lambda paths: {"type": "split", "config": {"paths": paths}, "branches": {p["name"]: None for p in paths}}  # noqa: E731
+    def split(paths):
+        return {"type": "split", "config": {"paths": paths}, "branches": {p["name"]: None for p in paths}}
+
     assert node_errors(split([{"name": "a", "percent": 60}, {"name": "b", "percent": 60}]))[
         "nodes.n.config"] == "the percentages must add up to 100"
     assert node_errors(split([{"name": "a", "percent": 50}, {"name": "a", "percent": 50}]))[
@@ -170,7 +173,8 @@ def test_node_ids_and_the_size_of_a_workflow_are_limited():
     many = {f"n{i}": tag("x", f"n{i + 1}" if i < schema.MAX_NODES else None) for i in range(schema.MAX_NODES + 1)}
     assert errors(graph(many))["nodes"] == f"a workflow has at most {schema.MAX_NODES} nodes"
     assert errors(graph({"a": tag("x")}, start="zz")) == {"start": "must be the id of the first node"}
-    assert errors({"trigger": {"event": "record.created"}, "start": "a", "nodes": {}}) == {"start": "there are no nodes"}
+    assert errors({"trigger": {"event": "record.created"}, "start": "a", "nodes": {}}) == {
+        "start": "there are no nodes"}
     assert errors({"trigger": {"event": "record.created"}, "nodes": {"a": tag("x")}}) == {
         "start": "is required: the id of the first node"}
 
@@ -179,7 +183,8 @@ def test_publishing_needs_something_to_run_and_no_subflow_yet():
     empty = schema.validate({"trigger": {"event": "record.created"}, "start": None, "nodes": {}})
     assert schema.publishable(empty) == {"nodes": "add a step first: there is nothing to run"}
     sub = schema.validate(graph({"s": {"type": "subflow", "config": {"workflow_id": USER}, "next": None}}))
-    assert schema.publishable(sub) == {"nodes.s.type": "subflows are not built yet: they can be saved but not published"}
+    assert schema.publishable(sub) == {
+        "nodes.s.type": "subflows are not built yet: they can be saved but not published"}
     assert schema.publishable(schema.validate(simple())) == {}
 
 
