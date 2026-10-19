@@ -134,9 +134,9 @@ export function compactMoney(minor: number, currency: string): string {
   let f = compactFormats.get(currency);
   if (!f) {
     try {
-      f = new Intl.NumberFormat("en-US", { style: "currency", currency, notation: "compact", maximumFractionDigits: 1 });
+      f = new Intl.NumberFormat("en-US", { style: "currency", currency, notation: "compact", minimumFractionDigits: 0, maximumFractionDigits: 1 });
     } catch {
-      f = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 });
+      f = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", minimumFractionDigits: 0, maximumFractionDigits: 1 });
     }
     compactFormats.set(currency, f);
   }
