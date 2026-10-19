@@ -1,7 +1,7 @@
 // What the board does with cards, in plain TypeScript: where a drop lands, the optimistic move with its counts and sums,
 // the quick filters (applied here because the board API has none), and sums by currency in words. No React, so node
 // can test it.
-import { formatMoney, isMoney, toDay } from "../records/format.ts";
+import { formatMoney, isMoney, parseDay, toDay } from "../records/format.ts";
 import type { Money } from "../records/types.ts";
 import type { BoardStage, Card, Sums } from "./types.ts";
 
@@ -54,6 +54,20 @@ export function neighbours(cards: Pick<Card, "id">[], dragId: string, slot: numb
   const rest = cards.filter((c) => c.id !== dragId);
   const at = Math.min(Math.max(slot, 0), rest.length);
   return { after_id: rest[at - 1]?.id ?? null, before_id: rest[at]?.id ?? null };
+}
+
+/**
+ * A slot among the cards that are shown (the ones that pass the filters) as a slot among every loaded card: just above the
+ * card it is dropped before, else just below the card it is dropped after, else the top.
+ */
+export function toFullSlot(all: Pick<Card, "id">[], shown: Pick<Card, "id">[], dragId: string, slot: number): number {
+  const rest = shown.filter((c) => c.id !== dragId);
+  const full = all.filter((c) => c.id !== dragId);
+  const at = Math.min(Math.max(slot, 0), rest.length);
+  const before = rest[at];
+  if (before) return full.findIndex((c) => c.id === before.id);
+  const after = rest[at - 1];
+  return after ? full.findIndex((c) => c.id === after.id) + 1 : 0;
 }
 
 /** The slot a pointer at `y` means, given the vertical middles of the cards that are not being dragged, top to bottom. */
@@ -171,6 +185,34 @@ export function passes(card: Card, f: Quick, me: string | undefined, now = new D
   const q = f.q.trim().toLowerCase();
   return !q || card.display_name.toLowerCase().includes(q);
 }
+
+// ---- time on a card ----
+
+/** "now", "5m", "3h", "2d", "3mo": how long ago, in a few characters for a card's footer. */
+export function compactAgo(iso: string | null, now: number): string {
+  const then = iso ? Date.parse(iso) : NaN;
+  if (Number.isNaN(then)) return "";
+  const minutes = Math.max(0, Math.round((now - then) / 60_000));
+  if (minutes < 1) return "now";
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 1440) return `${Math.floor(minutes / 60)}h`;
+  const days = Math.floor(minutes / 1440);
+  return days < 30 ? `${days}d` : `${Math.floor(days / 30)}mo`;
+}
+
+/** "Today", or "12d": the days a deal has been in its stage. */
+export const daysText = (days: number) => (days <= 0 ? "Today" : `${days}d`);
+
+const SHORT_DAY = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
+/** "Nov 12", with the year when it is not this year: a close date on a card. */
+export function shortDay(day: string, now: Date): string {
+  const d = parseDay(day);
+  if (!d) return day;
+  return d.getFullYear() === now.getFullYear() ? SHORT_DAY.format(d) : `${SHORT_DAY.format(d)}, ${d.getFullYear()}`;
+}
+
+/** Is the close date of an open deal already behind us? */
+export const overdue = (day: string | null, now: Date) => !!day && day < toDay(now);
 
 export type Shown = { deals: Card[]; count: number; amount: Sums; weighted: Sums; partial: boolean };
 

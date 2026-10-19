@@ -105,6 +105,17 @@ export function ownerRows(f: Forecast, currency: string, label: string | null): 
     .sort((a, b) => b.total - a.total || String(a.owner_id).localeCompare(String(b.owner_id)));
 }
 
+const SHORT_MONTH = new Intl.DateTimeFormat("en-US", { month: "short" });
+/** The label under a column: "Oct", with the year on the first column and on January ("Jan 27"); "Q4" with the year likewise. */
+export function axisLabel(start: string, period: Period, first: boolean): string {
+  const d = parseDay(start);
+  if (!d) return start;
+  const year = String(d.getFullYear()).slice(2);
+  if (period === "month") return first || d.getMonth() === 0 ? `${SHORT_MONTH.format(d)} ${year}` : SHORT_MONTH.format(d);
+  const q = Math.floor(d.getMonth() / 3) + 1;
+  return first || q === 1 ? `Q${q} ${year}` : `Q${q}`;
+}
+
 // ---- the axis ----
 
 /** Clean tick values from 0 up to at least `max`: 1, 2, 2.5 or 5 times a power of ten, about four steps. */
