@@ -4,7 +4,7 @@ import { memory, useStore } from "./store";
 export type User = { id: string; email: string; name: string; email_verified: boolean; has_password: boolean };
 export type Brand = { id: string; name: string };
 export type Org = { id: string; name: string; role: "owner" | "admin" | "member"; brands: Brand[] };
-export type Workspace = { id: string; name: string; org_id: string; brand_id: string; role: "admin" | "member" | null };
+export type Workspace = { id: string; name: string; org_id: string; brand_id: string; /** "admin" for org owners and admins, else the workspace role's key ("manager", "member", "viewer", or a custom role's) */ role: string | null };
 export type Me = { user: User; orgs: Org[]; workspaces: Workspace[] };
 
 /** loading: nobody has asked yet. anon: no session (left = the user chose to sign out). */
