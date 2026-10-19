@@ -14,6 +14,8 @@ import { consentLine } from "./refusal.ts";
 import type { Channel, ChannelKind, Consent, Conversation } from "./types.ts";
 import { CHANNEL_LABEL } from "./views.ts";
 
+// ponytail: the "key fields" are the first few filled-in plain fields of the contact object, in field order. A per-workspace choice
+// of which fields to show (and a link to the company) comes with the record layouts of module 07.
 const SHOWN = ["text", "select", "number", "date", "url", "stage"];
 const MAX_FIELDS = 6;
 const KINDS: ChannelKind[] = ["sms", "whatsapp", "email", "webchat"];

@@ -4,7 +4,8 @@ import { getConversation, listConversations } from "./api";
 import type { Conversation, ConversationPage, Counts, ViewId } from "./types.ts";
 import { byActivity, EMPTY_COUNTS, withCounts, withRow, type Filter } from "./views.ts";
 
-// A search looks at every status, so a closed conversation can be found; each view is its own query with its own cursor.
+// ponytail: a search looks at every status, so a closed conversation can be found, by asking the open, snoozed and closed views
+// separately and merging them by activity (the API has no "all" view). A single `view=all` would be one query, one cursor.
 const SEARCH_VIEWS: ViewId[] = ["open", "snoozed", "closed"];
 const PAGE = 50;
 const SEARCH_PAGE = 30;

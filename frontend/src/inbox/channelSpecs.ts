@@ -126,6 +126,11 @@ export const SPECS: Spec[] = [
   },
 ];
 
+const PROVIDER_LABEL: Record<Channel["provider"], string> = { twilio: "Twilio", telnyx: "Telnyx", smtp: "SMTP", ses: "SMTP", mailgun: "Mailgun", meta: "WhatsApp Business", internal: "Chat widget" };
+
+/** "Twilio, SMS", "SMTP, email", "WhatsApp Business", "Chat widget": the provider, and the kind only when the provider does not say it. */
+export const describeChannel = (ch: Pick<Channel, "provider" | "kind">): string => `${PROVIDER_LABEL[ch.provider]}${ch.kind === "sms" ? " \u00b7 SMS" : ch.kind === "email" ? " \u00b7 Email" : ""}`;
+
 export const specOf = (ch: Pick<Channel, "provider">): Spec => SPECS.find((s) => s.provider === ch.provider) ?? SPECS.find((s) => s.provider === "smtp")!;
 
 /** The sending rules every SMS and WhatsApp channel has, and the reply-to of email. Plain values, so a form can show them as text. */

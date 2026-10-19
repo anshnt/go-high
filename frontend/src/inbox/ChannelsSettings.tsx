@@ -7,10 +7,9 @@ import { whatWentWrong } from "../lib/errors";
 import { PageHeader } from "../shell/PageHeader";
 import { Badge, Button, Dialog, EmptyState, Input, Select, Skeleton, useToast, type Tone } from "../ui";
 import { createChannel, listChannels, patchChannel, testChannel } from "./api";
-import { buildCreate, buildPatch, emptyValues, errorsByField, hasRules, missing, specOf, SPECS, valuesOf, type FieldSpec, type Spec, type Values } from "./channelSpecs.ts";
+import { buildCreate, buildPatch, describeChannel, emptyValues, errorsByField, hasRules, missing, specOf, SPECS, valuesOf, type FieldSpec, type Spec, type Values } from "./channelSpecs.ts";
 import { ChannelIcon } from "./ChannelIcon";
 import type { Channel, ChannelStatus } from "./types.ts";
-import { CHANNEL_LABEL } from "./views.ts";
 import "./channels.css";
 
 const STATUS: Record<ChannelStatus, { label: string; tone: Tone }> = {
@@ -283,7 +282,7 @@ export function ChannelsSettings() {
                   <div className="chs-card-titles">
                     <h2>{c.name}</h2>
                     <p>
-                      {spec.title.replace(/^SMS with |^Email with /, "")} {"·"} {CHANNEL_LABEL[c.kind]}
+                      {describeChannel(c)}
                       {c.kind !== "webchat" && c.address ? ` · ${c.address}` : ""}
                     </p>
                   </div>

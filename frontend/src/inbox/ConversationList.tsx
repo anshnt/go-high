@@ -28,9 +28,11 @@ const Row = memo(function Row({ conv, active, open, assignee, now, searching, in
       >
         <span className="ib-avatar">
           <Avatar name={name} />
-          <span className="ib-avatar-ch">
-            <ChannelIcon kind={conv.channel_kind} size={11} />
-          </span>
+          {conv.channel_kind && (
+            <span className="ib-avatar-ch">
+              <ChannelIcon kind={conv.channel_kind} size={11} />
+            </span>
+          )}
         </span>
         <span className="ib-row-main">
           <span className="ib-row-top">

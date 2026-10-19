@@ -87,6 +87,8 @@ export function useThread(openId: string | null, hint: Conversation | null, work
     if (openId && state.status === "ready" && state.conv?.id === openId) remember(key(openId), state);
   }, [state]);
 
+  // ponytail: reads the newest page (50) only. More than 50 messages arriving between two refreshes would leave a gap until the
+  // person scrolls up; page back from the last seq held when that matters.
   /** Reads the newest messages again and merges them in (the stream said something happened here). */
   const refresh = useCallback(async () => (openId ? load(openId, false) : null), [openId, load]);
 

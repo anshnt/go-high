@@ -2,6 +2,8 @@
 // forms, no plugins) under a Content-Security-Policy that blocks every request: images only when the person asks.
 // Two layers, so a hole in one is not enough. Needs a browser (DOMParser parses without running or loading anything).
 
+// ponytail: a DOMParser pass plus the frame's CSP and sandbox, not a full sanitizer library; inline `cid:` images are not shown (the
+// provider adapters keep attachments as links), and dark mode shows the email on white, as the sender designed it.
 const DROP = "script,iframe,frame,frameset,object,embed,applet,form,input,button,textarea,select,option,meta,link,base,noscript,audio,video,source,track,svg,math,template,dialog";
 const URL_ATTRS = ["href", "src", "action", "formaction", "xlink:href", "background", "poster", "data"];
 const BAD_SCHEME = /^\s*(?:javascript|vbscript|data:(?!image\/(?:png|gif|jpe?g|webp|avif)[;,]))/i;

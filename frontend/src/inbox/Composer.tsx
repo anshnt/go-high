@@ -14,6 +14,9 @@ import type { SendInput, SendResult } from "./useThread";
 import { useDebounced } from "../records/useDebounced";
 import { CHANNEL_LABEL } from "./views.ts";
 
+// ponytail: not here yet, each its own module-12 item: snippets with variables (a `/` menu over the reply box), scheduled send
+// (the quiet hours banner then offers "Schedule for <time>", see refusal.ts), pasted images and attachments (the API takes
+// URLs, so they wait for the media library), "someone is replying" (the collision guard).
 export type Draft = { mode: "reply" | "note"; channelId: string | null; text: string; subject: string; html: string };
 export const EMPTY_DRAFT: Draft = { mode: "reply", channelId: null, text: "", subject: "", html: "" };
 export type ComposerHandle = { focus: (mode?: "reply" | "note") => void };
