@@ -67,7 +67,7 @@ def record_link(object_key: str, record_id: str) -> str:
 
 
 def drafts(e: Event, names: dict[uuid.UUID, str]) -> list[Draft]:
-    d, actor = e.data, names.get(e.actor_id, "Someone")
+    d, actor = e.data, "A workflow" if e.actor_type == "workflow" else names.get(e.actor_id, "Someone")
     if e.type in ("task.created", "task.updated"):
         new = d["assignee_id"] if e.type == "task.created" else (d["changes"].get("assignee_id") or {}).get("new")
         if not new or (e.type == "task.created" and d.get("parent_task_id")):  # a repeat's next one is no assignment

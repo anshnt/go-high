@@ -127,9 +127,10 @@ def show(field_def: FieldDef | None, value) -> str:
 def why(e: Exception) -> str:
     """A failed step's reason in words: the engine's own, the record engine's (with what is missing), or the fact."""
     if isinstance(e, ApiError):
-        return (f"{e.detail}: " + "; ".join(e.fields.values()))[:500] if e.fields else str(e.detail)
+        fields = "; ".join(f"{k}: {v}" for k, v in (e.fields or {}).items())
+        return f"{e.detail}: {fields}"[:500] if fields else str(e.detail)
     if isinstance(e, HTTPException):
-        return "Not found: the record, or something the step needs, is gone or out of reach of the Automation role"
+        return f"{e.detail}: it is gone, or out of reach of the Automation role"
     return str(e) if isinstance(e, StepError) else f"{type(e).__name__}: {e}"[:500]
 
 
