@@ -403,7 +403,7 @@ function BoardTab({ pipeline, pipelines }: { pipeline: Pipeline; pipelines: Pipe
       <EmptyState
         icon={denied403 ? LockKeyhole : TriangleAlert}
         title={denied403 ? "You do not have access to this board" : "We could not load the board"}
-        text={denied403 ? errorMessage(board.error) : errorMessage(board.error)}
+        text={errorMessage(board.error)}
         action={denied403 ? undefined : <Button onClick={() => void board.reload()}>Try again</Button>}
       />
     );
