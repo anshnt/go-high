@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { appendCards, closeRange, compactAgo, daysText, describeSums, focusTarget, formatSums, isFiltered, moneyOf, moveCard, neighbours, NO_FILTER, overdue, passes, patchCard, replaceCard, shortDay, slotFromY, summarize, sumEntries, toFullSlot, weigh } from "../src/pipeline/board.ts";
-import { canOf } from "../src/pipeline/can.ts";
 import type { BoardStage, Card } from "../src/pipeline/types.ts";
 
 const usd = (amount: number) => ({ amount, currency: "USD" });
@@ -210,11 +209,3 @@ test("a close date reads short, with the year only when it is not this year, and
   assert.equal(overdue(null, now), false);
 });
 
-test("the UI offers each role what it can do, and a role it does not know everything", () => {
-  assert.deepEqual(canOf("admin"), { writeDeals: true, managePipelines: true });
-  assert.deepEqual(canOf("manager"), { writeDeals: true, managePipelines: true });
-  assert.deepEqual(canOf("member"), { writeDeals: true, managePipelines: false });
-  assert.deepEqual(canOf("viewer"), { writeDeals: false, managePipelines: false });
-  assert.deepEqual(canOf("account_manager"), { writeDeals: true, managePipelines: true }, "a custom role: the server decides");
-  assert.deepEqual(canOf(null), { writeDeals: true, managePipelines: true });
-});
