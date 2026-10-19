@@ -41,7 +41,7 @@ function connect() {
     if (e) emit(e);
   };
   es.onerror = () => {
-    if (es.readyState !== EventSource.CLOSED) return void status.set("connecting"); // the browser is retrying, with Last-Event-ID
+    if (es.readyState !== EventSource.CLOSED) return void status.set("retrying"); // the browser is retrying by itself, with Last-Event-ID
     es.close();
     if (source === es) source = null;
     lost = true;
@@ -60,7 +60,7 @@ function start() {
   if (import.meta.env.VITE_DEMO === "1") {
     status.set("open");
     void import("../lib/demoInbox").then((m) => {
-      if (listeners.size) stopDemo = m.demoEvents.listen(emit);
+      if (listeners.size && !stopDemo) stopDemo = m.demoEvents.listen(emit);
     });
     return;
   }

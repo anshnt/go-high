@@ -76,13 +76,21 @@
   gap: var(--space-2);
 }
 .chs-conn {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
   color: var(--text-2);
   font-size: var(--fs-sm);
+}
+.chs-conn summary {
+  color: var(--text);
+  font-weight: 500;
+  cursor: pointer;
+}
+.chs-conn[open] summary {
+  margin-bottom: var(--space-2);
+}
+.chs-conn > p {
+  margin-bottom: var(--space-2);
 }
 .chs-note {
   color: var(--text-3);

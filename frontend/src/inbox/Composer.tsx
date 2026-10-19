@@ -1,5 +1,5 @@
 import { Bold, ChevronDown, Italic, Link2, List, Lock, Send, StickyNote } from "lucide-react";
-import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type Ref } from "react";
+import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode, type Ref } from "react";
 import { MOD } from "../lib/platform";
 import { Button, Kbd } from "../ui";
 import { Combobox } from "../ui/Combobox";
@@ -38,7 +38,7 @@ type Props = {
 const tidyHtml = (html: string) => html.replace(/<div><br><\/div>/g, "<br>").replace(/ /g, " ");
 
 /** A field that takes simple formatting (bold, italic, link, list) and pastes as plain text. Uncontrolled: `initial` is read once. */
-function RichInput({ initial, onChange, onKey, innerRef, placeholder, label }: { initial: string; onChange: (html: string, text: string) => void; onKey: (e: KeyboardEvent) => void; innerRef: Ref<HTMLDivElement>; placeholder: string; label: string }) {
+function RichInput({ initial, onChange, onKey, innerRef, placeholder, label, head }: { initial: string; onChange: (html: string, text: string) => void; onKey: (e: KeyboardEvent) => void; innerRef: Ref<HTMLDivElement>; placeholder: string; label: string; head?: ReactNode }) {
   const el = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
     if (el.current) el.current.innerHTML = initial;
@@ -64,6 +64,7 @@ function RichInput({ initial, onChange, onKey, innerRef, placeholder, label }: {
   };
   return (
     <div className="ib-rich">
+      {head}
       <div className="ib-rich-bar" role="toolbar" aria-label="Formatting">
         <button type="button" aria-label="Bold" onMouseDown={(e) => e.preventDefault()} onClick={() => run("bold")}>
           <Bold size={14} aria-hidden />
@@ -239,11 +240,17 @@ export function Composer({ conv, channels, consents, canSend, canNote, canDnd, d
         )}
         {mode === "note" && <span className="ib-to">Only your team sees notes</span>}
       </div>
-      {email && (
-        <input className="ui-input ib-subject" aria-label="Subject" placeholder={defaultSubject} value={draft.subject} onChange={(e) => set({ subject: e.target.value })} onKeyDown={onKey} />
-      )}
       {email ? (
-        <RichInput key={conv.id} initial={draft.html} innerRef={rich} placeholder={placeholder} label="Message" onChange={(html, t) => onDraft({ ...draft, html, text: t })} onKey={onKey} />
+        <RichInput
+          key={conv.id}
+          initial={draft.html}
+          innerRef={rich}
+          placeholder={placeholder}
+          label="Message"
+          onChange={(html, t) => onDraft({ ...draft, html, text: t })}
+          onKey={onKey}
+          head={<input className="ib-subject" aria-label="Subject" placeholder={defaultSubject} value={draft.subject} onChange={(e) => set({ subject: e.target.value })} onKeyDown={onKey} />}
+        />
       ) : (
         <textarea ref={text} className="ib-input" rows={2} aria-label={mode === "note" ? "Internal note" : "Message"} placeholder={placeholder} value={draft.text} onChange={(e) => set({ text: e.target.value })} onKeyDown={onKey} />
       )}

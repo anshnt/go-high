@@ -84,6 +84,15 @@ test("a conversation that starts to belong is inserted by activity; one that is 
   assert.deepEqual(withRow(rows, conv("z", { status: "closed" }), OPEN, ME), rows); // does not belong: untouched
 });
 
+test("with more pages still to come, a conversation older than the last row loaded waits for its page instead of jumping in", () => {
+  const rows = [conv("a", { last_message_at: "2026-10-20T12:00:00.000Z" }), conv("c", { last_message_at: "2026-10-20T08:00:00.000Z" })];
+  const old = conv("z", { last_message_at: "2026-10-19T08:00:00.000Z" });
+  const between = conv("b", { last_message_at: "2026-10-20T10:00:00.000Z" });
+  assert.deepEqual(withRow(rows, old, OPEN, ME, false, true), rows);
+  assert.deepEqual(withRow(rows, old, OPEN, ME, false, false).map((r) => r.id), ["a", "c", "z"]); // the whole list is loaded: it is the last row
+  assert.deepEqual(withRow(rows, between, OPEN, ME, false, true).map((r) => r.id), ["a", "b", "c"]);
+});
+
 test("a channel filter keeps other channels out, and a search list never gains rows it cannot judge", () => {
   const sms: Filter = { view: "open", channel: "ch1" };
   assert.deepEqual(withRow([], conv("a", { channel_id: "ch2" }), sms, ME), []);

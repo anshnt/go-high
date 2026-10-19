@@ -58,15 +58,21 @@ export function useConversationList(view: ViewId, channel: string | null, q: str
     }
   }, [view, channel, q]);
 
-  // A new view, channel, search or workspace starts over; the rows of the old one are not shown under the new title.
+  // A new view, channel or workspace starts over (the rows of the old one are not shown under the new title); a new
+  // search keeps what is on screen until its results arrive, so typing does not flash.
+  const scope = `${workspace}|${view}|${channel}`;
+  const was = useRef(scope);
   useEffect(() => {
-    setState(START);
+    if (was.current !== scope) {
+      was.current = scope;
+      setState(START);
+    }
     let live = true;
     void first().then((s) => live && s && setState(s));
     return () => {
       live = false;
     };
-  }, [first, workspace]);
+  }, [first, scope]);
 
   /** Reads the first page again and keeps what is on screen until it arrives (the stream asked, or the connection came back). */
   const refresh = useCallback(async () => {

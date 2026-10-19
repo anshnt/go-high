@@ -44,23 +44,25 @@ function Copyable({ label, value, multiline }: { label: string; value: string; m
 }
 
 /** What to do next with a channel: paste a URL into the provider's console, or the snippet into the website. */
-function Connection({ channel, spec }: { channel: Channel; spec: Spec }) {
+function Connection({ channel, spec, open }: { channel: Channel; spec: Spec; open: boolean }) {
   if (channel.kind === "webchat" && channel.embed) {
     return (
-      <div className="chs-conn">
+      <details className="chs-conn" open={open || undefined}>
+        <summary>Embed snippet for your website</summary>
         <p>Paste this on every page of your website, just before the closing body tag. The widget loads when a visitor clicks the bubble.</p>
         <Copyable label="Embed snippet" value={channel.embed} multiline />
-      </div>
+      </details>
     );
   }
   if (spec.hook && channel.webhook_url) {
     return (
-      <div className="chs-conn">
+      <details className="chs-conn" open={open || undefined}>
+        <summary>Webhook URL to paste in the provider's console</summary>
         <p>
           Paste this address into the {specOf(channel).provider === "meta" ? "webhook settings of your WhatsApp app" : `${spec.title.split(" with ")[1] ?? "provider"} console`} so incoming messages and delivery reports reach the inbox. Calls that are not signed by the provider are refused.
         </p>
         <Copyable label="Webhook URL" value={channel.webhook_url} />
-      </div>
+      </details>
     );
   }
   if (spec.provider === "smtp") return <p className="chs-note">Outgoing mail goes through your server. Delivery reports and replies arrive when a mailbox is connected (coming soon).</p>;
@@ -300,7 +302,7 @@ export function ChannelsSettings() {
                     <Power size={14} aria-hidden /> {c.status === "disabled" ? "Switch on" : "Switch off"}
                   </Button>
                 </div>
-                {(fresh === c.id || c.kind === "webchat" || spec.hook) && c.status !== "disabled" && <Connection channel={c} spec={spec} />}
+                {c.status !== "disabled" && <Connection channel={c} spec={spec} open={fresh === c.id || c.status === "pending"} />}
               </li>
             );
           })}

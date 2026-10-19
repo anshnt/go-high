@@ -2,6 +2,7 @@ import { useState } from "react";
 import { NavLink, useLocation } from "react-router";
 import { Ellipsis, Keyboard, Moon, Sun } from "lucide-react";
 import { APPS_NAV, appsOn, CORE, enabledApps, inArea, MY_DAY_NAV, SETTINGS_NAV } from "../lib/nav";
+import { useInboxUnread } from "../lib/inboxBadge";
 import { theme, toggleTheme } from "../lib/prefs";
 import { useStore } from "../lib/store";
 import { Sheet } from "../ui";
@@ -15,6 +16,7 @@ export function TabBar({ onShortcuts }: { onShortcuts: () => void }) {
   const [more, setMore] = useState(false);
   const dark = useStore(theme) === "dark";
   const { pathname } = useLocation();
+  const unread = useInboxUnread();
   const items = [...REST, ...enabledApps(useStore(appsOn)), APPS_NAV, SETTINGS_NAV];
   // Let the sheet finish closing before opening another overlay.
   const then = (fn: () => void) => () => {
@@ -28,6 +30,12 @@ export function TabBar({ onShortcuts }: { onShortcuts: () => void }) {
           <NavLink key={t.id} to={t.path} className={`sh-tab${inArea(t, pathname) ? " active" : ""}`}>
             <t.icon size={20} aria-hidden />
             <span>{t.label}</span>
+            {t.id === "inbox" && unread > 0 && (
+              <span className="sh-tab-badge">
+                <span className="sr-only">{unread} unread</span>
+                <span aria-hidden>{unread > 99 ? "99+" : unread}</span>
+              </span>
+            )}
           </NavLink>
         ))}
         <button type="button" className="sh-tab" onClick={() => setMore(true)} aria-haspopup="dialog">

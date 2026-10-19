@@ -151,14 +151,23 @@ export function ThreadHeader({ conv, me, members, teams, canWrite, onBack, cardO
           <ChannelIcon kind={conv.channel_kind} size={13} /> <span className="ib-ellipsis">{reach || (conv.visitor ? "Web chat visitor" : "No contact details")}</span>
         </p>
       </div>
-      {conv.status === "snoozed" && conv.snooze_until && <Badge tone="warning">Snoozed until {whenLabel(new Date(conv.snooze_until), now)}</Badge>}
+      {conv.status === "snoozed" && conv.snooze_until && (
+        <span className="ib-snoozed">
+          <Badge tone="warning">Snoozed until {whenLabel(new Date(conv.snooze_until), now)}</Badge>
+          {canWrite && (
+            <button type="button" className="ib-wake" onClick={onReopen}>
+              Wake now
+            </button>
+          )}
+        </span>
+      )}
       {conv.status === "closed" && <Badge>Closed</Badge>}
       <div className="ib-actions">
         {canWrite && (
           <>
             <Assign conv={conv} me={me} members={members} teams={teams} open={assignOpen} onOpen={onAssignOpen} onAssign={onAssign} />
             {conv.status !== "closed" && <Snooze now={now} open={snoozeOpen} onOpen={onSnoozeOpen} onSnooze={onSnooze} />}
-            {conv.status === "open" ? (
+            {conv.status !== "closed" ? (
               <Button size="sm" variant="secondary" className="ib-act" onClick={onClose} aria-label="Close conversation" data-action="close">
                 <CircleCheck size={14} aria-hidden />
                 <span className="ib-act-label">Close</span>

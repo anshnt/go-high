@@ -17,7 +17,7 @@ export function MessageButton({ contactId }: { contactId: string }) {
     setBusy(true);
     try {
       const conv = await startConversation(contactId);
-      navigate(`/inbox/${conv.id}`);
+      navigate(`/inbox/${conv.id}`, { state: { compose: true } });
     } catch (e) {
       toast({ title: "Could not open the conversation", description: whatWentWrong(e), tone: "danger" });
       setBusy(false);

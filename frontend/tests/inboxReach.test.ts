@@ -21,10 +21,12 @@ test("a switched-off channel is not offered, a channel that is only pending or f
   assert.deepEqual(reachable(list, who("+14155550101", null)).map((c) => c.id), ["sms2", "sms3"]);
 });
 
-test("a reply starts on the channel the conversation last used, else the first the contact can be reached on", () => {
+test("a reply starts on the channel the conversation last used, else the quickest one the contact can be reached on", () => {
   const both = (channel_id: string | null) => who("+14155550101", "a@example.com", false, channel_id);
   assert.equal(defaultChannel(CHANNELS, both("mail"))!.id, "mail");
   assert.equal(defaultChannel(CHANNELS, both(null))!.id, "sms");
+  assert.equal(defaultChannel([...CHANNELS].reverse(), both(null))!.id, "sms"); // whatever order the API lists them in
+  assert.equal(defaultChannel(CHANNELS.filter((c) => c.kind !== "sms"), both(null))!.id, "wa");
   assert.equal(defaultChannel(CHANNELS, who(null, "a@example.com", false, "sms"))!.id, "mail"); // no phone any more
   assert.equal(defaultChannel(CHANNELS, who(null, null)), null);
   assert.equal(defaultChannel([], both("mail")), null);

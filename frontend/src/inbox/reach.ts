@@ -13,8 +13,11 @@ export function hasAddress(kind: ChannelKind, c: Pick<Who, "contact" | "visitor"
 /** The channels a reply can go out on: not switched off, and the contact can be reached there. */
 export const reachable = (channels: Channel[], c: Pick<Who, "contact" | "visitor">): Channel[] => channels.filter((ch) => ch.status !== "disabled" && hasAddress(ch.kind, c));
 
-/** The channel the conversation last used if the contact can still be reached on it, else the first they can be. */
+// Where a first message goes when nothing says otherwise: a text is read soonest, then WhatsApp, then email, then the chat window.
+const FIRST: ChannelKind[] = ["sms", "whatsapp", "email", "webchat"];
+
+/** The channel the conversation last used if the contact can still be reached on it, else the quickest one they can be reached on. */
 export function defaultChannel(channels: Channel[], c: Who): Channel | null {
   const ok = reachable(channels, c);
-  return ok.find((ch) => ch.id === c.channel_id) ?? ok[0] ?? null;
+  return ok.find((ch) => ch.id === c.channel_id) ?? [...ok].sort((a, b) => FIRST.indexOf(a.kind) - FIRST.indexOf(b.kind))[0] ?? null;
 }

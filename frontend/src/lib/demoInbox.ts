@@ -35,8 +35,9 @@ function emit(type: string, ids: NonNullable<StreamEvent["ids"]>) {
 export const demoEvents = {
   /** Starts the demo's own live activity (snoozes waking, a new conversation arriving) while someone listens. */
   listen(fn: (e: StreamEvent) => void): () => void {
+    const first = listeners.size === 0;
     listeners.add(fn);
-    if (listeners.size === 1) {
+    if (first) {
       ambient = setInterval(wakeDue, 10_000);
       if (!arrived) arrivalTimer = setTimeout(arrive, 14_000);
     }
@@ -339,8 +340,8 @@ function receive(c: Conv, text: string, subject?: string) {
 
 /** A conversation from a contact who had none, arriving while the inbox is open. */
 function arrive() {
+  if (arrived || !reserved) return;
   arrived = true;
-  if (!reserved) return;
   const channel = channels.find((c) => c.kind === "webchat")!;
   const id = `demo-conv-${convs.size + 1}`;
   const t = Date.now();
@@ -411,9 +412,9 @@ function send(c: Conv, body: Json): unknown {
   } else {
     setTimeout(() => advance(c, m.id, "read", "message.status_changed"), 4000);
   }
-  // some contacts answer
+  // the contact answers a few seconds later
   const pool = REPLIES[channel.kind];
-  if (m.seq % 3 !== 0) setTimeout(() => receive(c, pool[m.seq % pool.length]!, subject ?? undefined), 6500);
+  setTimeout(() => receive(c, pool[m.seq % pool.length]!, subject ?? undefined), 6500);
   return { ...structuredClone(m), estimate: est ? { ...est, estimated_cost: cost } : null };
 }
 

@@ -12,7 +12,8 @@ test("every refusal code the server can answer with has a title, a way forward a
     assert.equal(r.code, code);
     assert.equal(r.text, `server says ${code}`);
     assert.ok(r.title.length > 3 && r.hint.length > 10, code);
-    assert.ok(!r.title.includes("—") && !r.hint.includes("—"), code); // no long dashes in UI copy
+    const longDash = String.fromCharCode(0x2014);
+    assert.ok(!r.title.includes(longDash) && !r.hint.includes(longDash), code); // no long dashes in UI copy
   }
 });
 

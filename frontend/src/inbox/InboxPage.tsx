@@ -1,8 +1,9 @@
 import { Inbox as InboxIcon, Keyboard, ListFilter, LockKeyhole, Plug, Search, SquarePen, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { workspaceId } from "../lib/api";
 import { useCan } from "../lib/capabilities";
+import { inboxUnread } from "../lib/inboxBadge";
 import { whatWentWrong } from "../lib/errors";
 import { useMe } from "../lib/session";
 import { persisted, useStore } from "../lib/store";
@@ -61,19 +62,31 @@ const EMPTY_TEXT: Record<ViewId, [string, string]> = {
   closed: ["No closed conversations", "Press E on a conversation when it is done. It reopens by itself if the contact writes again."],
 };
 
+/** `on`, but only once it has been on for `ms` (a blip is not worth saying). */
+function useLong(on: boolean, ms: number) {
+  const [long, setLong] = useState(false);
+  useEffect(() => {
+    if (!on) return setLong(false);
+    const t = setTimeout(() => setLong(true), ms);
+    return () => clearTimeout(t);
+  }, [on, ms]);
+  return long;
+}
+
 /** The inbox: views, conversations, the open thread and the contact, all driven from the keyboard, live from the stream. */
 export function InboxPage() {
   const { id: routeId } = useParams();
   const openId = routeId ?? null;
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
   const me = useMe()?.user.id ?? null;
   const ws = useStore(workspaceId);
   const phone = useMediaQuery("(max-width: 767px)");
   const { can, ready } = useCan();
   const members = useMembers();
-  const streamStatus = useStreamStatus();
+  const paused = useLong(useStreamStatus() === "retrying", 5000); // not for the reconnect that happens every half hour
 
   const view: ViewId = isView(params.get("view")) ? (params.get("view") as ViewId) : "open";
   const channel = params.get("channel");
@@ -133,6 +146,11 @@ export function InboxPage() {
     return () => clearInterval(t);
   }, []);
   useEffect(() => setActiveId(openId), [openId]);
+  // "Message" on a contact lands here ready to type
+  const compose = (location.state as { compose?: boolean } | null)?.compose;
+  useEffect(() => {
+    if (compose && openId) setTimeout(() => composer.current?.focus("reply"), 400);
+  }, [compose, openId]);
   useEffect(() => {
     setFindOpen(false);
     setFindQ("");
@@ -141,7 +159,8 @@ export function InboxPage() {
   // The tab title carries the unread count.
   useEffect(() => {
     document.title = `${list.counts.unread ? `(${list.counts.unread}) ` : ""}Inbox | go-high`;
-  }, [list.counts.unread]);
+    if (list.status === "ready") inboxUnread.set(list.counts.unread);
+  }, [list.counts.unread, list.status]);
 
   // --- navigation ---
   const searchString = params.toString();
@@ -207,7 +226,7 @@ export function InboxPage() {
   };
 
   const target = open;
-  const doClose = () => target && target.status === "open" && void mutate(target, { status: "closed", snooze_until: null }, () => closeApi(target.id), { title: "Conversation closed", back: () => reopenApi(target.id), to: { status: target.status, snooze_until: target.snooze_until } });
+  const doClose = () => target && target.status !== "closed" && void mutate(target, { status: "closed", snooze_until: null }, () => closeApi(target.id), { title: "Conversation closed", back: () => (target.status === "snoozed" && target.snooze_until ? snoozeApi(target.id, new Date(target.snooze_until)) : reopenApi(target.id)), to: { status: target.status, snooze_until: target.snooze_until } });
   const doReopen = () => target && void mutate(target, { status: "open", snooze_until: null }, () => reopenApi(target.id));
   const doSnooze = (until: Date) => target && void mutate(target, { status: "snoozed", snooze_until: until.toISOString() }, () => snoozeApi(target.id, until), { title: `Snoozed until ${whenLabel(until, new Date())}`, back: () => reopenApi(target.id), to: { status: "open", snooze_until: null } });
   const doAssign = (who: { user_id?: string | null; team_id?: string | null }) => {
@@ -475,7 +494,7 @@ export function InboxPage() {
             </Button>
           )}
         </div>
-        {streamStatus === "retrying" && (
+        {paused && (
           <p className="ib-offline" role="status">
             Live updates paused. Reconnecting...
           </p>

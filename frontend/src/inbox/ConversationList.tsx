@@ -15,7 +15,7 @@ const Row = memo(function Row({ conv, active, open, assignee, now, searching, in
   const name = contactName(conv.contact);
   const who = conv.last_direction === "out" ? "You: " : "";
   return (
-    <li role="presentation" style={{ height: ROW_HEIGHT }}>
+    <li style={{ height: ROW_HEIGHT }} aria-posinset={index + 1} aria-setsize={size}>
       <button
         type="button"
         className="ib-row"
@@ -23,8 +23,6 @@ const Row = memo(function Row({ conv, active, open, assignee, now, searching, in
         data-open={open || undefined}
         data-unread={conv.unread || undefined}
         aria-current={open ? "true" : undefined}
-        aria-posinset={index + 1}
-        aria-setsize={size}
         data-conversation-id={conv.id}
         onClick={() => onOpen(conv.id)}
       >
