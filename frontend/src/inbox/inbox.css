@@ -65,6 +65,12 @@
 .ib-compose {
   margin: 0 var(--space-1) var(--space-2);
 }
+.ui-modal .ib-views {
+  padding: 0;
+  border-right: 0;
+  background: none; /* the views in a phone's sheet sit on the sheet */
+  overflow: visible;
+}
 .ib-view {
   display: flex;
   align-items: center;
