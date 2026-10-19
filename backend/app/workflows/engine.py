@@ -323,11 +323,11 @@ def fail(db: Session, run: Run, wf: Workflow, node_id: str, action: str | None, 
     """The run stops at `node_id` with the reason; retrying it (or cancelling it) is a person's call."""
     trace(db, run, node_id, "failed", input_, {}, message, started)
     run.status, run.error, run.ended_at = "failed", message[:500], func.now()
-    data = run_data(db, run, wf)
-    for kind, more in (("step_failed", {"action": action}), ("run_failed", {})):
-        events.emit(db, f"workflow.{kind}", "workflow_run", run.id, {**data, "node_id": node_id, "error": message[:500],
-                                                                     **more},
-                    workspace_id=run.workspace_id, actor=("workflow", wf.id))
+    data = {**run_data(db, run, wf), "node_id": node_id, "error": message[:500]}
+    events.emit(db, "workflow.step_failed", "workflow_run", run.id, {**data, "action": action},
+                workspace_id=run.workspace_id, actor=("workflow", wf.id))
+    events.emit(db, "workflow.run_failed", "workflow_run", run.id, data, workspace_id=run.workspace_id,
+                actor=("workflow", wf.id))
 
 
 def free_slot(db: Session, workspace_id: uuid.UUID) -> bool:

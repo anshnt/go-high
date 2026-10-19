@@ -275,7 +275,7 @@ def test_a_workspace_runs_at_most_the_configured_number_of_steps_at_once(crm, db
     with Session(engine) as one, Session(engine) as two, Session(engine) as three:
         assert free_slot(one, uuid.UUID(ws)) and free_slot(two, uuid.UUID(ws))  # two transactions hold both slots
         assert not free_slot(three, uuid.UUID(ws))
-        pump(db)  # the step finds both slots taken, and waits its turn
+        pump(db, patience=2)  # the step finds both slots taken, and waits its turn
         assert only_run(client, ws)["status"] == "running" and tags_of(client, ws, ada["id"]) == []
         assert sql(db, "SELECT count(*) FROM jobs WHERE kind = 'workflow.step' AND status = 'queued'")[0][0] == 1
         one.rollback()  # one lets go: a slot is free

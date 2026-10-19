@@ -78,6 +78,7 @@ def test_a_workflow_on_record_updated_sees_the_change_and_each_event_is_judged_o
     assert got[0][3] == 'Lifecycle stage is "lead" did not hold (it is "other")'  # the change of name alone
     assert only_run(client, ws)["status"] == "completed" and tags_of(client, ws, person["id"]) == ["now-a-lead"]
     db.execute(text("DELETE FROM event_cursors WHERE consumer = 'workflows'"))  # every event is read again
+    db.execute(text("INSERT INTO jobs (kind, payload) VALUES ('events.dispatch', '{}')"))
     db.commit()
     pump(db)
     assert len(checks(db, wf["id"])) == 2 and len(runs(client, ws)) == 1  # judged once, started once

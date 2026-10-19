@@ -1,5 +1,7 @@
 """Helpers for the workflow tests: graphs written compactly, workflows through the API, and a pump that runs the
 worker's jobs the way it would (enrollment, steps, wake-ups)."""
+import time
+
 from helpers import H, drain, make_record, wait_for_quiet
 from sqlalchemy import text
 
@@ -48,15 +50,31 @@ def live(client, ws, graph_: dict, name: str = "Flow", **extra) -> dict:
     return wf
 
 
-def pump(db, rounds: int = 10) -> None:
-    """Runs the due jobs, and the jobs they queued: the event dispatcher is made due each round, so the consumers see
-    what the steps just emitted, however many transactions are open elsewhere on the server."""
-    for _ in range(rounds):
+def unread(db) -> bool:
+    """Whether any event is still past the workflow consumer's cursor (one that an open transaction elsewhere on the
+    server has kept out of sight counts too)."""
+    return bool(db.scalar(text(
+        "SELECT EXISTS (SELECT 1 FROM events e WHERE NOT EXISTS (SELECT 1 FROM event_cursors c "
+        "WHERE c.consumer = 'workflows' AND (e.txid, e.id) <= (c.last_txid, c.last_id)))")))
+
+
+def pump(db, patience: float = 30) -> None:
+    """Runs the due jobs, and the jobs they queued, until the workflow consumer has read every event: the event
+    dispatcher is made due each round (so is a step that was put back for a free slot), and a round that finds events
+    still hidden by someone else's open transaction waits for it."""
+    soon = ("UPDATE jobs SET run_at = now() WHERE status = 'queued' AND run_at > now() AND (kind = 'events.dispatch' "
+            "OR (kind = 'workflow.step' AND NOT jsonb_exists(payload, 'wake')))")
+    deadline = time.monotonic() + patience
+    while True:
         wait_for_quiet()
-        db.execute(text("UPDATE jobs SET run_at = now() WHERE status = 'queued' AND kind = 'events.dispatch'"))
+        brought = db.execute(text(soon)).rowcount
         db.commit()
-        if not drain(quiet=False):
-            return
+        ran = drain(quiet=False)
+        db.rollback()
+        if time.monotonic() > deadline or (not ran and not brought and not unread(db)):
+            return  # done, or out of patience (a step kept waiting for a free slot, say)
+        if not ran and not brought:
+            time.sleep(0.25)
 
 
 def wake(db) -> None:
