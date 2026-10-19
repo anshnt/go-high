@@ -76,6 +76,36 @@ def channel_for(c: Ctx, conv: Conversation, channel_id: uuid.UUID | None) -> Cha
     return channel
 
 
+def queue_reply(db: Session, conv: Conversation, contact: Record, channel: Channel, *, body: str,
+                subject: str | None = None, html: str | None = None, attachments: list[str] = (),
+                sent_by: uuid.UUID | None = None, actor: tuple[str, uuid.UUID] | None = None,
+                idempotency_key: str | None = None) -> tuple[Message, dict | None]:
+    """Stores a reply to the contact on `channel`, whose consent the caller has checked, with its events: `queued` for
+    the worker (which sends it), or sent at once on webchat. Returns the message and, on SMS, the estimate of its
+    segments and cost. A message with an `idempotency_key` is unique per workspace: a workflow step that runs twice
+    looks for it first."""
+    email, estimate, wire = channel.kind == "email", None, {}
+    if channel.kind == "sms":
+        estimate = channels.estimate(channel, body)
+        wire = {"segments": estimate["segments"], "cost": Decimal(estimate["estimated_cost"])}
+    thread = thread_of(db, conv, channel)[0] if email else None
+    webchat = channel.kind == "webchat"
+    msg = threads.append(
+        db, conv, direction="out", status="sent" if webchat else "queued", channel_id=channel.id, body=body,
+        subject=(subject or reply_subject(db, conv, channel)) if email else None, html=html if email else None,
+        attachments=[{"url": u} for u in attachments], thread_ref=thread, sent_by=sent_by,
+        idempotency_key=idempotency_key, **wire)
+    if conv.status != "open":
+        threads.reopen(db, conv, actor)
+    if webchat:
+        events.emit(db, "message.sent", "message", msg.id,
+                    threads.message_data(msg, contact.id, provider_message_id=None), actor=actor)
+    else:
+        events.emit(db, "message.queued", "message", msg.id, threads.message_data(msg, contact.id), actor=actor)
+        queue_send(db, msg)
+    return msg, estimate
+
+
 @router.post("/{conversation_id}/messages", status_code=201)
 def post_message(conversation_id: uuid.UUID, body: NewMessage, c: Ctx = Depends(send_messages),
                  idem: Idem = Depends(idempotency)):
@@ -87,7 +117,7 @@ def post_message(conversation_id: uuid.UUID, body: NewMessage, c: Ctx = Depends(
     urls = [str(u) for u in body.attachments]
     if not body.body.strip() and not (urls and body.kind == "message"):
         raise ApiError(422, "validation_failed", "The message is empty", {"body": "is required"})
-    actor, estimate, wire = ("user", c.user_id), None, {}
+    actor, estimate = ("user", c.user_id), None
     if body.kind == "note":
         require(c, "conversations.write")
         msg = threads.append(c.db, conv, direction="out", kind="note", status="sent", body=body.body, sent_by=c.user_id)
@@ -98,25 +128,8 @@ def post_message(conversation_id: uuid.UUID, body: NewMessage, c: Ctx = Depends(
             raise refused("no_address", f"The contact has no way to be reached on {channel.name}")
         if refusal := consent.verdict(c.db, channel, contact, conv):
             raise consent.refuse(refusal)
-        email = channel.kind == "email"
-        if channel.kind == "sms":
-            estimate = channels.estimate(channel, body.body)
-            wire = {"segments": estimate["segments"], "cost": Decimal(estimate["estimated_cost"])}
-        thread = thread_of(c.db, conv, channel)[0] if email else None
-        webchat = channel.kind == "webchat"
-        msg = threads.append(
-            c.db, conv, direction="out", status="sent" if webchat else "queued", channel_id=channel.id, body=body.body,
-            subject=(body.subject or reply_subject(c.db, conv, channel)) if email else None,
-            html=body.html if email else None, attachments=[{"url": u} for u in urls], thread_ref=thread,
-            sent_by=c.user_id, **wire)
-        if conv.status != "open":
-            threads.reopen(c.db, conv, actor)
-        if webchat:
-            events.emit(c.db, "message.sent", "message", msg.id,
-                        threads.message_data(msg, contact.id, provider_message_id=None), actor=actor)
-        else:
-            events.emit(c.db, "message.queued", "message", msg.id, threads.message_data(msg, contact.id), actor=actor)
-            queue_send(c.db, msg)
+        msg, estimate = queue_reply(c.db, conv, contact, channel, body=body.body, subject=body.subject,
+                                    html=body.html, attachments=urls, sent_by=c.user_id, actor=actor)
     mark_read(c.db, conv, c.user_id, msg.seq)
     return idem.commit(201, {**threads.message_json(msg), "estimate": estimate})
 

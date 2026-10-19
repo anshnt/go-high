@@ -304,15 +304,15 @@ Milestones: **M0 Foundations**, **M1 Core CRM** (first sellable product), **M2 G
 - Visual builder with 89 triggers and many actions (messages, CRM updates, waits, if/else, goals, webhooks, custom code, AI agent), re-entry and time window settings, 10 versions or 30 days of history, premium actions billed per run, legacy campaigns.
 
 **Better**
-- [ ] Typed trigger and action catalog generated from module 05 events, documented and available to apps
-- [ ] Canvas builder: branches, waits, goals, loops over records, sub-workflows with inputs and outputs
-- [ ] Draft and published versions, unlimited history, diff, rollback; migrate in-flight contacts when steps change
-- [ ] Test run with sample contacts and time travel (fast-forward waits)
-- [ ] Per-contact trace with variable values at each step; "why did this contact not enter" explainer; bulk retry
-- [ ] Idempotency and double-send protection by default; quiet hours respected
-- [ ] Inbound webhook trigger with sample payload capture and mapping; outbound webhook and code steps
+- [x] Typed trigger and action catalog generated from module 05 events, documented and available to apps (`GET /api/v1/workflows/catalog`: the 25 event types that name a record, with their data schemas, and the nine first actions with the JSON schema of each config; the API validates saved versions with the same schemas; marketplace apps adding actions wait for module 33)
+- [ ] Canvas builder: branches, waits, goals, loops over records, sub-workflows with inputs and outputs (the graph, its validation and the engine are built: branches, waits, goals; loops over records, the canvas and working sub-workflows are not)
+- [x] Draft and published versions, unlimited history, diff, rollback; migrate in-flight contacts when steps change (rollback is publishing an older version)
+- [x] Test run with sample contacts and time travel (fast-forward waits) (one record per run; waits skip on a virtual clock and report the time)
+- [ ] Per-contact trace with variable values at each step; "why did this contact not enter" explainer; bulk retry (the trace with each step's input and output, the explainer and retry of one run are done; bulk retry is not)
+- [x] Idempotency and double-send protection by default; quiet hours respected
+- [ ] Inbound webhook trigger with sample payload capture and mapping; outbound webhook and code steps (the outbound webhook action is done; the inbound trigger and code steps are not)
 - [ ] Cost preview per workflow from the usage ledger
-- [ ] "What uses this tag/field/calendar" dependency graph
+- [x] "What uses this tag/field/calendar" dependency graph (`GET /api/v1/workflows/refs`: tags, fields, stages, people, channels, forms and calendars, by version and node)
 - [ ] AI: describe a workflow in words, get a draft with test cases
 
 **Done when** a form submission workflow with a 2 day wait can be tested in seconds with time travel, published, edited live without losing enrolled contacts, and traced per contact.

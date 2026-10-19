@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "workflow.run_cancelled",
+  "description": "A run was cancelled by a person, or because its workflow was archived. Subject: the run.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "workflow_id": {"type": "string", "format": "uuid"},
+    "workflow_name": {"type": "string"},
+    "version": {"type": "integer"},
+    "record_id": {"type": "string", "format": "uuid"},
+    "node_id": {"type": ["string", "null"]},
+    "reason": {"type": ["string", "null"]}
+  },
+  "required": ["id", "workflow_id", "workflow_name", "version", "record_id", "node_id", "reason"],
+  "additionalProperties": false
+}

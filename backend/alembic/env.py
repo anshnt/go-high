@@ -8,6 +8,7 @@ from app.inbox import models as inbox_models  # noqa: F401
 from app.notifications import models as notification_models  # noqa: F401
 from app.records import models as record_models  # noqa: F401
 from app.tasks import models as task_models  # noqa: F401
+from app.workflows import models as workflow_models  # noqa: F401
 
 target_metadata = Base.metadata
 

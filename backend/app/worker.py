@@ -11,6 +11,7 @@ from .db import SessionLocal
 from .inbox import conversations, outbound, stream  # noqa: F401  (message.send, conversation.wake, realtime)
 from .logs import setup_logging
 from .notifications import consumer  # noqa: F401  (the notifications consumer and the task.due job)
+from .workflows import delivery, engine, enroll  # noqa: F401  (workflow steps, webhook deliveries, enrollment)
 
 log = logging.getLogger("worker")
 HEARTBEAT = Path(tempfile.gettempdir(), "worker-heartbeat")  # docker healthcheck: stale file = stuck worker

@@ -28,6 +28,8 @@ from .records import routes as records
 from .security import COOKIE, UNSAFE
 from .tasks import day
 from .tasks import routes as tasks
+from .workflows import delivery, enroll  # noqa: F401  (the webhook outbox job and the events consumer)
+from .workflows import routes as workflows
 
 BACKEND = Path(__file__).resolve().parents[1]
 log = logging.getLogger("api")
@@ -113,7 +115,8 @@ app.include_router(webhooks.router)
 for module in (objects, records, associations, tags, views, timeline, pipelines, board, forecast, roles, teams,
                simulator, audit, tasks, day, notifications, channels, conversations, outbound,
                consent, inbound, stream, chat,
-               forms, form_responses, form_analytics, form_public, calendars, availability, bookings, public):
+               forms, form_responses, form_analytics, form_public, calendars, availability, bookings, public,
+               workflows):
     app.include_router(module.router)
 app.include_router(simulator.mine)
 app.include_router(form_public.pages)  # /f/{key} and /embed.js, before the catch-all below

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "workflow.step_failed",
+  "description": "One step of a run failed. `error` says why in words (a refusal by consent or an exit rule, a missing record). Subject: the run.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "workflow_id": {"type": "string", "format": "uuid"},
+    "workflow_name": {"type": "string"},
+    "version": {"type": "integer"},
+    "record_id": {"type": "string", "format": "uuid"},
+    "node_id": {"type": "string"},
+    "action": {"type": ["string", "null"]},
+    "error": {"type": "string"}
+  },
+  "required": ["id", "workflow_id", "workflow_name", "version", "record_id", "node_id", "action", "error"],
+  "additionalProperties": false
+}

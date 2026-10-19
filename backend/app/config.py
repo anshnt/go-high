@@ -53,3 +53,7 @@ FORM_MIN_FILL_SECONDS = int(os.getenv("FORM_MIN_FILL_SECONDS", "3"))
 BOOKING_MAX_PER_IP = int(os.getenv("BOOKING_MAX_PER_IP", "8"))
 BOOKING_MAX_PER_CALENDAR = int(os.getenv("BOOKING_MAX_PER_CALENDAR", "120"))
 BOOKING_WINDOW_MINUTES = int(os.getenv("BOOKING_WINDOW_MINUTES", "10"))
+
+# Workflows (module 18): how many steps of one workspace's runs may execute at the same moment, so a workspace that
+# enrolls thousands of records at once cannot take every worker.
+WORKFLOW_CONCURRENCY = int(os.getenv("WORKFLOW_CONCURRENCY", "8"))

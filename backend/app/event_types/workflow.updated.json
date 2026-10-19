@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "workflow.updated",
+  "description": "A workflow changed: its name, folder, settings or status (paused, resumed, archived). `changes` maps each changed key to its old and new value. Subject: the workflow.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"},
+    "folder": {"type": ["string", "null"]},
+    "status": {"type": "string", "enum": ["draft", "published", "paused", "archived"]},
+    "settings": {"type": "object"},
+    "changes": {"type": "object"}
+  },
+  "required": ["id", "name", "folder", "status", "settings", "changes"],
+  "additionalProperties": false
+}

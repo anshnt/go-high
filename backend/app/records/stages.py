@@ -204,4 +204,4 @@ def emit_moved(cat: Catalog, obj, rec: Record, move: Move) -> None:
         "id": rec.id, "object": obj.key, "display_name": rec.display_name, "pipeline_id": move.new.pipeline_id,
         "from_stage_id": move.old and move.old.id, "from_stage": move.old and move.old.name,
         "from_kind": move.old and move.old.kind, "to_stage_id": move.new.id, "to_stage": move.new.name,
-        "to_kind": move.new.kind, "seconds_in_stage": spent}, actor=("user", c.user_id))
+        "to_kind": move.new.kind, "seconds_in_stage": spent}, actor=c.author())

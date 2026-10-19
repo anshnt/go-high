@@ -169,12 +169,16 @@ class Message(Base):
     attempts: Mapped[int] = mapped_column(SmallInteger, default=0, server_default="0")
     segments: Mapped[int | None] = mapped_column(SmallInteger)
     cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
+    idempotency_key: Mapped[str | None] = mapped_column(String(120))  # a workflow step's `run:node`, queued once
     search = mapped_column(TSVECTOR, Computed(
         "to_tsvector('simple', coalesce(subject, '') || ' ' || coalesce(body, ''))", persisted=True), deferred=True)
 
 
 Index("ix_messages_search", Message.search, postgresql_using="gin")
 Index("ix_messages_thread", Message.channel_id, Message.thread_ref, postgresql_where=text("thread_ref IS NOT NULL"))
+# a step that is retried finds its message by this key instead of queueing a second one (ADR 0006)
+Index("uq_messages_idempotency", Message.workspace_id, Message.idempotency_key, unique=True,
+      postgresql_where=text("idempotency_key IS NOT NULL"))
 
 
 class Consent(Base):

@@ -34,7 +34,9 @@ TENANT_TABLES = ["organizations", "brands", "workspaces", "users", "org_members"
                  "forms", "form_versions", "form_submissions", "form_views", "form_rate",
                  "calendars", "calendar_hosts",
                  "resources", "calendar_resources", "availability", "bookings", "booking_resources", "busy_blocks",
-                 "booking_reminders", "booking_attempts", "feed_tokens"]
+                 "booking_reminders", "booking_attempts", "feed_tokens",
+                 "workflows", "workflow_versions", "workflow_runs", "workflow_steps", "workflow_trigger_checks",
+                 "workflow_waiters", "workflow_refs", "workflow_deliveries"]
 NOT_TENANT_DATA = {"jobs", "event_cursors"}  # the queue and the consumer cursors: no tenant rows, no app role access
 
 
@@ -220,6 +222,44 @@ def fill_forms(client, ids: dict, name: str) -> None:
                form_contact_email=f"{name}.lead@secret.example")
 
 
+def fill_workflows(client, ids: dict, name: str, db) -> None:
+    """A published workflow that tags, waits and posts a webhook, with a test run (and so a trace), a version note, a
+    trigger check, a waiter and a queued delivery; their ids, names, texts and the signing secret go into `ids`."""
+    ws, title = {"X-Workspace-Id": ids["workspace_id"]}, name.title()
+    ids["workflow_name"], ids["workflow_note"] = f"{title} Secret Workflow", f"{name} secret version note"
+    ids["workflow_folder"] = f"{title} Secret Folder"
+    ids["workflow_url"] = f"https://hooks.example.com/{name}-workflow-private-path"
+    flow = {"trigger": {"event": "record.created", "object": "contact"}, "start": "tag", "nodes": {
+        "tag": {"type": "action", "action": "tag.add", "config": {"tag": ids["tag_name"]}, "next": "hold"},
+        "hold": {"type": "wait", "config": {"duration": {"days": 1}}, "next": "hook"},
+        "hook": {"type": "action", "action": "webhook.send", "next": None,
+                 "config": {"url": ids["workflow_url"], "payload": {"who": "{{first_name}}"}}}}}
+    r = client.post("/api/v1/workflows", headers=ws, json={
+        "name": ids["workflow_name"], "folder": ids["workflow_folder"], "graph": flow, "note": ids["workflow_note"]})
+    assert r.status_code == 201, r.text
+    made = r.json()
+    ids.update(workflow_id=made["id"], workflow_signing_secret=made["signing_secret"],
+               workflow_version_id=made["version"]["id"])
+    assert client.post(f"/api/v1/workflows/{made['id']}/publish", headers=ws).status_code == 200
+    tried = client.post(f"/api/v1/workflows/{made['id']}/test", json={"record_id": ids["record_id"]}, headers=ws)
+    assert tried.status_code == 200, tried.text
+    ids["workflow_run_id"] = tried.json()["run"]["id"]
+    ids["check_reason"], ids["delivery_body"] = f"{name} secret check reason", f"{name} secret webhook body"
+    ids["waiter_tag"] = f"{name}-secret-waiter-tag"
+    mine = {"w": ids["workspace_id"], "f": made["id"], "run": ids["workflow_run_id"], "r": ids["record_id"]}
+    db.execute(text("INSERT INTO workflow_trigger_checks (workspace_id, workflow_id, event_id, event_type, record_id, "
+                    "matched, outcome, reason) VALUES (:w, :f, 1, 'record.created', :r, false, 'filter', :why)"),
+               {**mine, "why": ids["check_reason"]})
+    db.execute(text("INSERT INTO workflow_waiters (workspace_id, run_id, record_id, event_type, match) VALUES "
+                    "(:w, :run, :r, 'tag.added', CAST(:m AS jsonb))"),
+               {**mine, "m": f'{{"name": "{ids["waiter_tag"]}"}}'})
+    db.execute(text("INSERT INTO workflow_deliveries (workspace_id, workflow_id, run_id, node_id, idempotency_key, "
+                    "url, body) VALUES (:w, :f, :run, 'hook', :key, :url, :body)"),
+               {**mine, "key": f"{ids['workflow_run_id']}:hook", "url": ids["workflow_url"],
+                "body": ids["delivery_body"]})
+    db.commit()
+
+
 @pytest.fixture
 def two_orgs(make_user, db, monkeypatch):
     """Org A and org B, each with a user, a second workspace, a live session, a webhook and one delivery in its log,
@@ -242,6 +282,7 @@ def two_orgs(make_user, db, monkeypatch):
         fill_crm(client, ids, name)
         fill_tasks(client, ids, name, db)
         fill_forms(client, ids, name)
+        fill_workflows(client, ids, name, db)
     b_ids["session_id"] = b.get("/api/auth/sessions").json()[0]["id"]
     b_ids["user_id"] = b.get("/api/me").json()["user"]["id"]
     a_ids["user_id"] = a.get("/api/me").json()["user"]["id"]
@@ -279,9 +320,11 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
                "form_id": b_ids["form_id"], "version_id": b_ids["form_version_id"],
                "submission_id": b_ids["submission_id"], "public_key": b_ids["form_id"],
                "calendar_id": b_ids["calendar_id"],
-               "booking_id": b_ids["booking_id"], "resource_id": b_ids["resource_id"]}
+               "booking_id": b_ids["booking_id"], "resource_id": b_ids["resource_id"],
+               # workflows: B's workflow and run
+               "workflow_id": b_ids["workflow_id"], "run_id": b_ids["workflow_run_id"]}
     others = {"key": [b_ids["object_key"], "contact"], "field_key": [b_ids["field_key"], "email"],  # B's, and A's own
-              "kind": ["sms"],
+              "kind": ["sms"], "number": ["1"],
               "owner": ["users", "resources"], "owner_id": [b_ids["user_id"], b_ids["resource_id"]],
               "day": [b_ids["booking_day"]],
               # the public routes are open to whoever holds a link, by design: so the sweep holds only the parts of
@@ -321,6 +364,9 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
             "definition": {"steps": []}, "settings": {"max_responses": 1}, "status": "closed",
             "answers": {"first_name": "Swept"}, "view_token": "swept", "resume_token": b_ids["resume_token"],
             "step": "s1", "hp": "",
+            # workflows: a graph, a version number and branch choices wherever a body takes one
+            "graph": {"trigger": {"event": "record.created"}, "start": None, "nodes": {}}, "note": "swept",
+            "version": 1, "paths": {}, "migrate": None, "dry_run": True, "folder": "swept",
             # calendars: B's calendar, resource, person and booking wherever a body names one
             "calendar_id": b_ids["calendar_id"], "resource_id": b_ids["resource_id"],
             "hosts": [{"user_id": b_ids["user_id"]}], "start": at(b_ids["booking_day"], "10:00").isoformat(),
@@ -335,7 +381,8 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
                    "forms", "form_versions", "form_submissions", "form_views", "form_rate",
                    "calendars", "calendar_hosts", "resources", "calendar_resources", "availability",
                    "bookings", "booking_resources", "busy_blocks", "booking_reminders", "booking_attempts",
-                   "feed_tokens")
+                   "feed_tokens", "workflows", "workflow_versions", "workflow_runs", "workflow_steps",
+                   "workflow_trigger_checks", "workflow_waiters", "workflow_refs", "workflow_deliveries")
     snapshot = "SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t::text), '')) FROM {} t WHERE {} = :w"
 
     def rows_of_b():
@@ -403,7 +450,16 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
         "/api/public/calendars/{workspace_slug}/{calendar_slug}/bookings", "/api/public/bookings/{token}",
         "/api/public/bookings/{token}/slots", "/api/public/bookings/{token}/cancel",
         "/api/public/bookings/{token}/reschedule", "/api/public/bookings/{token}/ics",
-        "/api/public/feeds/{token}.ics"}
+        "/api/public/feeds/{token}.ics",
+        # workflows: the catalog, dependencies, runs, versions, publishing, tests and the explainer
+        "/api/v1/workflows", "/api/v1/workflows/catalog", "/api/v1/workflows/refs", "/api/v1/workflows/runs",
+        "/api/v1/workflows/runs/{run_id}", "/api/v1/workflows/runs/{run_id}/cancel",
+        "/api/v1/workflows/runs/{run_id}/retry", "/api/v1/workflows/{workflow_id}",
+        "/api/v1/workflows/{workflow_id}/rotate-secret", "/api/v1/workflows/{workflow_id}/versions",
+        "/api/v1/workflows/{workflow_id}/versions/{number}", "/api/v1/workflows/{workflow_id}/diff",
+        "/api/v1/workflows/{workflow_id}/publish", "/api/v1/workflows/{workflow_id}/pause",
+        "/api/v1/workflows/{workflow_id}/resume", "/api/v1/workflows/{workflow_id}/test",
+        "/api/v1/workflows/{workflow_id}/explain"}
 
     seen_own_data = False
     alice = signin_alice()
@@ -622,7 +678,13 @@ def test_the_app_role_holds_only_the_grants_its_handlers_need():
               "availability": ALL4, "bookings": {"SELECT", "INSERT", "UPDATE"},
               "booking_resources": {"SELECT", "INSERT", "DELETE"}, "busy_blocks": ALL4,
               "booking_reminders": {"SELECT", "INSERT", "UPDATE"}, "booking_attempts": {"SELECT", "INSERT", "DELETE"},
-              "feed_tokens": {"SELECT", "INSERT", "DELETE"}}
+              "feed_tokens": {"SELECT", "INSERT", "DELETE"},
+              # workflows are archived, versions never change (but for the time one was published), the trace is
+              # append only, the check log is pruned by the worker and the webhook outbox is updated by it
+              "workflows": {"SELECT", "INSERT", "UPDATE"}, "workflow_versions": {"SELECT", "INSERT"},
+              "workflow_runs": {"SELECT", "INSERT", "UPDATE"}, "workflow_steps": {"SELECT", "INSERT"},
+              "workflow_trigger_checks": {"SELECT", "INSERT"}, "workflow_waiters": {"SELECT", "INSERT", "UPDATE"},
+              "workflow_refs": {"SELECT", "INSERT"}, "workflow_deliveries": {"SELECT", "INSERT"}}
     every = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
     with engine.connect() as conn:
         for table, expected in wanted.items():
@@ -642,6 +704,10 @@ def test_the_app_role_holds_only_the_grants_its_handlers_need():
                      for c in cs}
         assert [k for k, v in updatable.items() if v] == [("roles", "name"), ("roles", "description"),
                                                           ("roles", "capabilities"), ("workspace_members", "role_id")]
+        versions = {c: conn.scalar(text("SELECT has_column_privilege('gohigh_app', 'workflow_versions', :c, 'UPDATE')"),
+                                   {"c": c}) for c in ("published_at", "graph", "number", "workflow_id", "note")}
+        assert versions == {"published_at": True, "graph": False, "number": False, "workflow_id": False,
+                            "note": False}  # a saved graph is never changed
         for sequence in ("jobs_id_seq", "events_id_seq"):
             assert conn.scalar(text("SELECT has_sequence_privilege('gohigh_app', :s, 'USAGE')"), {"s": sequence})
 
@@ -1208,3 +1274,132 @@ def test_the_app_role_cannot_read_ciphertext_or_write_inbox_rows_across_workspac
         with conn.begin():  # nor can it change one: the system policy is for reading only
             context(conn, system="on")
             assert conn.execute(text("UPDATE channels SET name = 'x'")).rowcount == 0
+
+
+def test_a_user_of_a_gets_404s_for_bs_workflows_runs_versions_and_what_uses_them(two_orgs):
+    a, a_ids, b, b_ids = two_orgs
+    mine = {"X-Workspace-Id": a_ids["workspace_id"]}
+    root = "/api/v1/workflows"
+    wf, run = f"{root}/{b_ids['workflow_id']}", f"{root}/runs/{b_ids['workflow_run_id']}"
+    attempts = [
+        ("GET", wf, None), ("PATCH", wf, {"name": "stolen"}), ("DELETE", wf, None),
+        ("GET", f"{wf}/versions", None), ("GET", f"{wf}/versions/1", None),
+        ("POST", f"{wf}/versions", {"graph": {"trigger": {"event": "record.created"}, "start": None, "nodes": {}}}),
+        ("GET", f"{wf}/diff?from=1&to=1", None), ("POST", f"{wf}/publish", {}), ("POST", f"{wf}/pause", None),
+        ("POST", f"{wf}/resume", None), ("POST", f"{wf}/rotate-secret", None),
+        ("POST", f"{wf}/test", {"record_id": a_ids["record_id"]}),
+        ("POST", f"{wf}/test", {"record_id": b_ids["record_id"]}),
+        ("GET", f"{wf}/explain?record_id={a_ids['record_id']}", None),
+        ("GET", f"{wf}/explain?record_id={b_ids['record_id']}", None),
+        ("GET", run, None), ("POST", f"{run}/cancel", None), ("POST", f"{run}/retry", None),
+        ("POST", f"{root}/{a_ids['workflow_id']}/test", {"record_id": b_ids["record_id"]}),
+        ("GET", f"{root}/{a_ids['workflow_id']}/explain?record_id={b_ids['record_id']}", None),
+    ]
+    for method, path, body in attempts:
+        r = a.request(method, path, json=body, headers=mine)
+        assert r.status_code == 404, (method, path, r.status_code, r.text[:200])
+        assert not any(leak in r.text for leak in secrets_of(b_ids)), (method, path)
+    # what A lists is A's: not B's workflow, its folder, its runs, its test run or what uses B's tag
+    listed = a.get(root, headers=mine, params={"limit": 200})
+    assert [w["name"] for w in listed.json()["data"]] == [a_ids["workflow_name"]]
+    assert not any(leak in listed.text for leak in secrets_of(b_ids))
+    assert a.get(root, headers=mine, params={"folder": b_ids["workflow_folder"]}).json()["data"] == []
+    assert a.get(root, headers=mine, params={"q": "bravo"}).json()["data"] == []
+    for params in ({"test": "true"}, {"workflow_id": b_ids["workflow_id"]}, {"record_id": b_ids["record_id"]}):
+        found = a.get(f"{root}/runs", headers=mine, params=params)
+        assert all(r["workflow_id"] == a_ids["workflow_id"] for r in found.json()["data"]), params
+        assert not any(leak in found.text for leak in secrets_of(b_ids)), params
+    for params in ({"kind": "tag", "id": b_ids["tag_id"]}, {"kind": "tag", "key": b_ids["tag_name"]},
+                   {"kind": "field", "key": "contact.first_name"}):
+        found = a.get(f"{root}/refs", headers=mine, params=params)
+        assert not any(leak in found.text for leak in secrets_of(b_ids)), params
+        assert all(u["workflow_id"] == a_ids["workflow_id"] for u in found.json().get("data", [])), params
+    # A's graph cannot name B's tag, stage, channel or person (they are not A's to use), and the refusal reads the same
+    # as for an id that exists nowhere: all it repeats is the id A sent
+    sent = {b_ids["tag_id"], b_ids["stage_id"], b_ids["channel_id"], b_ids["user_id"]}
+    others = [leak for leak in secrets_of(b_ids) if leak not in sent]
+    flow = {"trigger": {"event": "record.created"}, "start": "go", "nodes": {"go": {
+        "type": "action", "action": "tag.add", "config": {"tag": b_ids["tag_id"]}, "next": "mv"},
+        "mv": {"type": "action", "action": "deal.move_stage", "config": {"stage_id": b_ids["stage_id"]}, "next": None}}}
+    r = a.post(root, json={"name": "x", "graph": flow}, headers=mine)
+    assert r.status_code == 422 and not any(leak in r.text for leak in others), r.text
+    flow = {"trigger": {"event": "record.created"}, "start": "go", "nodes": {"go": {
+        "type": "action", "action": "message.send", "next": "own", "config": {
+            "channel_id": b_ids["channel_id"], "body": "x"}}, "own": {
+        "type": "action", "action": "owner.assign", "config": {"user_id": b_ids["user_id"]}, "next": None}}}
+    r = a.post(root, json={"name": "x", "graph": flow}, headers=mine)
+    assert r.status_code == 422 and not any(leak in r.text for leak in others), r.text
+    assert set(r.json()["error"]["fields"]) == {"graph.nodes.go.config.channel_id", "graph.nodes.own.config.user_id"}
+    # and B has all of it, signing secret and trace included
+    theirs = {"X-Workspace-Id": b_ids["workspace_id"]}
+    kept = b.get(f"{root}/{b_ids['workflow_id']}", headers=theirs).json()
+    assert kept["name"] == b_ids["workflow_name"] and kept["status"] == "published" and "signing_secret" not in kept
+    detail = b.get(f"{root}/runs/{b_ids['workflow_run_id']}", headers=theirs).json()
+    assert detail["test"] is True and [s["node_id"] for s in detail["steps"]][:2] == ["tag", "hold"]
+    assert b_ids["workflow_signing_secret"] not in json.dumps([kept, detail])
+
+
+def test_the_app_role_cannot_move_or_point_workflow_rows_across_workspaces_or_change_what_is_append_only(two_orgs, db):
+    _, a_ids, _, b_ids = two_orgs
+    a_ws, b_ws = a_ids["workspace_id"], b_ids["workspace_id"]
+    ids = {"a": a_ws, "b": b_ws, "aw": a_ids["workflow_id"], "bw": b_ids["workflow_id"],
+           "av": a_ids["workflow_version_id"], "bv": b_ids["workflow_version_id"], "ar": a_ids["workflow_run_id"],
+           "br": b_ids["workflow_run_id"], "arec": a_ids["record_id"], "brec": b_ids["record_id"]}
+    with engine.connect() as conn:
+        for table in ("workflows", "workflow_versions", "workflow_runs", "workflow_steps", "workflow_trigger_checks",
+                      "workflow_waiters", "workflow_refs", "workflow_deliveries"):  # a row cannot change its workspace
+            with pytest.raises(DBAPIError, match="row-level security|permission denied"), conn.begin():
+                context(conn, workspace_id=a_ws)
+                conn.execute(text(f"UPDATE {table} SET workspace_id = :b"), ids)
+        for statement in (  # nor be put into another workspace
+                "INSERT INTO workflows (workspace_id, name, signing_secret) VALUES (:b, 'x', 'x')",
+                "INSERT INTO workflow_versions (workspace_id, workflow_id, number, graph) VALUES (:b, :bw, 9, '{}')",
+                "INSERT INTO workflow_runs (workspace_id, workflow_id, version_id, record_id) "
+                "VALUES (:b, :bw, :bv, :brec)",
+                "INSERT INTO workflow_steps (workspace_id, run_id, seq, node_id, status) VALUES (:b, :br, 9, 'x', "
+                "'completed')",
+                "INSERT INTO workflow_waiters (workspace_id, run_id, record_id, event_type) "
+                "VALUES (:b, :br, :brec, 'x')",
+                "INSERT INTO workflow_refs (workspace_id, workflow_id, version_id, kind) VALUES (:b, :bw, :bv, 'tag')"):
+            with pytest.raises(DBAPIError, match="row-level security"), conn.begin():
+                context(conn, workspace_id=a_ws)
+                conn.execute(text(statement), ids)
+        for statement in (  # a row of A cannot point at a row of B: the foreign keys carry the workspace
+                "INSERT INTO workflow_versions (workspace_id, workflow_id, number, graph) VALUES (:a, :bw, 9, '{}')",
+                "INSERT INTO workflow_runs (workspace_id, workflow_id, version_id, record_id) "
+                "VALUES (:a, :aw, :bv, :arec)",
+                "INSERT INTO workflow_runs (workspace_id, workflow_id, version_id, record_id) "
+                "VALUES (:a, :aw, :av, :brec)",
+                "INSERT INTO workflow_steps (workspace_id, run_id, seq, node_id, status) VALUES (:a, :br, 9, 'x', "
+                "'completed')",
+                "INSERT INTO workflow_trigger_checks (workspace_id, workflow_id, event_id, event_type, matched, "
+                "outcome) VALUES (:a, :bw, 9, 'x', false, 'filter')",
+                "INSERT INTO workflow_waiters (workspace_id, run_id, record_id, event_type) "
+                "VALUES (:a, :br, :arec, 'x')",
+                "INSERT INTO workflow_refs (workspace_id, workflow_id, version_id, kind) VALUES (:a, :aw, :bv, 'tag')",
+                "INSERT INTO workflow_deliveries (workspace_id, workflow_id, run_id, node_id, idempotency_key, url, "
+                "body) VALUES (:a, :bw, :ar, 'x', 'k', 'u', 'b')",
+                "UPDATE workflows SET published_version_id = :bv WHERE id = :aw"):
+            with pytest.raises(DBAPIError, match="foreign key"), conn.begin():
+                context(conn, workspace_id=a_ws)
+                conn.execute(text(statement), ids)
+        for statement in ("DELETE FROM workflows", "DELETE FROM workflow_versions", "DELETE FROM workflow_runs",
+                          "DELETE FROM workflow_steps", "DELETE FROM workflow_trigger_checks",
+                          "UPDATE workflow_versions SET graph = '{}'", "UPDATE workflow_versions SET number = 7",
+                          "UPDATE workflow_steps SET output = '{}'", "UPDATE workflow_trigger_checks SET reason = 'x'",
+                          "UPDATE workflow_deliveries SET status = 'succeeded'",
+                          "UPDATE workflow_refs SET ref_key = 'x'"):
+            with pytest.raises(DBAPIError, match="permission denied"), conn.begin():
+                context(conn, workspace_id=a_ws)
+                conn.execute(text(statement))
+        with conn.begin():  # what a handler may change is the caller's workspace only
+            context(conn, workspace_id=a_ws)
+            assert conn.execute(text("UPDATE workflow_versions SET published_at = now()")).rowcount == 1
+            assert conn.execute(text("UPDATE workflows SET folder = 'x'")).rowcount == 1
+            assert conn.execute(text("UPDATE workflow_runs SET status = 'cancelled'")).rowcount == 1
+            conn.rollback()
+    for table, count in (("workflows", 1), ("workflow_versions", 1), ("workflow_runs", 1), ("workflow_steps", None),
+                         ("workflow_trigger_checks", 1), ("workflow_waiters", 1), ("workflow_deliveries", 1)):
+        found = db.scalar(text(f"SELECT count(*) FROM {table} WHERE workspace_id = :w"), {"w": b_ws})
+        assert found == count if count else found > 0, table
+    assert db.scalar(text("SELECT status FROM workflow_runs WHERE workspace_id = :w"), {"w": b_ws}) == "completed"

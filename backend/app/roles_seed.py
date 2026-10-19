@@ -27,7 +27,8 @@ def records(*actions: str) -> set[str]:
 
 MEMBER = {*records("read", "write", "delete"), "schema.read", "tags.write", "views.write", "messages.send",
            "members.read", "tasks.read", "tasks.write", "tasks.delete", "conversations.read", "conversations.write",
-           "consents.manage", "forms.read", "forms.write", "responses.read", "calendars.read", "calendars.write"}
+           "consents.manage", "forms.read", "forms.write", "responses.read", "calendars.read", "calendars.write",
+           "workflows.read", "workflows.write"}
 # key: (name, description, capabilities). Every role starts with the rule "all records of every object".
 SYSTEM_ROLES = {
     "owner": ("Owner", "Everything, billing included. Cannot be changed.", set(CAPABILITIES)),
@@ -36,10 +37,11 @@ SYSTEM_ROLES = {
                 "calendars.",
                 MEMBER | records("export") | {"tags.manage", "views.manage", "pipelines.manage", "workflows.publish",
                                               "forms.publish", "forms.delete", "responses.export", "calendars.manage"}),
-    "member": ("Member", "Works with records, tags, views, and forms and their responses (cannot publish).", MEMBER),
+    "member": ("Member", "Works with records, tags, views, forms and their responses, and drafts of workflows "
+               "(cannot publish).", MEMBER),
     "viewer": ("Viewer", "Reads records, and cannot change anything.",
                {*records("read"), "schema.read", "members.read", "tasks.read", "conversations.read", "forms.read",
-                "responses.read", "calendars.read"}),
+                "responses.read", "calendars.read", "workflows.read"}),
     "automation": ("Automation", "What workflows and AI agents run as: reads and writes records, tags, sends messages.",
                    {*records("read", "write"), "schema.read", "tags.write", "messages.send", "tasks.read",
                     "tasks.write", "conversations.read", "conversations.write", "calendars.read", "calendars.write"}),
