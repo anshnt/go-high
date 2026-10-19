@@ -56,6 +56,9 @@
 .pl-toolbar .rec-search {
   flex: 0 1 240px;
 }
+.pl-toolbar-controls {
+  display: contents;
+}
 .pl-toolbar-end {
   display: inline-flex;
   align-items: center;
@@ -493,14 +496,24 @@
   .pl-col[data-collapsed] {
     width: 52px;
   }
+  /* one row of controls that scrolls on its own, under the search, so the board keeps the room */
+  .pl-toolbar-controls {
+    display: flex;
+    flex: 1 1 100%;
+    align-items: center;
+    gap: var(--space-2);
+    padding-bottom: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .pl-toolbar-controls > * {
+    flex: none;
+  }
   .pl-toolbar-end {
     margin-left: 0;
   }
   .pl-toolbar .ui-select-trigger {
-    min-width: 0;
-  }
-  .pl-toolbar > .ui-field {
-    flex: 1 1 150px;
+    min-width: 150px;
   }
   .pl-page > .sh-page-header .ui-select-trigger {
     min-width: 0;

@@ -170,11 +170,13 @@ Milestones: **M0 Foundations**, **M1 Core CRM** (first sellable product), **M2 G
 
 **Better**
 - [x] Deals can exist without a contact and link many contacts with roles (a role is an association type between deal and contact, as in module 07)
-- [ ] Board with drag, swimlanes, rotting and aging indicators, per-stage probability (the server side is done: stage columns with counts and sums, drag ordering in one write, days in stage, rotting flags and probabilities; swimlanes and the board screen are not)
+- [x] Board with drag, rotting and aging indicators, per-stage probability: the Pipeline screen (a column per stage with count and sums by currency, weighted on a toggle, cards with days in stage and a rotting flag, infinite scroll per column, collapsible columns, quick filters, drag and drop with optimistic placement, a "Move to stage" menu and keyboard moves, a dialog for what a stage's exit rules ask or a lost reason) and Settings > Pipelines (stages, probabilities, rotting days, colors, exit rules, reorder in one call)
+- [ ] Swimlanes on the board (by owner or company)
 - [x] Stage exit rules (required fields), mandatory structured lost reasons
 - [ ] Line items from the product catalog, quotes
-- [ ] Forecast view: weighted, commit, best case, history of changes, quota per rep (weighted, commit and best case by month or quarter, currency and owner are done, and stage changes are events; the history view and quotas are not)
-- [ ] Board layouts saved per user and team on the server (per user is done; teams come with module 03)
+- [x] Forecast view: weighted, commit, best case and won by month or quarter, per currency and per owner, as stacked columns and a table (it reads the server, so every move shows at once)
+- [ ] Forecast history of changes and a quota per rep (stage changes are events; the history view and quotas are not)
+- [ ] Board layouts saved per user and team on the server (per user is done, with the screen: collapsed columns and the fields on a card; teams come with module 03)
 - [ ] Card shows last message and next task (it has the time of the last timeline entry; messages and tasks come with modules 11 and 12)
 
 **Done when** a deal can be dragged through stages with exit rules enforced and the forecast updates live.

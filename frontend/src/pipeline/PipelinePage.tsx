@@ -476,53 +476,55 @@ function BoardTab({ pipeline, pipelines }: { pipeline: Pipeline; pipelines: Pipe
             <Kbd>/</Kbd>
           </span>
         </div>
-        <Segmented label="Owner" value={filter.owner} onChange={(owner) => setFilter((f) => ({ ...f, owner }))} options={[{ value: "all", label: "All deals" }, { value: "mine", label: "My deals" }]} />
-        <Select aria-label="Close date" value={filter.close} onValueChange={(close) => setFilter((f) => ({ ...f, close: close as Quick["close"] }))} options={CLOSE_OPTIONS} />
-        {hasAmount && (
-          <Segmented
-            label="Column totals"
-            value={sums}
-            onChange={(v) => sumsPref.set(v)}
-            options={[
-              { value: "total", label: "Total", title: "The amounts of the deals in each stage" },
-              { value: "weighted", label: "Weighted", title: "Each stage's amounts times its probability" },
-            ]}
-          />
-        )}
-        <span className="pl-toolbar-end">
-          {!canWrite && (
-            <Badge tone="neutral">{can.writeDeals ? "Read only" : "View only"}</Badge>
+        <div className="pl-toolbar-controls">
+          <Segmented label="Owner" value={filter.owner} onChange={(owner) => setFilter((f) => ({ ...f, owner }))} options={[{ value: "all", label: "All deals" }, { value: "mine", label: "My deals" }]} />
+          <Select aria-label="Close date" value={filter.close} onValueChange={(close) => setFilter((f) => ({ ...f, close: close as Quick["close"] }))} options={CLOSE_OPTIONS} />
+          {hasAmount && (
+            <Segmented
+              label="Column totals"
+              value={sums}
+              onChange={(v) => sumsPref.set(v)}
+              options={[
+                { value: "total", label: "Total", title: "The amounts of the deals in each stage" },
+                { value: "weighted", label: "Weighted", title: "Each stage's amounts times its probability" },
+              ]}
+            />
           )}
-          <Popover
-            label="Card fields"
-            align="end"
-            className="pl-fields-pop"
-            trigger={
-              <Button size="sm" aria-label="Choose the fields on a card" title="Card fields">
-                <SlidersHorizontal size={14} aria-hidden />
-                <span className="pl-lbl">Card fields</span>
-              </Button>
-            }
-          >
-            <div className="pl-fields">
-              <h3 className="rec-section-title">Show on each card</h3>
-              <ul>
-                {cardChoices.map((f) => (
-                  <li key={f.key}>
-                    <Checkbox label={f.label} checked={board.layout.card_fields.includes(f.key)} onCheckedChange={(on) => toggleField(f.key, on)} />
-                  </li>
-                ))}
-              </ul>
-              <p className="rec-menu-note">The name, the days in the stage and the last activity always show. Your choice is saved for you on this board.</p>
-            </div>
-          </Popover>
-          {can.managePipelines && (
-            <Link to="/settings/pipelines" className="ui-btn" data-variant="secondary" data-size="sm" aria-label="Pipeline settings" title="Pipeline settings: stages, probabilities and rules">
-              <Settings2 size={14} aria-hidden />
-              <span className="pl-lbl">Stages</span>
-            </Link>
-          )}
-        </span>
+          <span className="pl-toolbar-end">
+            {!canWrite && (
+              <Badge tone="neutral">{can.writeDeals ? "Read only" : "View only"}</Badge>
+            )}
+            <Popover
+              label="Card fields"
+              align="end"
+              className="pl-fields-pop"
+              trigger={
+                <Button size="sm" aria-label="Choose the fields on a card" title="Card fields">
+                  <SlidersHorizontal size={14} aria-hidden />
+                  <span className="pl-lbl">Card fields</span>
+                </Button>
+              }
+            >
+              <div className="pl-fields">
+                <h3 className="rec-section-title">Show on each card</h3>
+                <ul>
+                  {cardChoices.map((f) => (
+                    <li key={f.key}>
+                      <Checkbox label={f.label} checked={board.layout.card_fields.includes(f.key)} onCheckedChange={(on) => toggleField(f.key, on)} />
+                    </li>
+                  ))}
+                </ul>
+                <p className="rec-menu-note">The name, the days in the stage and the last activity always show. Your choice is saved for you on this board.</p>
+              </div>
+            </Popover>
+            {can.managePipelines && (
+              <Link to="/settings/pipelines" className="ui-btn" data-variant="secondary" data-size="sm" aria-label="Pipeline settings" title="Pipeline settings: stages, probabilities and rules">
+                <Settings2 size={14} aria-hidden />
+                <span className="pl-lbl">Stages</span>
+              </Link>
+            )}
+          </span>
+        </div>
       </div>
 
       {filtering && (

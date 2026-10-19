@@ -55,10 +55,10 @@ const INDUSTRY = [
 export const LOST_REASONS = [ch("price", "Price"), ch("timing", "Timing"), ch("competitor", "Competitor"), ch("no_decision", "No decision"), ch("other", "Other")];
 const SIZE = ["1-10", "11-50", "51-200", "201-1000", "1000+"].map((s) => ch(s, s));
 export const STAGES = [
-  ch("new", "New", "gray", 0.1),
+  ch("new", "Lead", "gray", 0.1),
   ch("qualified", "Qualified", "blue", 0.25),
   ch("proposal", "Proposal", "amber", 0.5),
-  ch("negotiation", "Negotiation", "purple", 0.75),
+  ch("negotiation", "Negotiation", "orange", 0.8),
   ch("won", "Won", "green", 1),
   ch("lost", "Lost", "red", 0),
 ];

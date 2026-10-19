@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { compactMoney, currencies, labelOf, layers, nameOf, niceTicks, ownerRows, rows, span, sumRows } from "../src/pipeline/forecast.ts";
+import { axisLabel, compactMoney, currencies, labelOf, layers, nameOf, niceTicks, ownerRows, rows, span, sumRows } from "../src/pipeline/forecast.ts";
 import { buildForecast } from "../src/pipeline/memoryClient.ts";
 import type { Forecast, ForecastPeriod, Metrics, Stage } from "../src/pipeline/types.ts";
 import type { RecordRow } from "../src/records/types.ts";
@@ -118,4 +118,14 @@ test("the demo's forecast follows the server's rules: open by probability, won a
   assert.deepEqual(quarter.periods.map((p) => [p.label, p.start, p.end]), [["2026-Q4", "2026-10-01", "2026-12-31"]]);
   assert.deepEqual(quarter.periods[0]!.pipeline, { USD: 6000, EUR: 500 });
   assert.deepEqual(buildForecast([], stages, "month").periods, []);
+});
+
+test("the label under a column is short, with the year where it helps", () => {
+  assert.equal(axisLabel("2026-06-01", "month", true), "Jun 26");
+  assert.equal(axisLabel("2026-07-01", "month", false), "Jul");
+  assert.equal(axisLabel("2027-01-01", "month", false), "Jan 27");
+  assert.equal(axisLabel("2026-10-01", "quarter", true), "Q4 26");
+  assert.equal(axisLabel("2026-07-01", "quarter", false), "Q3");
+  assert.equal(axisLabel("2027-01-01", "quarter", false), "Q1 27");
+  assert.equal(axisLabel("bad", "month", false), "bad");
 });

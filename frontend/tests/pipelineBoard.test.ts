@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { appendCards, closeRange, describeSums, focusTarget, formatSums, isFiltered, moneyOf, moveCard, neighbours, NO_FILTER, passes, patchCard, replaceCard, slotFromY, summarize, sumEntries, weigh } from "../src/pipeline/board.ts";
+import { appendCards, closeRange, compactAgo, daysText, describeSums, focusTarget, formatSums, isFiltered, moneyOf, moveCard, neighbours, NO_FILTER, overdue, passes, patchCard, replaceCard, shortDay, slotFromY, summarize, sumEntries, toFullSlot, weigh } from "../src/pipeline/board.ts";
+import { canOf } from "../src/pipeline/can.ts";
 import type { BoardStage, Card } from "../src/pipeline/types.ts";
 
 const usd = (amount: number) => ({ amount, currency: "USD" });
@@ -170,4 +171,50 @@ test("a filtered column counts and sums what matches, and says when more pages c
   assert.deepEqual(mine.weighted, { USD: 50_000, EUR: 10_000 });
   const whole = summarize({ ...col, next_cursor: null, count: 3 }, (c) => c.owner_id === "me");
   assert.equal(whole.partial, false);
+});
+
+test("a slot among the shown cards is a slot among all the loaded ones when a filter hides some", () => {
+  const all = [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }, { id: "e" }];
+  const shown = [{ id: "b" }, { id: "d" }]; // a, c and e are filtered out
+  assert.equal(toFullSlot(all, shown, "z", 0), 1, "above b: after a");
+  assert.equal(toFullSlot(all, shown, "z", 1), 3, "above d: after c");
+  assert.equal(toFullSlot(all, shown, "z", 2), 4, "below d: right after d, above the hidden e");
+  assert.equal(toFullSlot(all, shown, "z", 99), 4);
+  assert.equal(toFullSlot(all, [], "z", 0), 0, "nothing shown: the top");
+  assert.equal(toFullSlot(all, all, "c", 1), 1, "the dragged card is not counted");
+  // the neighbours that go to the server are the ones around the card it is dropped between
+  assert.deepEqual(neighbours(all, "z", toFullSlot(all, shown, "z", 1)), { after_id: "c", before_id: "d" });
+});
+
+test("a card says how long ago and how long in the stage, in a few characters", () => {
+  const now = Date.parse("2026-10-18T12:00:00Z");
+  assert.equal(compactAgo("2026-10-18T11:59:40Z", now), "now");
+  assert.equal(compactAgo("2026-10-18T11:55:00Z", now), "5m");
+  assert.equal(compactAgo("2026-10-18T09:00:00Z", now), "3h");
+  assert.equal(compactAgo("2026-10-16T12:00:00Z", now), "2d");
+  assert.equal(compactAgo("2026-07-18T12:00:00Z", now), "3mo");
+  assert.equal(compactAgo("2026-10-19T12:00:00Z", now), "now", "a clock a little ahead is not the future");
+  assert.equal(compactAgo(null, now), "");
+  assert.equal(compactAgo("not a date", now), "");
+  assert.equal(daysText(0), "Today");
+  assert.equal(daysText(12), "12d");
+});
+
+test("a close date reads short, with the year only when it is not this year, and an open deal can be overdue", () => {
+  const now = new Date(2026, 9, 18);
+  assert.equal(shortDay("2026-11-12", now), "Nov 12");
+  assert.equal(shortDay("2027-01-17", now), "Jan 17, 2027");
+  assert.equal(shortDay("nope", now), "nope");
+  assert.equal(overdue("2026-10-17", now), true);
+  assert.equal(overdue("2026-10-18", now), false, "today is not late yet");
+  assert.equal(overdue(null, now), false);
+});
+
+test("the UI offers each role what it can do, and a role it does not know everything", () => {
+  assert.deepEqual(canOf("admin"), { writeDeals: true, managePipelines: true });
+  assert.deepEqual(canOf("manager"), { writeDeals: true, managePipelines: true });
+  assert.deepEqual(canOf("member"), { writeDeals: true, managePipelines: false });
+  assert.deepEqual(canOf("viewer"), { writeDeals: false, managePipelines: false });
+  assert.deepEqual(canOf("account_manager"), { writeDeals: true, managePipelines: true }, "a custom role: the server decides");
+  assert.deepEqual(canOf(null), { writeDeals: true, managePipelines: true });
 });
