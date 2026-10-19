@@ -70,8 +70,10 @@ def people_errors(cat, **named: uuid.UUID | str | None) -> dict[str, str]:
 
 
 def merge_errors(cat, obj, cfg: BaseModel) -> dict[str, str]:
-    """Errors for `{{key}}` in any text of the config that is not a field of the object: it would send "Hi ,"."""
-    known = {*cat.fields(obj), "display_name"}
+    """Errors for `{{key}}` in any text of the config that is not a field of the object, or is one the author may not
+    read (the workflow acts as the Automation role, so it must not carry a hidden value out for them): it would send
+    "Hi ," or leak."""
+    known = {*cat.fields(obj), "display_name"} - permissions.hidden(cat.c, obj)
     errors: dict[str, str] = {}
 
     def walk(value, path: str) -> None:

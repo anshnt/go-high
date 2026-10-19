@@ -109,7 +109,7 @@ def publish(c: Ctx, wf: Workflow, version: WorkflowVersion, migrate: dict[str, s
     nodes = version.graph["nodes"]
     runs = in_flight(c.db, wf, version)
     summary = plan(runs, nodes, migrate)
-    if migrate is not None:
+    if migrate is not None and not dry_run:
         unmapped = {n["node_id"]: f"{n['runs']} runs are at this step, which this version removed: choose one or exit"
                     for n in summary["removed_nodes"] if n["to"] is None}
         bad = {k: "is not a step of this version, or exit" for k, v in migrate.items()

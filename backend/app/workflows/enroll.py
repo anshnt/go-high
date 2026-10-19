@@ -20,7 +20,7 @@ from datetime import timedelta
 
 from sqlalchemy import delete, exists, func, select, text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from .. import events, jobs
 from ..db import acting
@@ -157,8 +157,12 @@ def read(db: Session, ws: Workspace, batch: list[Event]) -> bool:
     cat = Catalog(system_ctx(db, ws))
     rids = {r for e in batch if (r := record_of(e))}
     types = {e.type for e in batch}
+    every = aliased(WorkflowVersion)
+    since = (select(func.min(every.published_at)).where(every.workflow_id == Workflow.id)
+             .scalar_subquery())  # when the workflow first went live: what happened before is not its business
     candidates = db.execute(
-        select(Workflow, WorkflowVersion).join(WorkflowVersion, WorkflowVersion.id == Workflow.published_version_id)
+        select(Workflow, WorkflowVersion, since)
+        .join(WorkflowVersion, WorkflowVersion.id == Workflow.published_version_id)
         .where(Workflow.status == "published", Workflow.trigger_event.in_(types))
         .order_by(Workflow.created_at, Workflow.id)).all()
     live = list(db.scalars(select(Run).where(Run.record_id.in_(rids), Run.status.in_(ACTIVE), Run.test.is_(False))
@@ -174,8 +178,8 @@ def read(db: Session, ws: Workspace, batch: list[Event]) -> bool:
         if rec is not None and rec.deleted_at is None:
             resolve_waiters(db, e, rid, waiters)
             jump_to_goals(db, cat, e, rec, [r for r in live if r.record_id == rid])
-        for wf, version in candidates:
-            if wf.trigger_event != e.type or (wf.id, e.id) in done:
+        for wf, version, live_since in candidates:
+            if wf.trigger_event != e.type or (wf.id, e.id) in done or e.occurred_at < live_since:
                 continue
             outcome, reason = evaluate(cat, rec, version.graph["trigger"], e, wf.id)
             run = None

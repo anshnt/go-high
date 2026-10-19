@@ -13,8 +13,10 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 
+from ..inbox import consent
 from ..inbox.threads import system_ctx
 from ..records.models import Record
 from ..records.schema import Catalog
@@ -38,8 +40,9 @@ class Walk:
 
     def add(self, node: str, status: str, input_: dict, output: dict, error: str | None = None) -> None:
         self.run.steps += 1
-        self.trail.append({"seq": self.run.steps, "node_id": node, "status": status, "input": input_, "output": output,
-                           "error": error, "started_at": self.clock, "finished_at": datetime.now(UTC)})
+        self.trail.append({"seq": self.run.steps, "node_id": node, "status": status, "error": error,
+                           "input": jsonable_encoder(input_), "output": jsonable_encoder(output),
+                           "started_at": self.clock, "finished_at": datetime.now(UTC)})
 
     def step(self) -> None:
         node_id, node = self.node_id, self.graph["nodes"][self.node_id]
@@ -95,7 +98,7 @@ def run_test(c: Ctx, wf: Workflow, version: WorkflowVersion, rec: Record, paths:
     and that its object is the trigger's."""
     run = Run(id=uuid.uuid4(), workspace_id=c.workspace.id, workflow_id=wf.id, version_id=version.id, record_id=rec.id,
               status="running", node_id=version.graph["start"], steps=0, test=True, context={},
-              started_at=datetime.now(UTC))
+              started_at=consent.clock())  # the virtual clock starts at the time the consent rules read
     walk = Walk(c, wf, version, run, paths)
     nested = c.db.begin_nested()
     try:
@@ -122,7 +125,7 @@ def explain(c: Ctx, wf: Workflow, version: WorkflowVersion | None, rec: Record) 
     db = c.db
     checks = list(db.scalars(select(TriggerCheck).where(TriggerCheck.workflow_id == wf.id,
                                                         TriggerCheck.record_id == rec.id)
-                             .order_by(TriggerCheck.created_at.desc(), TriggerCheck.id.desc()).limit(20)))
+                             .order_by(TriggerCheck.event_id.desc(), TriggerCheck.id.desc()).limit(20)))
     runs = list(db.scalars(select(Run).where(Run.workflow_id == wf.id, Run.record_id == rec.id, Run.test.is_(False))
                            .order_by(Run.started_at.desc(), Run.id.desc()).limit(5)))
     live = next((r for r in runs if r.status in ACTIVE), None)
