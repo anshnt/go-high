@@ -39,6 +39,13 @@ const INBOX: typeof GENERAL = [
   { keys: [MOD, "Enter"], label: "Send the message" },
   { keys: ["Esc"], label: "Leave the reply box, or go back to the list" },
 ];
+const BOARD: typeof GENERAL = [
+  { keys: ["Enter"], label: "Open the deal" },
+  { keys: ["M"], label: "Move the deal to a stage" },
+  { keys: ["Arrows"], label: "Move between deals" },
+  { keys: ["Shift", "Up or Down"], label: "Move the deal within its stage" },
+  { keys: ["Shift", "Left or Right"], label: "Move the deal to the next stage" },
+];
 const GO = [MY_DAY_NAV, ...CORE].filter((c) => c.gKey).map((c) => ({ keys: ["G", c.gKey!.toUpperCase()], label: `Go to ${c.label}` }));
 
 function Group({ title, rows }: { title: string; rows: typeof GENERAL }) {
@@ -72,6 +79,7 @@ export function ShortcutSheet({ open, onOpenChange }: { open: boolean; onOpenCha
       <Group title="Inbox" rows={INBOX} />
       <Group title="Lists and records" rows={LISTS} />
       <Group title="Tasks" rows={TASKS} />
+      <Group title="Pipeline board (focus a deal)" rows={BOARD} />
     </Sheet>
   );
 }

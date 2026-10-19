@@ -45,8 +45,12 @@ const me = () => {
   const s = session.get();
   return s.status === "ready" ? { id: s.me.user.id, name: s.me.user.name, email: s.me.user.email } : null;
 };
-const demo = import.meta.env.VITE_DEMO === "1" ? (await import("./memoryClient.ts")).createMemoryClient({ latency: 60, me }) : undefined;
+// "demo-user" is the signed-in visitor of lib/demo.ts: it owns a few deals, so the board'"'"'s "My deals" is not empty.
+const demo = import.meta.env.VITE_DEMO === "1" ? (await import("./memoryClient.ts")).createMemoryClient({ latency: 60, me, dataset: (await import("./seed.ts")).seedDataset({ anchor: Date.now(), mine: "demo-user" }) }) : undefined;
 
 const live = createApiClient(api);
 
-export const useRecordsClient = (): RecordsClient => demo ?? live;
+/** The client every record screen runs on, for code that is not a component (the pipeline demo client builds on it). */
+export const recordsClient: RecordsClient = demo ?? live;
+
+export const useRecordsClient = (): RecordsClient => recordsClient;

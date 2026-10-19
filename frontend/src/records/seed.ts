@@ -52,12 +52,13 @@ const INDUSTRY = [
   ch("manufacturing", "Manufacturing", "gray"),
   ch("media", "Media", "red"),
 ];
+export const LOST_REASONS = [ch("price", "Price"), ch("timing", "Timing"), ch("competitor", "Competitor"), ch("no_decision", "No decision"), ch("other", "Other")];
 const SIZE = ["1-10", "11-50", "51-200", "201-1000", "1000+"].map((s) => ch(s, s));
 export const STAGES = [
-  ch("new", "New", "gray", 0.1),
+  ch("new", "Lead", "gray", 0.1),
   ch("qualified", "Qualified", "blue", 0.25),
   ch("proposal", "Proposal", "amber", 0.5),
-  ch("negotiation", "Negotiation", "purple", 0.75),
+  ch("negotiation", "Negotiation", "orange", 0.8),
   ch("won", "Won", "green", 1),
   ch("lost", "Lost", "red", 0),
 ];
@@ -126,6 +127,8 @@ export function schema(): { objects: ObjectDef[]; fields: Record<string, FieldDe
       field("contact", "Contact", "record", { options: { object: "contact" } }),
       field("company", "Company", "record", { options: { object: "company" } }),
       field("source", "Source", "select", { options: { choices: SOURCE } }),
+      field("lost_reason", "Lost reason", "select", { options: { choices: LOST_REASONS } }),
+      field("lost_note", "Lost note", "long_text", { rules: { max_length: 2000 } }),
       field("weighted", "Weighted value", "formula", { options: { result: "money" } }),
       ...columns(),
     ],
@@ -186,13 +189,13 @@ const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(
 const DAY = 86_400_000;
 const money = (amount: number, currency = "USD"): Money => ({ amount, currency });
 
-export type SeedOptions = { anchor: number; contacts?: number; companies?: number; deals?: number };
+export type SeedOptions = { anchor: number; contacts?: number; companies?: number; deals?: number; /** a user id that owns about a fifth of the deals, so "my deals" is never empty in the public demo */ mine?: string };
 
 /**
  * `anchor` is "now" for the data: created_at values reach back from it, so "created in the last 30 days" is never empty.
  * The numbers of records are the ones the real list has to cope with: 2,000 contacts, 300 companies, 150 deals.
  */
-export function seedDataset({ anchor, contacts = 2000, companies = 300, deals = 150 }: SeedOptions): Dataset {
+export function seedDataset({ anchor, contacts = 2000, companies = 300, deals = 150, mine }: SeedOptions): Dataset {
   const r = mulberry32(20261017);
   const { objects, fields } = schema();
   const records: RecordRow[] = [];
@@ -285,10 +288,13 @@ export function seedDataset({ anchor, contacts = 2000, companies = 300, deals = 
     };
     if (closed) values.close_date = new Date(anchor - between(r, 1, 120) * DAY).toISOString().slice(0, 10);
     else if (stage !== "new" || r() < 0.7) values.close_date = new Date(anchor + between(r, 3, 90) * DAY).toISOString().slice(0, 10);
+    if (stage === "qualified" && n % 4 === 1) delete values.close_date; // the pipeline asks for one before a deal leaves Qualified
+    if (stage === "lost") values.lost_reason = LOST_REASONS[n % LOST_REASONS.length]!.id;
     if (contact) values.contact = contact.id;
     if (company) values.company = company;
     if (r() < 0.85) values.source = pick(r, SOURCE).id;
-    records.push({ id: `dl_${String(n + 1).padStart(4, "0")}`, object: "deal", display_name: name, values, owner_id: owner(), tags: tagsFor(0.2), ...stamp() });
+    const who = owner(); // drawn here, in the order it always was, so the data is the same with or without `mine`
+    records.push({ id: `dl_${String(n + 1).padStart(4, "0")}`, object: "deal", display_name: name, values, owner_id: mine && n % 5 === 2 ? mine : who, tags: tagsFor(0.2), ...stamp() });
   }
 
   const views: SavedView[] = [
