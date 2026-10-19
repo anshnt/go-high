@@ -46,6 +46,7 @@ The incumbent's most repeated complaints are clutter, a steep learning curve, me
 - [ ] Works at 1280 px and 375 px, light and dark.
 - [ ] Keyboard only path works; focus is visible.
 - [ ] Empty, loading, error and permission-denied states exist.
+- [ ] What a role may not do is hidden or disabled with `can(capability)` from `lib/capabilities.ts` (the caller's capabilities from `GET /api/v1/me/capabilities`), never guessed from a role's name. The server still refuses it; `can` only avoids offering it. A screen that must not show anything before it knows reads `ready`.
 - [ ] Destructive actions have preview and undo.
 - [ ] No new one-off component when a design-system one exists.
 - [ ] Route meets the performance budget.

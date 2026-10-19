@@ -23,6 +23,8 @@ type Common = {
   /** Text to show for a value that is not in `items` (for example after a server-side search moved on). */
   valueLabel?: string;
   onOpenChange?: (open: boolean) => void;
+  /** Open it from outside (a keyboard shortcut); leave out and it opens itself. */
+  open?: boolean;
   className?: string;
   id?: string;
   "aria-invalid"?: boolean;
@@ -34,7 +36,8 @@ const MAX = 100;
 
 /** A searchable list in a popover: pick one, or toggle several. Focus stays in the search field; arrows move, Enter picks. */
 export function Combobox(p: Common & (Single | Multi)) {
-  const [open, setOpen] = useState(false);
+  const [inner, setOpen] = useState(false);
+  const open = p.open ?? inner;
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const listId = useId();

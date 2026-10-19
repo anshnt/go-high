@@ -1,6 +1,7 @@
 import { NavLink, useLocation } from "react-router";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { APPS_NAV, appsOn, enabledApps, inArea, MY_DAY_NAV, SETTINGS_NAV, sidebarPrefs, visibleCore, type NavItem } from "../lib/nav";
+import { useInboxUnread } from "../lib/inboxBadge";
 import { sidebarCollapsed } from "../lib/prefs";
 import { useStore } from "../lib/store";
 import { Button, Tooltip } from "../ui";
@@ -8,10 +9,18 @@ import { HealthDot } from "./HealthDot";
 
 function Item({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
   const here = inArea(item, useLocation().pathname);
+  const unread = useInboxUnread();
+  const badge = item.id === "inbox" ? unread : 0;
   const link = (
     <NavLink to={item.path} className={`sh-nav-link${here ? " active" : ""}`} aria-current={here ? "page" : undefined}>
       <item.icon size={18} aria-hidden />
       <span className="sh-label">{item.label}</span>
+      {badge > 0 && (
+        <span className="sh-badge">
+          <span className="sr-only">{badge} unread</span>
+          <span aria-hidden>{badge > 99 ? "99+" : badge}</span>
+        </span>
+      )}
     </NavLink>
   );
   return <li>{collapsed ? <Tooltip content={item.label} side="right">{link}</Tooltip> : link}</li>;

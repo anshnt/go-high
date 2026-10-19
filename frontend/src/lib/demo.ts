@@ -1,5 +1,6 @@
 import { ApiError } from "./api";
 import { demoCalendars } from "./demoCalendars";
+import { demoInbox } from "./demoInbox";
 import { DemoMiss, demoTasks } from "./demoTasks";
 import type { Me, Workspace } from "./session";
 
@@ -20,7 +21,7 @@ const me: Me = {
 let signedIn = true; // visitors land straight in the app; signing out and back in works with any details
 const started = new Date().toISOString();
 
-export async function demoRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
+export async function demoRequest<T>(method: string, path: string, body?: unknown, headers?: Record<string, string>): Promise<T> {
   await new Promise((r) => setTimeout(r, 120)); // feels like a network, keeps loading states honest
   const input = (body ?? {}) as Record<string, string>;
   const route = `${method} ${path.split("?")[0]}`;
@@ -68,8 +69,10 @@ export async function demoRequest<T>(method: string, path: string, body?: unknow
     if (booked !== undefined) return answer(booked); // calendars and bookings: in memory (demoCalendars.ts)
     const mine = demoTasks(method, path, body, { id: me.user.id, name: me.user.name, email: me.user.email });
     if (mine !== undefined) return answer(mine); // tasks, My Day, notifications and people: in memory (demoTasks.ts)
+    const messaging = demoInbox(method, path, body, headers, { id: me.user.id, name: me.user.name, email: me.user.email });
+    if (messaging !== undefined) return answer(messaging); // inbox, channels, consents, teams, capabilities: in memory (demoInbox.ts)
   } catch (e) {
-    if (e instanceof DemoMiss) throw new ApiError(e.status, e.message);
+    if (e instanceof DemoMiss) throw new ApiError(e.status, e.message, undefined, { code: e.code, fields: e.fields });
     throw e;
   }
   throw new ApiError(501, "This is not available in the demo. Run go-high yourself for the full product.");

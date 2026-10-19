@@ -96,6 +96,7 @@ Where the code differs from the sketch above:
   the sending number is not checked until the readiness wizard exists.
 - Teams do not exist yet (module 03), so `team_id` is stored as given. The contact `source` of ADR 0002 is filled in only
   when the workspace has a text field with that key; the system objects do not define one.
+- The web app (module 12 UI) keeps to the ADR and adds a few things: `POST /conversations/{id}/unread` (the read mark only moved forward, and a keyboard first inbox needs `u`), `GET /api/v1/me/capabilities` (what the caller's role may do, so screens hide what the server would refuse), a single `EventSource` per tab that exists only while the inbox is open (browsers allow few connections per host, so the sidebar badge polls instead), and refetching by id: a payload is turned into the rows, counts and open thread it names (`inbox/stream.ts`), and `stream.resync` or a reconnect reads everything shown again. A send shows at once as a draft keyed by its `Idempotency-Key`, so a retry after a dropped connection cannot send twice.
 - The stream's `LISTEN` connection is read on a thread inside one asyncio task: psycopg's async API needs a selector event
   loop, which Windows does not use by default. A process keeps its last 1000 notifications for `Last-Event-ID`.
 

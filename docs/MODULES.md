@@ -202,13 +202,13 @@ Milestones: **M0 Foundations**, **M1 Core CRM** (first sellable product), **M2 G
 
 **Better**
 - [x] One conversation model; channels are adapters with delivery receipts, retries and guaranteed ordering
-- [ ] Keyboard-first: `j/k`, `e` close, `a` assign, `s` snooze, `r` reply; optimistic UI under 100 ms (the API has a route for each of these actions; the screen is not built)
-- [ ] Saved views with live unread counts; snooze; follow-up SLAs with breach alerts (the built in views, their live counts, per-user unread and snooze are done; custom saved views and SLAs are not)
+- [x] Keyboard-first: `j/k`, `e` close, `a` assign, `s` snooze, `r` reply; optimistic UI under 100 ms (the web app: `j` and `k` open the next and previous conversation, `Enter` or `o` opens, `n` writes a note, `u` toggles unread, `/` searches the list, `f` searches inside the conversation, `i` shows the contact card, `Ctrl/Cmd+Enter` sends; every action shows at once and is put back if the server refuses; close and snooze offer an undo)
+- [ ] Saved views with live unread counts; snooze; follow-up SLAs with breach alerts (the built in views with their live counts, a view per channel, per-user unread and snooze are done, in the API and the web app, and the unread count is in the tab title and on the sidebar; custom saved views and SLAs are not)
 - [ ] Assignment rules: round robin, load based, skills, hours (conversations are assigned by hand to a member or a team id; no rules)
-- [ ] Internal comments with @mentions that can be edited; "someone is replying" collision guard (internal notes that only their author edits are done; mentions and the collision guard are not)
+- [ ] Internal comments with @mentions that can be edited; "someone is replying" collision guard (internal notes, in the thread and the composer, that only their author edits are done; mentions and the collision guard are not)
 - [ ] Snippets with variables; paste images; scheduled send
 - [ ] AI: reply suggestions, thread summary, intent and sentiment tags, translation with original toggle
-- [ ] Trash for conversations; search inside conversations (search over message text, notes and the contact's name, email and phone, and inside one conversation, is done; a conversation goes with its contact to the trash and has no trash of its own)
+- [ ] Trash for conversations; search inside conversations (search over message text, notes and the contact's name, email and phone, and inside one conversation, with the hits marked, is done in the API and the web app; a conversation goes with its contact to the trash and has no trash of its own)
 - [x] Live chat widget (deferred load, under 30 KB) as the first channel (a 9 KB script that builds its panel on the first click, signed visitor tokens, rate limits and a honeypot)
 
 **Done when** a support agent can triage 50 conversations from the keyboard alone, and a chat widget message arrives live.
@@ -240,7 +240,7 @@ Milestones: **M0 Foundations**, **M1 Core CRM** (first sellable product), **M2 G
 - [ ] A2P readiness wizard that pre-checks website, privacy policy, opt-in language and brand data before submitting; status tracking with plain-language next steps
 - [ ] Brand profile inherited from the org with per-workspace overrides
 - [ ] Opt-in evidence stored per contact; STOP/START/HELP; quiet hours and frequency caps; content checks (STOP, START and HELP, opt-outs and do not disturb per channel, quiet hours in the contact's time zone and frequency caps are done; evidence is only the START mark, and the content checks are not run on a reply yet)
-- [ ] Segment count and cost shown while typing (every SMS reply answers with both and `POST /api/v1/channels/{id}/estimate` does it for a draft; the composer does not show it yet)
+- [x] Segment count and cost shown while typing (every SMS reply answers with both and `POST /api/v1/channels/{id}/estimate` does it for a draft; the composer counts at once, with the server's rules, and prices a draft from the estimate)
 
 **Done when** a new workspace can register, get approved and send compliant SMS without reading a help article.
 
