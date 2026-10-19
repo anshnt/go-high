@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { Outlet } from "react-router";
 import { workspaceId } from "../lib/api";
+import { useLoadCapabilities } from "../lib/capabilities";
 import { useStore } from "../lib/store";
 import { CommandPalette } from "./CommandPalette";
 import { CustomizeSidebar } from "./CustomizeSidebar";
@@ -15,6 +16,7 @@ export function Shell() {
   const [shortcuts, setShortcuts] = useState(false);
   const [customize, setCustomize] = useState(false);
   const workspace = useStore(workspaceId);
+  useLoadCapabilities();
 
   const openPalette = useCallback(() => setPalette(true), []);
   const openShortcuts = useCallback(() => setShortcuts(true), []);

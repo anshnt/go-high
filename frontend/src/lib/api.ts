@@ -25,10 +25,10 @@ const live = fetchSend({
   },
 });
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, headers?: Record<string, string>): Promise<T> {
   // Constant-folded away in normal builds, so the demo responder never ships with the real app.
-  if (import.meta.env.VITE_DEMO === "1") return (await import("./demo")).demoRequest<T>(method, path, body);
-  return live<T>(method, path, body);
+  if (import.meta.env.VITE_DEMO === "1") return (await import("./demo")).demoRequest<T>(method, path, body, headers);
+  return live<T>(method, path, body, headers);
 }
 
 export const api = httpOf(request);

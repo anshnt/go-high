@@ -1,5 +1,6 @@
 import { Mail, Pencil, Phone, Plus, SearchX, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { MessageButton } from "../inbox/MessageButton";
 import { Avatar, Button, EmptyState, Skeleton, Switch, useToast } from "../ui";
 import { Combobox } from "../ui/Combobox";
 import { Associations } from "./Associations";
@@ -314,6 +315,7 @@ export function RecordDetail({ client, def, id, initial, fields, onClose, onChan
             </p>
           </div>
           <div className="rec-d-actions">
+            {def.key === "contact" && <MessageButton contactId={row.id} />}
             {email && (
               <a className="ui-btn" data-variant="secondary" data-size="sm" href={`mailto:${row.values[email.key]}`}>
                 <Mail size={14} aria-hidden /> <span className="rec-hide-sm">Email</span>

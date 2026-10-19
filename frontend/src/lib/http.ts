@@ -44,11 +44,12 @@ export async function errorFrom(res: Response): Promise<ApiError> {
   return new ApiError(res.status, message, Number.isFinite(wait) && wait > 0 ? wait : undefined, extra);
 }
 
-export type Send = <T>(method: string, path: string, body?: unknown) => Promise<T>;
+/** `headers` are extra request headers for this call (an `Idempotency-Key` on a send). */
+export type Send = <T>(method: string, path: string, body?: unknown, headers?: Record<string, string>) => Promise<T>;
 
 export type Http = {
   get: <T>(path: string) => Promise<T>;
-  post: <T = void>(path: string, body?: unknown) => Promise<T>;
+  post: <T = void>(path: string, body?: unknown, headers?: Record<string, string>) => Promise<T>;
   patch: <T>(path: string, body: unknown) => Promise<T>;
   put: <T>(path: string, body: unknown) => Promise<T>;
   del: (path: string) => Promise<void>;
@@ -56,7 +57,7 @@ export type Http = {
 
 export const httpOf = (send: Send): Http => ({
   get: (path) => send("GET", path),
-  post: (path, body) => send("POST", path, body),
+  post: (path, body, headers) => send("POST", path, body, headers),
   patch: (path, body) => send("PATCH", path, body),
   put: (path, body) => send("PUT", path, body),
   del: (path) => send("DELETE", path),
@@ -67,8 +68,8 @@ export const httpOf = (send: Send): Http => ({
  * so the session store can sign the user out.
  */
 export function fetchSend(opts: { workspace: () => string | null; unauthorized?: (path: string) => void; fetch?: typeof fetch }): Send {
-  return async function send<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const headers: Record<string, string> = { Accept: "application/json" };
+  return async function send<T>(method: string, path: string, body?: unknown, extra?: Record<string, string>): Promise<T> {
+    const headers: Record<string, string> = { Accept: "application/json", ...extra };
     const ws = opts.workspace();
     if (ws) headers["X-Workspace-Id"] = ws;
     if (body !== undefined) headers["Content-Type"] = "application/json";

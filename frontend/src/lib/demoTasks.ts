@@ -1,3 +1,4 @@
+import { USERS } from "../records/seed.ts";
 import { bucketOf, dueDate, startOfDay } from "./dates";
 import type { Member, MyDay, Task } from "./tasks";
 
@@ -8,9 +9,13 @@ import type { Member, MyDay, Task } from "./tasks";
 
 export class DemoMiss extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  code?: string;
+  fields?: Record<string, string>;
+  constructor(status: number, message: string, code?: string, fields?: Record<string, string>) {
     super(message);
     this.status = status;
+    this.code = code;
+    this.fields = fields;
   }
 }
 
@@ -116,7 +121,7 @@ export function demoTasks(method: string, path: string, body: unknown, me: Membe
     case "GET /api/v1/my-day":
       return myDay(me.id);
     case "GET /api/v1/members":
-      return { data: [{ user_id: me.id, name: me.name, email: me.email, implicit: false, teams: [] }], next_cursor: null };
+      return { data: [{ user_id: me.id, name: me.name, email: me.email, implicit: false, teams: [] }, ...USERS.map((u) => ({ user_id: u.id, name: u.name, email: u.email, implicit: false, teams: [] }))], next_cursor: null };
     case "GET /api/v1/notifications":
       return { data: [], next_cursor: null };
     case "GET /api/v1/notifications/unread-count":

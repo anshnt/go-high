@@ -22,7 +22,8 @@ export const router = createBrowserRouter([
       { path: "tasks", lazy: async () => ({ Component: (await import("./tasks/TasksPage")).TasksPage }) },
       { path: "calendar", lazy: async () => ({ Component: (await import("./calendar/CalendarPage")).CalendarPage }) },
       // Contacts is the records area: /contacts, /companies, /deals and custom objects, all one screen (src/records).
-      ...CORE.filter((item) => !["contacts", "tasks", "calendar"].includes(item.id)).map((item) => ({ path: item.path.slice(1), element: <ModulePage item={item} /> })),
+      { path: "inbox/:id?", lazy: async () => ({ Component: (await import("./inbox/InboxPage")).InboxPage }) },
+      ...CORE.filter((item) => !["inbox", "contacts", "tasks", "calendar"].includes(item.id)).map((item) => ({ path: item.path.slice(1), element: <ModulePage item={item} /> })),
       { path: "contacts/:id?", lazy: async () => ({ Component: (await import("./pages/RecordPages")).ContactsPage }) },
       { path: "companies/:id?", lazy: async () => ({ Component: (await import("./pages/RecordPages")).CompaniesPage }) },
       { path: "deals/:id?", lazy: async () => ({ Component: (await import("./pages/RecordPages")).DealsPage }) },
@@ -32,6 +33,7 @@ export const router = createBrowserRouter([
       { path: "forms", lazy: async () => ({ Component: (await import("./forms/FormsPage")).FormsPage }) },
       { path: "forms/:id", lazy: async () => ({ Component: (await import("./forms/FormBuilder")).FormBuilder }) },
       { path: "settings", element: <SettingsPage /> },
+      { path: "settings/channels", lazy: async () => ({ Component: (await import("./inbox/ChannelsSettings")).ChannelsSettings }) },
       { path: "settings/notifications", lazy: async () => ({ Component: (await import("./pages/NotificationSettings")).NotificationSettings }) },
       { path: "settings/security", lazy: async () => ({ Component: (await import("./pages/SecuritySettings")).SecuritySettings }) },
       { path: "settings/:sectionId", element: <SettingsSectionPage /> },
