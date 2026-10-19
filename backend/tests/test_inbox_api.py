@@ -2,7 +2,7 @@ import json
 from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
-from helpers import H, add_member, drain, due_now
+from helpers import H, add_member, drain, due_now, make_record
 from inbox_helpers import (
     add_channel,
     bodies,
@@ -134,6 +134,35 @@ def test_unread_is_per_user_and_a_read_mark_only_moves_forward(crm, db):
     assert conversation(w.member, ws, w.alice["id"])["unread"] is True
     assert act(client, ws, w.dan["id"], "read").status_code == 200  # a closed conversation can be marked too
     assert [tuple(r) for r in sql(db, "SELECT count(*) FROM conversation_reads")] == [(2,)]
+
+
+def test_a_conversation_can_be_marked_unread_again_for_the_caller_only(crm, db):
+    client, ws, ids = crm
+    w = World(client, ws, ids, db)
+    act(client, ws, w.alice["id"], "read")
+    act(w.member, ws, w.alice["id"], "read")
+    assert conversation(client, ws, w.alice["id"])["unread"] is False
+    again = act(client, ws, w.alice["id"], "unread")
+    assert again.status_code == 200 and again.json() == {"last_read_seq": 0}  # just before her one message
+    assert conversation(client, ws, w.alice["id"])["unread"] is True and counts(client, ws)["unread"] == 5
+    assert w.alice["id"] in {c["id"] for c in conversations_of(client, ws, view="unread")["data"]}
+    assert conversation(w.member, ws, w.alice["id"])["unread"] is False  # the member's mark is theirs
+    act(client, ws, w.alice["id"], "read")
+    assert conversation(client, ws, w.alice["id"])["unread"] is False  # and reading it again clears it
+    sms_in(anonymous, w.sms, NUMBERS["alice"], "Hello? Still there?")
+    act(client, ws, w.alice["id"], "read")
+    assert act(client, ws, w.alice["id"], "unread").json() == {"last_read_seq": 1}  # only the newest is unread
+    # a note takes a seq but is not the contact's: unread goes back to before the last inbound message, not the note
+    client.post(f"/api/v1/conversations/{w.alice['id']}/messages", json={"body": "ping", "kind": "note"},
+                headers={H: ws})
+    assert act(client, ws, w.alice["id"], "unread").json() == {"last_read_seq": 1}
+    assert conversation(client, ws, w.alice["id"])["unread"] is True
+    # a conversation the contact never wrote in has nothing to be unread
+    nia = make_record(client, ws, first_name="Nia", phone="+14155550199")
+    started = client.post("/api/v1/conversations", json={"contact_id": nia["id"]}, headers={H: ws}).json()
+    assert act(client, ws, started["id"], "unread").json() == {"last_read_seq": 0}
+    assert conversation(client, ws, started["id"])["unread"] is False
+    assert act(client, ws, "00000000-0000-0000-0000-000000000000", "unread").status_code == 404
 
 
 def test_the_list_pages_by_last_activity_with_a_signed_cursor(crm, db):

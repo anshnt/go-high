@@ -115,6 +115,7 @@ for module in (objects, records, associations, tags, views, timeline, pipelines,
                consent, inbound, stream, chat,
                forms, form_responses, form_analytics, form_public, calendars, availability, bookings, public):
     app.include_router(module.router)
+app.include_router(simulator.mine)
 app.include_router(form_public.pages)  # /f/{key} and /embed.js, before the catch-all below
 app.include_router(public.pages)
 

@@ -17,7 +17,8 @@ MEMBERS = "/api/v1/members"
 PUBLIC: set[tuple[str, str]] = {  # a person's own notifications and settings: nobody else's, so no capability
     ("GET", "/api/v1/notifications"), ("GET", "/api/v1/notifications/unread-count"),
     ("POST", "/api/v1/notifications/read"), ("GET", "/api/v1/notifications/prefs"),
-    ("PUT", "/api/v1/notifications/prefs")}
+    ("PUT", "/api/v1/notifications/prefs"),
+    ("GET", "/api/v1/me/capabilities")}  # the caller's own capabilities, for the web app
 
 
 def role_of(client, ws, key):

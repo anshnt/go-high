@@ -377,6 +377,7 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
         "/api/v1/conversations/{conversation_id}/messages", "/api/v1/conversations/{conversation_id}/assign",
         "/api/v1/conversations/{conversation_id}/snooze", "/api/v1/conversations/{conversation_id}/close",
         "/api/v1/conversations/{conversation_id}/reopen", "/api/v1/conversations/{conversation_id}/read",
+        "/api/v1/conversations/{conversation_id}/unread", "/api/v1/me/capabilities",
         "/api/v1/conversations/{conversation_id}/messages/{message_id}",
         "/api/v1/contacts/{contact_id}/consents", "/api/v1/contacts/{contact_id}/consents/{kind}",
         "/api/v1/stream", "/api/hooks/{provider}/{channel_id}", "/api/public/chat/{widget_key}/session",

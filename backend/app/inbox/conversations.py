@@ -274,6 +274,22 @@ def read(conversation_id: uuid.UUID, body: Read | None = None, c: Ctx = Depends(
     return {"last_read_seq": read_mark(c.db, conv, c.user_id)}
 
 
+@router.post("/{conversation_id}/unread")
+def unread(conversation_id: uuid.UUID, c: Ctx = Depends(reads)):
+    """Marks the conversation unread for the caller again: their read mark goes to just before the contact's last
+    message. A conversation the contact never wrote in has nothing to be unread, so it stays as it is. (`/read` only
+    moves the mark forward; this is the one way back.)"""
+    conv, _ = conversation_or_404(c, conversation_id)
+    if conv.last_inbound_seq:
+        mark = conv.last_inbound_seq - 1
+        c.db.execute(pg_insert(ConversationRead).values(
+            conversation_id=conv.id, user_id=c.user_id, workspace_id=conv.workspace_id, last_read_seq=mark
+        ).on_conflict_do_update(index_elements=["conversation_id", "user_id"],
+                                set_={"last_read_seq": mark, "updated_at": func.now()}))
+        c.db.commit()
+    return {"last_read_seq": read_mark(c.db, conv, c.user_id)}
+
+
 @router.patch("/{conversation_id}/messages/{message_id}")
 def edit_note(conversation_id: uuid.UUID, message_id: uuid.UUID, body: EditNote, c: Ctx = Depends(writes)):
     """An internal note's text, changed by its author only."""
