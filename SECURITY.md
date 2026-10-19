@@ -223,6 +223,10 @@ Row level security separates tenants; what a user may do inside a workspace is `
   is created, replaced by `rotate-secret`; stored readable because signing needs it, like a webhook endpoint's) and
   carries an idempotency key, so a receiver can drop a repeat. Request handlers can queue deliveries but only the worker
   updates them.
+- A webhook's address is part of the graph, so whoever has `workflows.read` can read it (and the step's trace shows
+  it; the delivery list shows the host only): keep tokens out of the URL until secret references exist (module 33). The
+  check log behind "why did it not enter" quotes what a record has, so a role that hides fields gets the outcome and no
+  reason.
 - Sending is exactly once and consent-bound: a message is queued through the inbox's own path, with the opt-out, do not
   disturb, frequency cap and quiet hours checks of any reply (again when the worker sends), under a unique idempotency
   key `run:node`; a step that runs twice finds its row. A STOP is never overridden by a workflow.

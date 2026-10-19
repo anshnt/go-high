@@ -36,10 +36,11 @@ UNION_TAGS = re.compile(r"(str|int|float|bool|none|uuid|literal\[.*|list.*|dict.
 
 def record_key(event_type: str) -> str | None:
     """How an event names the record it is about: `subject` (the record is its subject), or the key of its data
-    that holds the id (`contact_id`, `record_id`). None for an event about nothing a workflow can run on, and for the
-    workflow events themselves, which must never start workflows."""
+    that holds the id (`contact_id`, `record_id`). None for an event about nothing a workflow can run on, for the
+    workflow events themselves, which must never start workflows, and for `record.deleted`: a run cannot act on a
+    record that is in the trash."""
     props = events.TYPES[event_type]["properties"]
-    if event_type.startswith("workflow."):
+    if event_type.startswith("workflow.") or event_type == "record.deleted":
         return None
     if {"object", "display_name"} <= props.keys():
         return "subject"

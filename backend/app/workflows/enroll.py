@@ -15,6 +15,7 @@ Rows of the check log older than 7 days are pruned as new ones are written.
 ponytail: a record is judged by its state when the event is read, not when it happened; an event handled late sees the
 later state (a run might start for `record.created` on a contact whose filter only holds since an update).
 ponytail: while a workflow is paused its waiters and goals see no events, so an event in that time is not caught."""
+import logging
 import uuid
 from datetime import timedelta
 
@@ -35,6 +36,7 @@ from .judge import judge
 from .models import ACTIVE, Run, TriggerCheck, Waiter, Workflow, WorkflowVersion
 from .schema import TRIGGERS
 
+log = logging.getLogger("workflows")
 KEEP = timedelta(days=7)  # the check log: "why did this record not enter" is answerable for a week
 HITS = ("entered", "running", "reentry")  # outcomes where the trigger matched
 
@@ -152,6 +154,31 @@ def jump_to_goals(db: Session, cat: Catalog, e: Event, rec: Record, runs: list[R
                 break
 
 
+def settle(db: Session, cat: Catalog, e: Event, rec: Record, waiters: list[Waiter], runs: list[Run]) -> None:
+    """The event waits and goals of one event, in a savepoint of their own: whatever goes wrong with one record's runs
+    is logged and does not hold back the event consumers behind this one."""
+    try:
+        with db.begin_nested():
+            resolve_waiters(db, e, rec.id, waiters)
+            jump_to_goals(db, cat, e, rec, runs)
+    except Exception:
+        log.exception("the waits and goals of event %s could not be handled", e.id)
+
+
+def judged(db: Session, cat: Catalog, e: Event, rec: Record | None, wf: Workflow,
+           version: WorkflowVersion) -> tuple[str, str | None, Run | None]:
+    """(outcome, reason, run) of one trigger check: the judgment and, when the record passes, its enrollment."""
+    if rec is None:
+        return "no_record", "the event does not name a record" if record_of(e) is None else "the record is gone", None
+    try:
+        with db.begin_nested():
+            outcome, reason = evaluate(cat, rec, version.graph["trigger"], e, wf.id)
+            return admit(db, wf, version, rec, e) if outcome == "ok" else (outcome, reason, None)
+    except Exception:
+        log.exception("the trigger of workflow %s could not be judged for event %s", wf.id, e.id)
+        return "error", "the trigger could not be judged: see the worker's log", None
+
+
 def read(db: Session, ws: Workspace, batch: list[Event]) -> bool:
     """Handles the events of one workspace (inside `acting`); whether any check was written."""
     cat = Catalog(system_ctx(db, ws))
@@ -176,16 +203,11 @@ def read(db: Session, ws: Workspace, batch: list[Event]) -> bool:
         rid = record_of(e)
         rec = db.get(Record, rid) if rid else None
         if rec is not None and rec.deleted_at is None:
-            resolve_waiters(db, e, rid, waiters)
-            jump_to_goals(db, cat, e, rec, [r for r in live if r.record_id == rid])
+            settle(db, cat, e, rec, waiters, [r for r in live if r.record_id == rid])
         for wf, version, live_since in candidates:
             if wf.trigger_event != e.type or (wf.id, e.id) in done or e.occurred_at < live_since:
                 continue
-            outcome, reason = (("no_record", "the event does not name a record") if rid is None
-                               else evaluate(cat, rec, version.graph["trigger"], e, wf.id))
-            run = None
-            if outcome == "ok":
-                outcome, reason, run = admit(db, wf, version, rec, e)
+            outcome, reason, run = judged(db, cat, e, rec, wf, version)
             checks.append(TriggerCheck(
                 workspace_id=ws.id, workflow_id=wf.id, version_id=version.id, event_id=e.id, event_type=e.type,
                 record_id=rid, matched=outcome in HITS, outcome=outcome, reason=reason and reason[:500],

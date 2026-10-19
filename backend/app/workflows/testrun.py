@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 
+from .. import permissions
 from ..inbox import consent
 from ..inbox.threads import system_ctx
 from ..records.models import Record
@@ -115,9 +116,10 @@ def run_test(c: Ctx, wf: Workflow, version: WorkflowVersion, rec: Record, paths:
     return {"run": run, "steps": walk.trail, "skipped_seconds": walk.skipped}
 
 
-def check_json(x: TriggerCheck) -> dict:
+def check_json(x: TriggerCheck, hide: bool) -> dict:
+    """A check of the log. Its reason quotes what the record has, which a role that hides fields may not read."""
     return {"event_id": x.event_id, "event_type": x.event_type, "matched": x.matched, "outcome": x.outcome,
-            "reason": x.reason, "run_id": x.run_id, "version_id": x.version_id, "at": x.created_at}
+            "reason": None if hide else x.reason, "run_id": x.run_id, "version_id": x.version_id, "at": x.created_at}
 
 
 def explain(c: Ctx, wf: Workflow, version: WorkflowVersion | None, rec: Record) -> dict:
@@ -128,9 +130,9 @@ def explain(c: Ctx, wf: Workflow, version: WorkflowVersion | None, rec: Record) 
                              .order_by(TriggerCheck.event_id.desc(), TriggerCheck.id.desc()).limit(20)))
     runs = list(db.scalars(select(Run).where(Run.workflow_id == wf.id, Run.record_id == rec.id, Run.test.is_(False))
                            .order_by(Run.started_at.desc(), Run.id.desc()).limit(5)))
-    live = next((r for r in runs if r.status in ACTIVE), None)
+    live, hide = next((r for r in runs if r.status in ACTIVE), None), permissions.restricted(c)
     out = {"record_id": rec.id, "workflow_id": wf.id, "workflow_status": wf.status, "in_workflow": live is not None,
-           "checks": [check_json(x) for x in checks], "evaluation": None,
+           "checks": [check_json(x, hide) for x in checks], "evaluation": None,
            "runs": [{"id": r.id, "status": r.status, "node_id": r.node_id, "started_at": r.started_at,
                      "ended_at": r.ended_at} for r in runs]}
     if wf.status != "published":
@@ -139,7 +141,7 @@ def explain(c: Ctx, wf: Workflow, version: WorkflowVersion | None, rec: Record) 
         return {**out, "answer": f"The record is in the workflow now: its run is {live.status} at {live.node_id}"}
     if checks:
         last = checks[0]
-        reason = f": {last.reason}" if last.reason else ""
+        reason = f": {last.reason}" if last.reason and not hide else ""
         return {**out, "answer": f"{'Entered' if last.outcome == 'entered' else 'Did not enter'} when "
                                  f"{last.event_type} was read at {last.created_at:%Y-%m-%d %H:%M} UTC{reason}"}
     outcome, reason = evaluate(Catalog(system_ctx(db, c.workspace)), db.get(Record, rec.id), version.graph["trigger"],
@@ -147,7 +149,8 @@ def explain(c: Ctx, wf: Workflow, version: WorkflowVersion | None, rec: Record) 
     if outcome == "ok" and runs and not wf.settings.get("reentry"):
         outcome, reason = "reentry", "the record was in this workflow before, and re-entry is off"
     start = f"No {version.graph['trigger']['event']} was read for this record in the last 7 days. Judged now, "
+    reason = None if hide else reason
     return {**out, "evaluation": {"outcome": outcome, "reason": reason, "matched": outcome in (*HITS, "ok"),
                                   "evaluated": "now"},
             "answer": start + ("it would enter when that event happens" if outcome == "ok"
-                               else f"it would not enter: {reason}")}
+                               else f"it would not enter{f': {reason}' if reason else ''}")}

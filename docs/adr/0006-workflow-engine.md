@@ -75,7 +75,7 @@ Where the code differs from the sketch above, or decides what it left open:
   publish that moves a run a `migrated` row, a cancel a `cancelled` row. `workflow_waiters` and `workflow_refs` are as
   sketched; refs are by id or by key (a field is `contact.email`, a tag may be named by id or by name).
 - **The graph** is `{trigger, start, nodes}`. The trigger is `{event, object (default contact), filter, data}`: the event
-  types that name a record (as subject, or in `contact_id` or `record_id`; 26 today, workflow events excluded), the
+  types that name a record (as subject, or in `contact_id` or `record_id`; 25 today; workflow events and `record.deleted` are excluded), the
   object whose records enter, a filter AST over the record and a containment test on the event's data. Nodes carry
   `next` or `branches` (`yes` and `no`; a split's path names; `event` and `timeout` for an event wait); `null` ends the
   run. Validation is `schema.py` (pure) plus `check.py` (against the workspace); both produce field pointers.

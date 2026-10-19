@@ -3,10 +3,23 @@ record the caller may see, that a role with hidden fields gets no trace values, 
 read what its author may not."""
 import uuid
 
-from helpers import H, add_member, make_role, rule, user_id_of
+from helpers import H, add_member, declared, make_role, rule, user_id_of, v1_routes
 from workflow_helpers import ROOT, act, contact, create, graph, live, make_tag, only_run, publish, pump, runs, tag
 
 END = {"type": "end", "config": {}}
+R, W, P = "workflows.read", "workflows.write", "workflows.publish"
+WF = "/api/v1/workflows"
+# every workflow route and the one capability it declares: a new route has to be put here on purpose
+ROUTES = {
+    ("GET", WF): R, ("POST", WF): W, ("GET", f"{WF}/catalog"): R, ("GET", f"{WF}/refs"): R, ("GET", f"{WF}/runs"): R,
+    ("GET", f"{WF}/runs/{{run_id}}"): R, ("POST", f"{WF}/runs/{{run_id}}/cancel"): W,
+    ("POST", f"{WF}/runs/{{run_id}}/retry"): W, ("GET", f"{WF}/{{workflow_id}}"): R,
+    ("PATCH", f"{WF}/{{workflow_id}}"): W, ("DELETE", f"{WF}/{{workflow_id}}"): P,
+    ("POST", f"{WF}/{{workflow_id}}/rotate-secret"): P, ("GET", f"{WF}/{{workflow_id}}/versions"): R,
+    ("POST", f"{WF}/{{workflow_id}}/versions"): W, ("GET", f"{WF}/{{workflow_id}}/versions/{{number}}"): R,
+    ("GET", f"{WF}/{{workflow_id}}/diff"): R, ("POST", f"{WF}/{{workflow_id}}/publish"): P,
+    ("POST", f"{WF}/{{workflow_id}}/pause"): P, ("POST", f"{WF}/{{workflow_id}}/resume"): P,
+    ("POST", f"{WF}/{{workflow_id}}/test"): W, ("GET", f"{WF}/{{workflow_id}}/explain"): R}
 
 
 def refused(r, capability: str) -> None:
@@ -116,6 +129,21 @@ def test_a_role_that_hides_a_field_gets_the_trace_without_what_was_set_or_sent(c
     assert seen["steps"][0]["input"] is None and seen["steps"][0]["output"] is None  # values may be ones it hides
 
 
+def test_a_role_that_hides_a_field_gets_no_quoted_values_from_the_explainer(crm, db):
+    admin, ws, ids = crm
+    cautious = make_role(admin, ws, "Cautious", copy_from="member", rules=[rule("*", "all", hidden=["lifecycle"])])
+    person = add_member(db, ids["org_id"], "c@example.com", workspace_id=ws, workspace_role=cautious["key"])
+    wf = live(admin, ws, graph({"go": END}, filter={"field": "lifecycle", "op": "is", "value": "lead"}))
+    ada = contact(admin, ws, lifecycle="customer")
+    pump(db)
+    path = f"{ROOT}/{wf['id']}/explain"
+    full = admin.get(path, params={"record_id": ada["id"]}, headers={H: ws}).json()
+    assert full["checks"][0]["reason"] == 'Lifecycle stage is "lead" did not hold (it is "customer")'
+    limited = person.get(path, params={"record_id": ada["id"]}, headers={H: ws}).json()
+    assert limited["checks"][0]["outcome"] == "filter" and limited["checks"][0]["reason"] is None
+    assert "customer" not in str(limited) and limited["answer"].startswith("Did not enter when record.created")
+
+
 def test_a_workflow_cannot_be_used_to_read_or_write_what_its_author_may_not(crm, db):
     admin, ws, ids = crm
     cautious = make_role(admin, ws, "Cautious", copy_from="member", rules=[rule("*", "all", hidden=["phone"])])
@@ -171,3 +199,8 @@ def test_another_organizations_workflow_ids_are_404_for_every_workflow_route(crm
         r = admin.request(method, f"{ROOT}{path}", json=body, headers={H: ws})
         assert r.status_code == 404, (method, path, r.status_code)
     assert admin.get(ROOT, headers={H: ws}).json()["data"] == []
+
+
+def test_every_workflow_route_declares_the_capability_the_table_says():
+    found = {(m, p): declared(r.dependant) for m, p, r in v1_routes() if p.startswith(WF)}
+    assert found == {route: [capability] for route, capability in ROUTES.items()}

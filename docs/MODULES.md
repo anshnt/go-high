@@ -304,7 +304,7 @@ Milestones: **M0 Foundations**, **M1 Core CRM** (first sellable product), **M2 G
 - Visual builder with 89 triggers and many actions (messages, CRM updates, waits, if/else, goals, webhooks, custom code, AI agent), re-entry and time window settings, 10 versions or 30 days of history, premium actions billed per run, legacy campaigns.
 
 **Better**
-- [x] Typed trigger and action catalog generated from module 05 events, documented and available to apps (`GET /api/v1/workflows/catalog`: the 26 event types that name a record, with their data schemas, and the nine first actions with the JSON schema of each config; the API validates saved versions with the same schemas; marketplace apps adding actions wait for module 33)
+- [x] Typed trigger and action catalog generated from module 05 events, documented and available to apps (`GET /api/v1/workflows/catalog`: the 25 event types that name a record, with their data schemas, and the nine first actions with the JSON schema of each config; the API validates saved versions with the same schemas; marketplace apps adding actions wait for module 33)
 - [ ] Canvas builder: branches, waits, goals, loops over records, sub-workflows with inputs and outputs (the graph, its validation and the engine are built: branches, waits, goals; loops over records, the canvas and working sub-workflows are not)
 - [x] Draft and published versions, unlimited history, diff, rollback; migrate in-flight contacts when steps change (rollback is publishing an older version)
 - [x] Test run with sample contacts and time travel (fast-forward waits) (one record per run; waits skip on a virtual clock and report the time)

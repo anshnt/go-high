@@ -12,6 +12,8 @@ per run, and at most `WORKFLOW_CONCURRENCY` steps at once per workspace (advisor
 coordination): a step that finds none free puts its job back a few seconds later.
 
 ponytail: runs of a paused workflow freeze (their jobs find the workflow paused and end); resuming queues them again.
+ponytail: a step job that fails five times for a reason outside its node (the database going away) dies with its run
+still `running`; cancel it (retry takes failed runs only) until there is a dead-letter view to requeue from.
 ponytail: a run migrated by a publish takes the new graph for the node it is at, and loops see the new node's config."""
 import hashlib
 import logging
