@@ -4,7 +4,17 @@
 
 An all-in-one growth platform for agencies and small businesses: CRM, unified inbox, phone and SMS, calendars, forms, automations, sites and funnels, email marketing, payments, reputation, social, reporting, courses and AI agents, plus an agency layer to run, template, white label and resell client workspaces.
 
-**Status:** M0 Foundations in progress: platform scaffold (API, worker, job queue, web app, CI).
+**Status:** [v0.2.0](https://github.com/anshnt/go-high/releases/latest) (`ghcr.io/anshnt/go-high`). Try the [public demo](https://anshnt.github.io/go-high/) (fictional data, runs in your browser).
+
+Working today:
+
+- **Platform**: organizations, brands and workspaces with row level security on every table; sign in with password or magic link; roles with record and field scopes; audit log; signed webhooks; `/api/v1` with cursors and idempotency.
+- **CRM**: contacts, companies, deals and custom objects on one record engine, with filters, saved views, tags, links, bulk edit, a timeline and pipelines with exit rules and forecasts.
+- **Work**: tasks with recurrence and dependencies, My Day, in-app notifications.
+- **Conversations**: unified inbox backend for SMS, email, WhatsApp and webchat, with consent checks and realtime updates.
+- **Capture**: forms, surveys and quizzes with logic and an embed; calendars with round robin and a public booking page.
+
+Next: the inbox and pipeline board screens, workflow automation, email marketing and payments (see the [roadmap](docs/PLAN.md#roadmap)).
 
 | Doc | What is in it |
 | --- | --- |
