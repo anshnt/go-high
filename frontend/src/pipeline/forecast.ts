@@ -107,12 +107,12 @@ export function ownerRows(f: Forecast, currency: string, label: string | null): 
 
 // ---- the axis ----
 
-/** Clean tick values from 0 up to at least `max`: 1, 2 or 5 times a power of ten, about four steps. */
+/** Clean tick values from 0 up to at least `max`: 1, 2, 2.5 or 5 times a power of ten, about four steps. */
 export function niceTicks(max: number, steps = 4): number[] {
   if (!(max > 0)) return [0, 1];
   const raw = max / steps;
   const power = 10 ** Math.floor(Math.log10(raw));
-  const unit = [1, 2, 5, 10].find((u) => u * power >= raw)! * power;
+  const unit = [1, 2, 2.5, 5, 10].find((u) => u * power >= raw && Number.isInteger(u * power))! * power;
   const count = Math.ceil(max / unit);
   return Array.from({ length: count + 1 }, (_, i) => i * unit);
 }

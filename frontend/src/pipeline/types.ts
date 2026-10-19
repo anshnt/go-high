@@ -63,3 +63,29 @@ export type Forecast = { period: Period; periods: ForecastPeriod[] };
 
 export type StageSpec = { name: string; kind?: StageKind; probability?: number; rotting_days?: number | null; color?: string | null; exit_rules?: Filter | Record<string, never> };
 export type StagePatch = Partial<StageSpec>;
+
+/**
+ * Everything the pipeline screens need from the backend. The API client (apiClient.ts) is what the app runs on; the
+ * in-memory client (memoryClient.ts) stands in for it in the public demo. Both throw RecordsError (status, fields).
+ */
+export interface PipelineClient {
+  /** Live pipelines in order, or the archived ones. */
+  list(archived?: boolean): Promise<Pipeline[]>;
+  /** The pipeline's stages with counts, sums and the first `limit` cards of each. */
+  board(id: string, limit?: number): Promise<Board>;
+  /** The next page of one column. */
+  column(id: string, stageId: string, cursor: string, limit?: number): Promise<{ deals: Card[]; next_cursor: string | null }>;
+  /** Moves a deal to a stage and a place in it. A 422 carries `fields` (what the stage it leaves wants, or the lost reason). */
+  move(dealId: string, input: MoveInput): Promise<Card>;
+  layout(id: string): Promise<Layout>;
+  saveLayout(id: string, layout: Layout): Promise<Layout>;
+  forecast(id: string, period: Period): Promise<Forecast>;
+  createPipeline(name: string, stages?: StageSpec[]): Promise<Pipeline>;
+  renamePipeline(id: string, name: string): Promise<Pipeline>;
+  archivePipeline(id: string, archived: boolean): Promise<Pipeline>;
+  createStage(pipelineId: string, spec: StageSpec): Promise<Stage>;
+  updateStage(pipelineId: string, stageId: string, patch: StagePatch): Promise<Stage>;
+  deleteStage(pipelineId: string, stageId: string): Promise<void>;
+  /** The whole order in one call. */
+  reorderStages(pipelineId: string, stageIds: string[]): Promise<Stage[]>;
+}
