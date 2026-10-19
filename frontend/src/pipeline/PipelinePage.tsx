@@ -235,6 +235,18 @@ function BoardTab({ pipeline, pipelines }: { pipeline: Pipeline; pipelines: Pipe
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Esc closes the record beside the board, unless a dialog, a menu or a field is using it
+  useEffect(() => {
+    if (!openId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if ((e.target as HTMLElement).closest?.(TYPING) || document.querySelector('[role="dialog"], [role="menu"], [role="listbox"]')) return;
+      close();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [openId, close]);
+
   // ---- moves ----
 
   const finished = useCallback(
