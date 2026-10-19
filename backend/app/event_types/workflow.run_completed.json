@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "workflow.run_completed",
+  "description": "A run ended without an error: `completed` after its last step, `exited` when the record was deleted or a publish moved it out of the flow. Subject: the run.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "workflow_id": {"type": "string", "format": "uuid"},
+    "workflow_name": {"type": "string"},
+    "version": {"type": "integer"},
+    "record_id": {"type": "string", "format": "uuid"},
+    "status": {"type": "string", "enum": ["completed", "exited"]},
+    "steps": {"type": "integer"},
+    "reason": {"type": ["string", "null"]}
+  },
+  "required": ["id", "workflow_id", "workflow_name", "version", "record_id", "status", "steps", "reason"],
+  "additionalProperties": false
+}

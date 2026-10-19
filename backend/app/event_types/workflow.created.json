@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "workflow.created",
+  "description": "A workflow was created. `data` is its state. Subject: the workflow.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"},
+    "folder": {"type": ["string", "null"]},
+    "status": {"type": "string", "enum": ["draft", "published", "paused", "archived"]},
+    "settings": {"type": "object"}
+  },
+  "required": ["id", "name", "folder", "status", "settings"],
+  "additionalProperties": false
+}

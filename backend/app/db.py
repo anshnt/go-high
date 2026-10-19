@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -42,3 +44,29 @@ def rescope(db: Session, **scope) -> None:
     db.info["scope"] = scope
     if db.in_transaction():
         _apply(db.connection(), scope)
+
+
+@contextmanager
+def acting(db: Session, **scope):
+    """Runs a block of an owner role session (the worker's) the way a request runs: as gohigh_app with `scope`
+    (workspace_id, org_id), so row level security confines every query in it. Code written for requests (the record
+    engine, the filter compiler) looks objects up by key and relies on that. Nothing is committed here: the block is
+    part of the caller's transaction, which the owner role gets back when it ends (see `elevated` for one statement)."""
+    db.info["scope"] = scope
+    _apply(db.connection(), scope)
+    try:
+        yield
+    except BaseException:
+        db.info.pop("scope", None)  # the transaction is going to roll back, which also ends the role
+        raise
+    db.execute(text("RESET ROLE"))
+    db.info.pop("scope", None)
+
+
+@contextmanager
+def elevated(db: Session):
+    """The owner role again, inside `acting`, for the few writes the app role has no grant for (a notification)."""
+    scope = db.info["scope"]
+    db.execute(text("RESET ROLE"))
+    yield  # an error leaves the transaction to roll back; there is no role to put back then
+    _apply(db.connection(), scope)

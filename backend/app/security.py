@@ -102,7 +102,13 @@ class Ctx:
     workspace_role: str | None = None  # "admin" for org owners and admins, else the key of the workspace role
     role: Role | None = None  # the role that applies in the workspace (see tenancy.effective_role)
     org_admin: bool = False  # the role is implicit: an org owner or admin
+    actor: tuple[str, uuid.UUID] | None = None  # who a write is attributed to when it is not the user: a workflow
     cache: dict = field(default_factory=dict)  # per request: permissions.py keeps what it has worked out here
+
+    def author(self) -> tuple[str, uuid.UUID] | None:
+        """Who caused a change, for the event it emits: the workflow acting as the Automation role, else the user,
+        else the system (None) for work no signed-in user is behind (a form, an inbound message, a booking)."""
+        return self.actor or (("user", self.user_id) if self.user_id else None)
 
 
 def user(request: Request):

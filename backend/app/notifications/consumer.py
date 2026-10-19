@@ -31,7 +31,7 @@ from .models import Notification, NotificationPref
 
 # kind: what the setting is called (shown in Settings > Notifications)
 KINDS = {"task_assigned": "A task is assigned to you", "task_due": "A task you own is due",
-         "record_assigned": "A record is assigned to you"}
+         "record_assigned": "A record is assigned to you", "workflow": "A workflow notifies you"}
 
 
 @dataclass

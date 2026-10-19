@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "workflow.version_created",
+  "description": "A draft version of a workflow was saved. Versions are immutable; publishing points the workflow at one. Subject: the workflow.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"},
+    "version": {"type": "integer"},
+    "version_id": {"type": "string", "format": "uuid"},
+    "note": {"type": ["string", "null"]}
+  },
+  "required": ["id", "name", "version", "version_id", "note"],
+  "additionalProperties": false
+}

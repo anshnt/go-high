@@ -89,7 +89,7 @@ def append(db: Session, conv: Conversation, *, direction: str, status: str, kind
            channel_id: uuid.UUID | None = None, body: str = "", subject: str | None = None, html: str | None = None,
            attachments: list | None = None, provider_message_id: str | None = None, thread_ref: str | None = None,
            sent_by: uuid.UUID | None = None, occurred_at: datetime | None = None, segments: int | None = None,
-           cost: Decimal | None = None) -> Message | None:
+           cost: Decimal | None = None, idempotency_key: str | None = None) -> Message | None:
     """Stores a message as the next `seq` of the conversation. None when the channel already has this provider
     message id: a retried webhook changes nothing. The conversation row is locked first, so two writers take turns
     and the duplicate check cannot race."""
@@ -101,7 +101,8 @@ def append(db: Session, conv: Conversation, *, direction: str, status: str, kind
     msg = Message(workspace_id=conv.workspace_id, conversation_id=conv.id, seq=conv.last_seq + 1, direction=direction,
                   channel_id=channel_id, kind=kind, subject=clean(subject, 500), body=body, html=clean(html, HTML_CAP),
                   attachments=attachments or [], status=status, provider_message_id=provider_message_id,
-                  thread_ref=thread_ref, sent_by=sent_by, occurred_at=occurred_at or now, segments=segments, cost=cost)
+                  thread_ref=thread_ref, sent_by=sent_by, occurred_at=occurred_at or now, segments=segments, cost=cost,
+                  idempotency_key=idempotency_key)
     db.add(msg)
     conv.last_seq = msg.seq
     if kind in LISTED:

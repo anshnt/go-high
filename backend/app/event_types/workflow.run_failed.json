@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "workflow.run_failed",
+  "description": "A run stopped on a step that failed. It stays on that step until someone retries it or cancels the run. Subject: the run.",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "workflow_id": {"type": "string", "format": "uuid"},
+    "workflow_name": {"type": "string"},
+    "version": {"type": "integer"},
+    "record_id": {"type": "string", "format": "uuid"},
+    "node_id": {"type": "string"},
+    "error": {"type": "string"}
+  },
+  "required": ["id", "workflow_id", "workflow_name", "version", "record_id", "node_id", "error"],
+  "additionalProperties": false
+}
