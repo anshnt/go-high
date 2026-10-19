@@ -31,6 +31,8 @@ def test_a_valid_graph_comes_back_with_every_default_written_out_and_saving_it_a
     assert clean["nodes"]["a"] == {"type": "action", "action": "tag.add", "config": {"tag": "vip"}, "next": "b"}
     assert clean["nodes"]["b"]["config"] == {"duration": {"days": 1}, "until_field": None, "event": None}
     assert schema.validate(clean) == clean
+    stages = schema.validate(graph({"a": tag("x")}, event="deal.stage_changed"))
+    assert stages["trigger"]["object"] == "deal"  # a stage change is a deal's, unless the trigger says otherwise
     assert schema.validate({"trigger": {"event": "record.created"}, "start": None, "nodes": {}})["nodes"] == {}
 
 

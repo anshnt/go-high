@@ -79,6 +79,14 @@ class Trigger(Model):
     filter: dict = {}  # a filter AST (ADR 0002) over the record, as it is when the event is read
     data: dict[Annotated[str, StringConstraints(max_length=63)], Scalar] = {}  # the event's data must hold these
 
+    @model_validator(mode="before")
+    @classmethod
+    def deals_have_stages(cls, raw):
+        """The one event that is about a single kind of record names its object: a stage change is a deal's."""
+        if isinstance(raw, dict) and raw.get("event") == "deal.stage_changed" and "object" not in raw:
+            return {**raw, "object": "deal"}
+        return raw
+
     @model_validator(mode="after")
     def data_is_known(self):
         known_keys(self.event, self.data)
