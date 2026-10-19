@@ -1,6 +1,7 @@
 import { Bold, ChevronDown, Italic, Link2, List, Lock, Send, StickyNote } from "lucide-react";
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode, type Ref } from "react";
 import { MOD } from "../lib/platform";
+import { formatPhone } from "../records/format.ts";
 import { Button, Kbd } from "../ui";
 import { Combobox } from "../ui/Combobox";
 import { estimate as fetchEstimate } from "./api";
@@ -183,7 +184,7 @@ export function Composer({ conv, channels, consents, canSend, canNote, canDnd, d
   }
 
   const placeholder = mode === "note" ? "Write a note for your team. The contact never sees it." : channel ? `Message ${conv.contact.display_name ?? "the contact"} by ${CHANNEL_LABEL[channel.kind]}` : "No channel can reach this contact";
-  const to = channel?.kind === "email" ? conv.contact.email : channel?.kind === "webchat" ? "web chat visitor" : conv.contact.phone;
+  const to = channel?.kind === "email" ? conv.contact.email : channel?.kind === "webchat" ? "web chat visitor" : conv.contact.phone && formatPhone(conv.contact.phone);
 
   return (
     <div className="ib-composer" data-mode={mode} data-kind={mode === "note" ? "note" : channel?.kind}>
