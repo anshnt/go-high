@@ -11,6 +11,7 @@ from fastapi.routing import iter_route_contexts
 from fastapi.testclient import TestClient
 from helpers import PASSWORD, add_member, context, link, type_id
 from inbox_helpers import sms_in
+from payments_helpers import pay_on_page
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
@@ -36,7 +37,10 @@ TENANT_TABLES = ["organizations", "brands", "workspaces", "users", "org_members"
                  "resources", "calendar_resources", "availability", "bookings", "booking_resources", "busy_blocks",
                  "booking_reminders", "booking_attempts", "feed_tokens",
                  "workflows", "workflow_versions", "workflow_runs", "workflow_steps", "workflow_trigger_checks",
-                 "workflow_waiters", "workflow_refs", "workflow_deliveries"]
+                 "workflow_waiters", "workflow_refs", "workflow_deliveries",
+                 "payment_accounts", "payment_settings", "tax_rates", "products", "prices", "coupons",
+                 "coupon_redemptions", "payment_customers", "subscriptions", "invoices", "invoice_lines",
+                 "payment_links", "payments", "refunds", "payment_events", "checkout_attempts"]
 NOT_TENANT_DATA = {"jobs", "event_cursors"}  # the queue and the consumer cursors: no tenant rows, no app role access
 
 
@@ -260,12 +264,49 @@ def fill_workflows(client, ids: dict, name: str, db) -> None:
     db.commit()
 
 
+def fill_payments(client, ids: dict, name: str) -> None:
+    """The test provider connected, a tax rate, a product with a price, a coupon, a payment link, an invoice paid
+    online (so a payment, an applied webhook event and a kept customer), a partial refund and a subscription; their
+    ids, names and codes go into `ids`."""
+    ws, title = {"X-Workspace-Id": ids["workspace_id"]}, name.title()
+
+    def post(path, body, status=201):
+        r = client.post(path, json=body, headers=ws)
+        assert r.status_code == status, r.text
+        return r.json()
+
+    assert client.post("/api/v1/payments/account/connect", json={"provider": "fake"}, headers=ws).status_code == 200
+    ids["tax_name"], ids["product_name"] = f"{title} Secret Tax", f"{title} Secret Product"
+    ids["coupon_code"], ids["link_name"] = f"{name.upper()}SECRET", f"{title} Secret Link"
+    ids["invoice_memo"] = f"{name} secret invoice memo"
+    tax = post("/api/v1/tax-rates", {"name": ids["tax_name"], "percentage_bp": 500})
+    product = post("/api/v1/products", {"name": ids["product_name"], "prices": [
+        {"currency": "usd", "unit_amount": 4242, "tax_rate_id": tax["id"]},
+        {"currency": "usd", "unit_amount": 1500, "type": "recurring", "interval": "month"}]})
+    one_off = product["prices"][0]["id"]
+    coupon = post("/api/v1/coupons", {"name": f"{title} coupon", "code": ids["coupon_code"], "percent_off_bp": 100})
+    link = post("/api/v1/payment-links", {"name": ids["link_name"], "items": [{"price_id": one_off}]})
+    inv = post("/api/v1/invoices", {"contact_id": ids["record_id"], "memo": ids["invoice_memo"],
+                                    "coupon_code": ids["coupon_code"], "lines": [{"price_id": one_off}]})
+    inv = post(f"/api/v1/invoices/{inv['id']}/send", None, 200)
+    pay_on_page(inv["public_url"])
+    payment = client.get("/api/v1/payments/transactions", headers=ws).json()["data"][0]
+    post(f"/api/v1/payments/transactions/{payment['id']}/refunds", {"amount": 100})
+    sub = post("/api/v1/subscriptions", {"contact_id": ids["record_id"], "price_id": product["prices"][1]["id"]})
+    ids.update(tax_rate_id=tax["id"], product_id=product["id"], price_id=product["prices"][0]["id"],
+               coupon_id=coupon["id"], link_id=link["id"], link_key=link["public_path"].rsplit("/", 1)[1],
+               invoice_id=inv["id"], invoice_token=inv["public_url"].rsplit("/", 1)[1], payment_id=payment["id"],
+               subscription_id=sub["id"], payment_account=client.get(
+                   "/api/v1/payments/account", headers=ws).json()["account"]["account_id"])
+
+
 @pytest.fixture
 def two_orgs(make_user, db, monkeypatch):
     """Org A and org B, each with a user, a second workspace, a live session, a webhook and one delivery in its log,
     a small CRM (see fill_crm) and forms (see fill_forms); B's identifiers, names and secrets are what A must never
     see."""
     monkeypatch.setattr(config, "FORM_MIN_FILL_SECONDS", 0)
+    monkeypatch.setattr(config, "PAYMENTS_FAKE_PROVIDER", True)
     a, a_ids = make_user("alice@example.com", "Alpha Org")
     b, b_ids = make_user("bob@example.com", "Bravo Org")
     for client, ids, name in ((a, a_ids, "alpha"), (b, b_ids, "bravo")):
@@ -283,6 +324,7 @@ def two_orgs(make_user, db, monkeypatch):
         fill_tasks(client, ids, name, db)
         fill_forms(client, ids, name)
         fill_workflows(client, ids, name, db)
+        fill_payments(client, ids, name)
     b_ids["session_id"] = b.get("/api/auth/sessions").json()[0]["id"]
     b_ids["user_id"] = b.get("/api/me").json()["user"]["id"]
     a_ids["user_id"] = a.get("/api/me").json()["user"]["id"]
@@ -322,7 +364,11 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
                "calendar_id": b_ids["calendar_id"],
                "booking_id": b_ids["booking_id"], "resource_id": b_ids["resource_id"],
                # workflows: B's workflow and run
-               "workflow_id": b_ids["workflow_id"], "run_id": b_ids["workflow_run_id"]}
+               "workflow_id": b_ids["workflow_id"], "run_id": b_ids["workflow_run_id"],
+               # payments: B's catalog, invoice, subscription, payment and link
+               "product_id": b_ids["product_id"], "price_id": b_ids["price_id"], "coupon_id": b_ids["coupon_id"],
+               "tax_rate_id": b_ids["tax_rate_id"], "link_id": b_ids["link_id"], "invoice_id": b_ids["invoice_id"],
+               "subscription_id": b_ids["subscription_id"], "payment_id": b_ids["payment_id"]}
     others = {"key": [b_ids["object_key"], "contact"], "field_key": [b_ids["field_key"], "email"],  # B's, and A's own
               "kind": ["sms"], "number": ["1"],
               "owner": ["users", "resources"], "owner_id": [b_ids["user_id"], b_ids["resource_id"]],
@@ -372,7 +418,12 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
             "hosts": [{"user_id": b_ids["user_id"]}], "start": at(b_ids["booking_day"], "10:00").isoformat(),
             "time_zone": "Asia/Tokyo", "weekly": {}, "hours": [], "durations": [30], "reason": "swept",
             "blocks": [{"start": at(b_ids["booking_day"], "10:00").isoformat(),
-                        "end": at(b_ids["booking_day"], "11:00").isoformat(), "external_id": b_ids["busy_external"]}]}
+                        "end": at(b_ids["booking_day"], "11:00").isoformat(), "external_id": b_ids["busy_external"]}],
+            # payments: B's prices, tax rate and coupon wherever a body names one
+            "price_id": b_ids["price_id"], "items": [{"price_id": b_ids["price_id"]}],
+            "tax_rate_id": b_ids["tax_rate_id"],
+            "lines": [{"price_id": b_ids["price_id"], "tax_rate_id": b_ids["tax_rate_id"]}], "amount": 1,
+            "coupon_code": b_ids["coupon_code"], "price_ids": [b_ids["price_id"]], "at_period_end": False}
     tables_of_b = ("objects", "fields", "records", "tags", "record_tags", "association_types", "associations",
                    "saved_views", "event_records", "events", "pipelines", "stages", "board_layouts", "teams",
                    "team_members", "tasks", "notifications", "notification_prefs",
@@ -382,7 +433,10 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
                    "calendars", "calendar_hosts", "resources", "calendar_resources", "availability",
                    "bookings", "booking_resources", "busy_blocks", "booking_reminders", "booking_attempts",
                    "feed_tokens", "workflows", "workflow_versions", "workflow_runs", "workflow_steps",
-                   "workflow_trigger_checks", "workflow_waiters", "workflow_refs", "workflow_deliveries")
+                   "workflow_trigger_checks", "workflow_waiters", "workflow_refs", "workflow_deliveries",
+                   "payment_accounts", "payment_settings", "tax_rates", "products", "prices", "coupons",
+                   "coupon_redemptions", "payment_customers", "subscriptions", "invoices", "invoice_lines",
+                   "payment_links", "payments", "refunds", "payment_events", "checkout_attempts")
     snapshot = "SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t::text), '')) FROM {} t WHERE {} = :w"
 
     def rows_of_b():
@@ -684,7 +738,17 @@ def test_the_app_role_holds_only_the_grants_its_handlers_need():
               "workflows": {"SELECT", "INSERT", "UPDATE"}, "workflow_versions": {"SELECT", "INSERT"},
               "workflow_runs": {"SELECT", "INSERT", "UPDATE"}, "workflow_steps": {"SELECT", "INSERT"},
               "workflow_trigger_checks": {"SELECT", "INSERT"}, "workflow_waiters": {"SELECT", "INSERT", "UPDATE"},
-              "workflow_refs": {"SELECT", "INSERT"}, "workflow_deliveries": {"SELECT", "INSERT"}}
+              "workflow_refs": {"SELECT", "INSERT"}, "workflow_deliveries": {"SELECT", "INSERT"},
+              # payments: money is never deleted by a request; only a draft invoice (with its lines), a lapsed
+              # checkout's coupon use and old rate counters are; prices change only their nickname and flag
+              "payment_accounts": {"SELECT", "INSERT", "UPDATE"}, "payment_settings": {"SELECT", "INSERT", "UPDATE"},
+              "tax_rates": {"SELECT", "INSERT", "UPDATE"}, "products": {"SELECT", "INSERT", "UPDATE"},
+              "prices": {"SELECT", "INSERT"}, "coupons": {"SELECT", "INSERT", "UPDATE"},
+              "coupon_redemptions": {"SELECT", "INSERT", "DELETE"}, "payment_links": {"SELECT", "INSERT", "UPDATE"},
+              "payment_customers": {"SELECT", "INSERT", "UPDATE"}, "subscriptions": {"SELECT", "INSERT", "UPDATE"},
+              "invoices": ALL4, "invoice_lines": {"SELECT", "INSERT", "DELETE"},
+              "payments": {"SELECT", "INSERT", "UPDATE"}, "refunds": {"SELECT", "INSERT", "UPDATE"},
+              "payment_events": {"SELECT", "INSERT"}, "checkout_attempts": {"SELECT", "INSERT", "DELETE"}}
     every = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
     with engine.connect() as conn:
         for table, expected in wanted.items():
@@ -708,6 +772,10 @@ def test_the_app_role_holds_only_the_grants_its_handlers_need():
                                    {"c": c}) for c in ("published_at", "graph", "number", "workflow_id", "note")}
         assert versions == {"published_at": True, "graph": False, "number": False, "workflow_id": False,
                             "note": False}  # a saved graph is never changed
+        prices = {c: conn.scalar(text("SELECT has_column_privilege('gohigh_app', 'prices', :c, 'UPDATE')"), {"c": c})
+                  for c in ("nickname", "active", "unit_amount", "currency", "tiers", "product_id")}
+        assert prices == {"nickname": True, "active": True, "unit_amount": False, "currency": False, "tiers": False,
+                          "product_id": False}  # an amount never changes once saved
         for sequence in ("jobs_id_seq", "events_id_seq"):
             assert conn.scalar(text("SELECT has_sequence_privilege('gohigh_app', :s, 'USAGE')"), {"s": sequence})
 

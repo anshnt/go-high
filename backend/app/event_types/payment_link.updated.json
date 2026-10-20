@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "payment_link.updated",
+  "description": "A payment link was changed or switched off. Subject: the link.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "name": {
+      "type": "string"
+    },
+    "active": {
+      "type": "boolean"
+    },
+    "changes": {
+      "type": "object",
+      "description": "Field to {old, new}."
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "active",
+    "changes"
+  ],
+  "additionalProperties": false
+}

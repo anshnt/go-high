@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "payment.refunded",
+  "description": "A refund went through (all or part of a payment); `amount_refunded` is the payment's refunded total so far. Subject: the refund.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "payment_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "contact_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "invoice_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "amount": {
+      "type": "integer"
+    },
+    "currency": {
+      "type": "string"
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "amount_refunded": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "payment_id",
+    "contact_id",
+    "invoice_id",
+    "amount",
+    "currency",
+    "reason",
+    "amount_refunded"
+  ],
+  "additionalProperties": false
+}

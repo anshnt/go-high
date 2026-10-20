@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "subscription.canceled",
+  "description": "A subscription ended (`status` canceled, or incomplete_expired when its first invoice was never paid); its open invoices were voided. Subject: the subscription.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "contact_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "price_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "product_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "status": {
+      "type": "string"
+    },
+    "quantity": {
+      "type": "integer"
+    },
+    "currency": {
+      "type": "string"
+    },
+    "current_period_start": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "current_period_end": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "trial_end": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "cancel_at_period_end": {
+      "type": "boolean"
+    },
+    "reason": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "contact_id",
+    "price_id",
+    "product_id",
+    "status",
+    "quantity",
+    "currency",
+    "current_period_start",
+    "current_period_end",
+    "trial_end",
+    "cancel_at_period_end",
+    "reason"
+  ],
+  "additionalProperties": false
+}

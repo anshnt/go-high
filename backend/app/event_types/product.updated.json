@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "product.updated",
+  "description": "A product was changed or archived. Subject: the product.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "name": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "active": {
+      "type": "boolean"
+    },
+    "changes": {
+      "type": "object",
+      "description": "Field to {old, new}."
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "kind",
+    "active",
+    "changes"
+  ],
+  "additionalProperties": false
+}

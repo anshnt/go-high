@@ -170,6 +170,20 @@ def live():
 
 
 @pytest.fixture
+def shop(crm, monkeypatch):
+    """A fresh workspace with the test payment provider connected (see payments_helpers.Shop). Stripe is not set up,
+    so nothing can reach the real Stripe."""
+    from payments_helpers import Shop
+    monkeypatch.setattr(config, "PAYMENTS_FAKE_PROVIDER", True)
+    monkeypatch.setattr(config, "STRIPE_SECRET_KEY", "")
+    monkeypatch.setattr(config, "STRIPE_API_BASE", "http://127.0.0.1:9")
+    client, ws, ids = crm
+    r = client.post("/api/v1/payments/account/connect", json={"provider": "fake"}, headers={"X-Workspace-Id": ws})
+    assert r.status_code == 200, r.text
+    return Shop(client, ws, ids)
+
+
+@pytest.fixture
 def site(crm, monkeypatch):
     """The forms of a fresh workspace (see forms_helpers.Site). A form can be completed at once, without the minimum
     fill time that spam protection asks of a person."""

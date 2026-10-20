@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "payment_account.updated",
+  "description": "The workspace's payment provider account was connected, changed (the provider reported new capabilities) or disconnected. Only the provider's ids are stored. Subject: the account.",
+  "type": "object",
+  "properties": {
+    "provider": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "charges_enabled": {
+      "type": "boolean"
+    },
+    "changes": {
+      "type": "object",
+      "description": "Field to {old, new}."
+    }
+  },
+  "required": [
+    "provider",
+    "status",
+    "charges_enabled",
+    "changes"
+  ],
+  "additionalProperties": false
+}

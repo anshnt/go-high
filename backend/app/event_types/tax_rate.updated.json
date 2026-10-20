@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "tax_rate.updated",
+  "description": "A tax rate's name, region or active flag changed. Subject: the tax rate.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "name": {
+      "type": "string"
+    },
+    "percentage_bp": {
+      "type": "integer"
+    },
+    "inclusive": {
+      "type": "boolean"
+    },
+    "region": {
+      "type": "string"
+    },
+    "active": {
+      "type": "boolean"
+    },
+    "created_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "changes": {
+      "type": "object",
+      "description": "Field to {old, new}."
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "percentage_bp",
+    "inclusive",
+    "region",
+    "active",
+    "created_at",
+    "updated_at",
+    "changes"
+  ],
+  "additionalProperties": false
+}

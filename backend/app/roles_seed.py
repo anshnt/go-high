@@ -28,7 +28,7 @@ def records(*actions: str) -> set[str]:
 MEMBER = {*records("read", "write", "delete"), "schema.read", "tags.write", "views.write", "messages.send",
            "members.read", "tasks.read", "tasks.write", "tasks.delete", "conversations.read", "conversations.write",
            "consents.manage", "forms.read", "forms.write", "responses.read", "calendars.read", "calendars.write",
-           "workflows.read", "workflows.write"}
+           "workflows.read", "workflows.write", "payments.read", "payments.write"}
 # key: (name, description, capabilities). Every role starts with the rule "all records of every object".
 SYSTEM_ROLES = {
     "owner": ("Owner", "Everything, billing included. Cannot be changed.", set(CAPABILITIES)),
@@ -36,15 +36,17 @@ SYSTEM_ROLES = {
     "manager": ("Manager", "Works with every record, exports, looks after tags, views, pipelines, workflows, forms, "
                 "calendars.",
                 MEMBER | records("export") | {"tags.manage", "views.manage", "pipelines.manage", "workflows.publish",
-                                              "forms.publish", "forms.delete", "responses.export", "calendars.manage"}),
+                                              "forms.publish", "forms.delete", "responses.export", "calendars.manage",
+                                              "payments.refund"}),
     "member": ("Member", "Works with records, tags, views, forms and their responses, and drafts of workflows "
                "(cannot publish).", MEMBER),
     "viewer": ("Viewer", "Reads records, and cannot change anything.",
                {*records("read"), "schema.read", "members.read", "tasks.read", "conversations.read", "forms.read",
-                "responses.read", "calendars.read", "workflows.read"}),
+                "responses.read", "calendars.read", "workflows.read", "payments.read"}),
     "automation": ("Automation", "What workflows and AI agents run as: reads and writes records, tags, sends messages.",
                    {*records("read", "write"), "schema.read", "tags.write", "messages.send", "tasks.read",
-                    "tasks.write", "conversations.read", "conversations.write", "calendars.read", "calendars.write"}),
+                    "tasks.write", "conversations.read", "conversations.write", "calendars.read", "calendars.write",
+                    "payments.read", "payments.write"}),
 }
 
 

@@ -57,3 +57,18 @@ BOOKING_WINDOW_MINUTES = int(os.getenv("BOOKING_WINDOW_MINUTES", "10"))
 # Workflows (module 18): how many steps of one workspace's runs may execute at the same moment, so a workspace that
 # enrolls thousands of records at once cannot take every worker.
 WORKFLOW_CONCURRENCY = int(os.getenv("WORKFLOW_CONCURRENCY", "8"))
+
+# Payments (module 21). The platform's Stripe keys: the secret key, and the signing secrets of the Connect webhook
+# endpoint (comma separated while one is rotated). Workspaces connect their own Stripe accounts through Connect; only
+# Stripe's ids are stored. STRIPE_API_BASE is for tests (a local server). The test provider takes "payments" without
+# money, for development and tests only: never switch it on where real customers pay.
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRETS = [s.strip() for s in os.getenv("STRIPE_WEBHOOK_SECRETS", "").split(",") if s.strip()]
+STRIPE_CONNECT_TYPE = os.getenv("STRIPE_CONNECT_TYPE", "standard")
+STRIPE_API_BASE = os.getenv("STRIPE_API_BASE", "https://api.stripe.com")
+PAYMENTS_FAKE_PROVIDER = os.getenv("PAYMENTS_FAKE_PROVIDER", "0") == "1"
+# Public checkout attempts (payment links and invoice pages) one visitor may start per window, and all visitors of one
+# link or invoice together.
+CHECKOUT_MAX_PER_IP = int(os.getenv("CHECKOUT_MAX_PER_IP", "10"))
+CHECKOUT_MAX_PER_TARGET = int(os.getenv("CHECKOUT_MAX_PER_TARGET", "200"))
+CHECKOUT_WINDOW_MINUTES = int(os.getenv("CHECKOUT_WINDOW_MINUTES", "10"))

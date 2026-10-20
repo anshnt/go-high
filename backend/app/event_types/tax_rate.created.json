@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "tax_rate.created",
+  "description": "A tax rate was made (`percentage_bp` basis points: 825 is 8.25 %). Subject: the tax rate.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "name": {
+      "type": "string"
+    },
+    "percentage_bp": {
+      "type": "integer"
+    },
+    "inclusive": {
+      "type": "boolean"
+    },
+    "region": {
+      "type": "string"
+    },
+    "active": {
+      "type": "boolean"
+    },
+    "created_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "percentage_bp",
+    "inclusive",
+    "region",
+    "active",
+    "created_at",
+    "updated_at"
+  ],
+  "additionalProperties": false
+}

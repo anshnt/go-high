@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "price.updated",
+  "description": "A price's nickname or active flag changed (amounts never change). Subject: the price.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "product_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "nickname": {
+      "type": "string"
+    },
+    "currency": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string"
+    },
+    "scheme": {
+      "type": "string"
+    },
+    "unit_amount": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "tiers": {
+      "type": "array"
+    },
+    "tiers_mode": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "interval": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "interval_count": {
+      "type": "integer"
+    },
+    "trial_days": {
+      "type": "integer"
+    },
+    "tax_rate_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "active": {
+      "type": "boolean"
+    },
+    "created_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "changes": {
+      "type": "object",
+      "description": "Field to {old, new}."
+    }
+  },
+  "required": [
+    "id",
+    "product_id",
+    "nickname",
+    "currency",
+    "type",
+    "scheme",
+    "unit_amount",
+    "tiers",
+    "tiers_mode",
+    "interval",
+    "interval_count",
+    "trial_days",
+    "tax_rate_id",
+    "active",
+    "created_at",
+    "changes"
+  ],
+  "additionalProperties": false
+}
