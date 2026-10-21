@@ -79,6 +79,12 @@ def list_audit(limit: int = Query(50, ge=1, le=200), cursor: str | None = None, 
     return {"data": [event_json(e, data) for e, data in both if data is not None], "next_cursor": next_cursor}
 
 
+@router.get("/event-types")
+def event_types(c: Ctx = Depends(requires("audit.read"))):
+    """Every event type the log can hold, with its description, for the type filter."""
+    return {"data": events.catalog(), "next_cursor": None}
+
+
 @router.get("/export")
 def export_audit(f: dict = Depends(filters), c: Ctx = Depends(requires("audit.read"))):
     """Newest first, up to 50 000 events, as CSV with the data as a JSON cell. The export is itself an event."""

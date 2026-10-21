@@ -243,6 +243,40 @@ def create_field(key: str, body: NewField, c: Ctx = Depends(requires("fields.man
     return idem.commit(201, field_json(field))
 
 
+class Reorder(BaseModel):
+    keys: Annotated[list[FieldKey], Field(min_length=1, max_length=MAX_FIELDS)]
+
+
+@router.post("/{key}/fields/reorder")
+def reorder_fields(key: str, body: Reorder, c: Ctx = Depends(requires("fields.manage"))):
+    """Puts the live fields in the order of `keys`, which names each of them once (the fields the caller's role hides
+    keep their places). One `field.updated` per field that moved; answers the fields in their new order."""
+    cat = Catalog(c)
+    obj = cat.need(key)
+    hide = permissions.hidden(c, obj)
+    shown = [f for f in cat.fields(obj).values() if f.key not in hide]
+    if len(set(body.keys)) != len(body.keys) or set(body.keys) != {f.key for f in shown}:
+        raise invalid(keys=f"must name every live field of {obj.key} once")
+    by_key = {f.key: f for f in shown}
+    slots, at = [], -1
+    for p in sorted(f.position for f in shown):  # the places these fields hold now, made distinct
+        at = max(p, at + 1)
+        slots.append(at)
+    moved = []
+    for k, slot in zip(body.keys, slots, strict=True):
+        field = by_key[k]
+        if field.position != slot:
+            moved.append((field, field.position))
+            field.position = slot
+    c.db.flush()
+    for field, old in moved:
+        events.emit(c.db, "field.updated", "field", field.id,
+                    {**field_data(obj, field), "changes": {"position": {"old": old, "new": field.position}}},
+                    actor=("user", c.user_id))
+    c.db.commit()
+    return {"data": [field_json(by_key[k]) for k in body.keys], "next_cursor": None}
+
+
 @router.patch("/{key}/fields/{field_key}")
 def update_field(key: str, field_key: str, body: PatchField, c: Ctx = Depends(requires("fields.manage"))):
     """Label, options, rules and position change; key and type never do, because records hold values of that type.

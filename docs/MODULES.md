@@ -55,6 +55,8 @@ Milestones: **M0 Foundations**, **M1 Core CRM** (first sellable product), **M2 G
   partitions of ADR 0003 arrive)
 - [ ] Login-as (impersonation) is always audited and visible to the workspace
 
+Screens: Settings > Team and roles has the members and their roles, the role editor (the records matrix and the other capabilities, a scope per object, a hidden and read-only matrix per field, who holds the role), teams and sub-teams with their members, and the access check ("what can this user see", from `/permissions/explain`). Settings > Audit log filters by person, event type (or a family, `record.*`), record id and dates, loads by cursor as it scrolls, opens each event in a drawer and exports the CSV. Not built: inviting someone who is not yet in the organization.
+
 **Done when** a role can be limited to its own team's deals with a hidden field, the simulator agrees, and every change shows in the audit log.
 
 ## 04. Design system and app shell
@@ -87,9 +89,9 @@ Milestones: **M0 Foundations**, **M1 Core CRM** (first sellable product), **M2 G
 - [x] Cursor pagination, idempotency keys, consistent errors with trace id (on `/api/v1`)
 - [ ] `Retry-After` on 429 for `/api/v1` (the error envelope passes it through; needs the per-workspace rate limits)
 - [x] Outbox table (`events`, written in the same transaction as the change) with snapshot-safe consumers, so events never get lost
-- [ ] Event catalog with JSON schemas for every state change (4 types so far; the public catalog page is generated from `backend/app/event_types`)
-- [x] Webhook subscriptions with filters, signed (HMAC), retries with backoff, delivery log with status filter and replay
-- [ ] Delivery log search by event type and date, bulk replay of failed deliveries, email to admins when an endpoint is disabled
+- [ ] Event catalog with JSON schemas for every state change (95 types in `backend/app/event_types`, served by `GET /api/v1/webhooks/event-types`, which the event picker reads; the public catalog page is not generated yet)
+- [x] Webhook subscriptions with filters, signed (HMAC), retries with backoff, delivery log with status filter and replay, the signing secret revealed again (audited) or rotated
+- [ ] Delivery log search by event type and date, bulk replay of failed deliveries, email to admins when an endpoint is disabled (type and date filters and a delivery's payload are done, with the Settings > API and webhooks screen; bulk replay is not; the email waits for the email module, so a disabled endpoint is logged and shown on the screen)
 - [ ] API keys per workspace with scopes; OAuth apps for third parties
 - [ ] Event stream (SSE) for realtime integrations (`GET /api/v1/stream` serves the signed-in inbox, ids only; integrations need API keys first)
 
@@ -118,9 +120,9 @@ Milestones: **M0 Foundations**, **M1 Core CRM** (first sellable product), **M2 G
 - Contacts with standard and custom fields, custom values, tags, companies (late multi-company), custom objects (10 per workspace), associations, notes, tasks, activity timeline, DND per channel, engagement score.
 
 **Better**
-- [ ] One record engine for contacts, companies, deals and custom objects: same list, filters, views, associations, notes, files, timeline, permissions and API (lists, filters, views, associations, timeline and API are done on one `records` table; notes, files and permissions are not)
-- [x] No object cap; many-to-many associations with labels (contact has many companies, deal has many contacts with roles; a role is an association type, so "decision maker" is one more type between deal and contact)
-- [ ] Typed fields: text, number, money (currency aware), date, select, multi-select, user, record link, file, formula, rollup; validation; conditional visibility and required rules; per-field history (all of these but file are typed and validated, with required, length and range rules; formula and rollup are stored but not computed; conditional rules and field history are not)
+- [ ] One record engine for contacts, companies, deals and custom objects: same list, filters, views, associations, notes, files, timeline, permissions and API (lists, filters, views, associations, timeline, permissions and API are done on one `records` table; notes and files are not)
+- [x] No object cap (custom objects and association types are made in Settings > Objects and fields); many-to-many associations with labels (contact has many companies, deal has many contacts with roles; a role is an association type, so "decision maker" is one more type between deal and contact)
+- [ ] Typed fields: text, number, money (currency aware), date, select, multi-select, user, record link, file, formula, rollup; validation; conditional visibility and required rules; per-field history (all of these but file are typed and validated, with required, length and range rules, and made, edited and reordered in Settings > Objects and fields; formula and rollup are stored but not computed; conditional rules and field history are not)
 - [ ] Workspace variables (custom values) kept separate from fields and named clearly
 - [x] Tags with groups, colors, descriptions, usage counts, rename and merge with preview
 - [ ] Consent and eligibility card per channel: source, timestamp, DND, quiet hours, "can I contact now?" (the consent rows, DND and the refusal reasons are in the API under `/api/v1/contacts/{id}/consents`; the card is not built)

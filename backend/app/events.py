@@ -36,6 +36,15 @@ from .jobs import Job
 SCHEMAS = Path(__file__).parent / "event_types"
 TYPES: dict[str, dict] = {p.stem: json.loads(p.read_text("utf-8")) for p in sorted(SCHEMAS.glob("*.json"))}
 BATCH = 500
+
+
+def catalog() -> list[dict]:
+    """Every registered event type with its description and data schema, by name: what the webhook event picker and
+    the audit log's type filter offer."""
+    return [{"type": name, "description": schema.get("description", ""), "schema": schema}
+            for name, schema in TYPES.items()]
+
+
 RETRY_AFTER = timedelta(seconds=2)  # how soon the dispatcher looks again while a consumer waits on an open transaction
 
 
