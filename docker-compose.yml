@@ -25,6 +25,9 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-0}
       SECRET_KEY: ${SECRET_KEY:-change-me-locally}
       FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
+      # Payments: the platform's Stripe keys (Connect); empty leaves Stripe switched off.
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRETS: ${STRIPE_WEBHOOK_SECRETS:-}
     ports:
       - "8000:8000"
 
