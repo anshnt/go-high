@@ -1518,7 +1518,7 @@ def test_a_user_of_a_gets_404s_for_bs_email_domains_templates_campaigns_and_supp
     for method, path, body in attempts:
         r = a.request(method, path, json=body, headers=mine)
         assert r.status_code == 404, (method, path, r.status_code, r.text[:200])
-        assert not any(leak in r.text for leak in secrets_of(b_ids)), (method, path)
+        assert not [leak for leak in secrets_of(b_ids) if leak in r.text], (method, path, r.text[:300])
     # A's own campaign cannot use B's template, topic or sending domain
     own = f"{root}/campaigns/{a_ids['email_campaign_id']}"
     for body, field in (({"template_id": b_ids["email_template_id"]}, "template_id"),
@@ -1526,7 +1526,8 @@ def test_a_user_of_a_gets_404s_for_bs_email_domains_templates_campaigns_and_supp
                         ({"from_email": f"x@{b_ids['email_domain']}"}, "from_email")):
         r = a.patch(own, json=body, headers=mine)
         assert r.status_code == 422 and field in r.json()["error"]["fields"], (body, r.text)
-        assert not any(leak in r.text for leak in secrets_of(b_ids))
+        # the answer may repeat what A typed (B's domain name); nothing else of B's
+        assert not [leak for leak in secrets_of(b_ids) if leak in r.text and leak not in json.dumps(body)], r.text
     r = a.post(f"{root}/campaigns", json={"name": "x", "template_id": b_ids["email_template_id"]}, headers=mine)
     assert r.status_code == 422
     # what A lists is A's
@@ -1548,7 +1549,7 @@ def test_a_public_email_link_acts_on_its_own_send_only(two_orgs, db):
     r = hooks.post(f"/api/public/email/u/{a_ids['email_unsubscribe_token']}", content=b"List-Unsubscribe=One-Click",
                    headers={"Content-Type": "application/x-www-form-urlencoded"})
     assert r.status_code == 200
-    unsubscribed = dict(db.execute(text("SELECT workspace_id::text, unsubscribed_at IS NOT NULL FROM email_sends")))
+    unsubscribed = dict(db.execute(text("SELECT workspace_id::text, unsubscribed_at IS NOT NULL FROM email_sends")).all())
     assert unsubscribed == {a_ids["workspace_id"]: True, b_ids["workspace_id"]: False}
 
 
@@ -1558,7 +1559,7 @@ def test_the_app_role_cannot_move_or_point_email_rows_across_workspaces(two_orgs
     ids = {"a": a_ws, "b": b_ws, "bc": b_ids["email_campaign_id"], "bs": b_ids["email_send_id"],
            "bt": b_ids["email_topic_id"], "bd": b_ids["email_domain_id"], "br": b_ids["record_id"],
            "ac": a_ids["email_campaign_id"], "ar": a_ids["record_id"], "ad": a_ids["email_domain_id"],
-           "bch": b_ids["channel_id"]}
+           "bch": b_ids["channel_id"], "art": a_ids["trashed_id"]}
     tables = ("email_settings", "email_domains", "email_templates", "email_topics", "email_preferences",
               "email_campaigns", "email_links", "email_sends", "email_events", "email_suppressions")
     with engine.connect() as conn:
@@ -1566,7 +1567,7 @@ def test_the_app_role_cannot_move_or_point_email_rows_across_workspaces(two_orgs
             with conn.begin():
                 context(conn, workspace_id=a_ws)
                 assert conn.execute(text(f"SELECT count(*) FROM {table} WHERE workspace_id = :b"), ids).scalar() == 0
-            if table in ("email_links", "email_events"):
+            if table in ("email_links", "email_events", "email_suppressions"):
                 continue  # no UPDATE at all (below)
             with pytest.raises(DBAPIError, match="row-level security"), conn.begin():
                 context(conn, workspace_id=a_ws)
@@ -1583,7 +1584,7 @@ def test_the_app_role_cannot_move_or_point_email_rows_across_workspaces(two_orgs
                 "INSERT INTO email_sends (workspace_id, campaign_id, contact_id, email) VALUES (:a, :bc, :ar, 'x@y.z')",
                 "INSERT INTO email_sends (workspace_id, campaign_id, contact_id, email) VALUES (:a, :ac, :br, 'x@y.z')",
                 "INSERT INTO email_sends (workspace_id, campaign_id, contact_id, domain_id, email) "
-                "VALUES (:a, :ac, :ar, :bd, 'q@y.z')",
+                "VALUES (:a, :ac, :art, :bd, 'q@y.z')",
                 "INSERT INTO email_events (workspace_id, campaign_id, send_id, type) VALUES (:a, :ac, :bs, 'open')",
                 "INSERT INTO email_preferences (contact_id, topic_id, workspace_id, subscribed, source) "
                 "VALUES (:ar, :bt, :a, false, 'x')",
@@ -1594,6 +1595,7 @@ def test_the_app_role_cannot_move_or_point_email_rows_across_workspaces(two_orgs
                 context(conn, workspace_id=a_ws)
                 conn.execute(text(statement), ids)
         for statement in ("UPDATE email_links SET url = 'https://evil.test'", "DELETE FROM email_links",
+                          "UPDATE email_suppressions SET reason = 'manual'",
                           "UPDATE email_events SET machine = true", "DELETE FROM email_events",
                           "DELETE FROM email_sends", "DELETE FROM email_templates", "DELETE FROM email_topics"):
             with pytest.raises(DBAPIError, match="permission denied"), conn.begin():
