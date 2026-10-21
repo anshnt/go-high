@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_template.updated",
+  "description": "An email template was saved, renamed, archived or restored (`changed` names what). Subject: the template.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "name": {
+      "type": "string"
+    },
+    "changed": {
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "changed"
+  ],
+  "additionalProperties": false
+}

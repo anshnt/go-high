@@ -53,7 +53,16 @@ export async function demoRequest<T>(method: string, path: string, body?: unknow
     case "POST /api/auth/password":
       return answer(undefined);
     case "GET /api/v1/forms": // ponytail: the forms area shows its empty state in the demo; creating one says it is not available
+    case "GET /api/v1/email/campaigns": // the same for email: empty lists, and anything that sends says it is not in the demo
+    case "GET /api/v1/email/templates":
+    case "GET /api/v1/email/domains":
       return answer({ data: [], next_cursor: null });
+    case "GET /api/v1/email/suppressions":
+      return answer({ data: [], next_cursor: null, counts: {} });
+    case "GET /api/v1/email/topics":
+      return answer({ data: [] });
+    case "GET /api/v1/email/settings":
+      return answer({ company_name: "Acme Agency", postal_address: "", track_opens: true, track_clicks: true });
     case "POST /api/workspaces": {
       const ws: Workspace = { id: `demo-ws-${me.workspaces.length + 1}`, name: input.name, org_id: ORG, brand_id: BRAND, role: "admin" };
       me.workspaces.push(ws);

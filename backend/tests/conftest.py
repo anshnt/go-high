@@ -24,6 +24,8 @@ with create_engine(URL.set(database="postgres"), isolation_level="AUTOCOMMIT").c
     if not conn.scalar(text("SELECT 1 FROM pg_database WHERE datname = :n"), {"n": URL.database}):
         conn.execute(text(f'CREATE DATABASE "{URL.database}"'))
 
+from email_helpers import email_fixture, fake_dns  # noqa: E402, F401  (the email marketing fixtures)
+
 from app import config, ssrf  # noqa: E402  (must import after DATABASE_URL is set)
 from app.db import SessionLocal, engine  # noqa: E402
 from app.inbox import consent, stream  # noqa: E402

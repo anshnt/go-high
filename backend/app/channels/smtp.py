@@ -12,11 +12,12 @@ import smtplib
 import ssl
 import time
 from dataclasses import replace
+from email import policy
 from email.message import EmailMessage
 from email.utils import formatdate, parseaddr
 
 from .. import ssrf
-from . import mail
+from . import dkim, mail
 from .base import Channel, ChannelError, Inbound, Outbound, Request, SendResult
 
 # ponytail: seconds per socket operation, not a total deadline; add a watchdog like ssrf.post if a tenant's slow server
@@ -74,6 +75,8 @@ def build(channel: Channel, message: Outbound) -> tuple[EmailMessage, str]:
             msg["List-Unsubscribe"] = f"<{message.unsubscribe_url}>"
             if message.unsubscribe_url.startswith("https://"):
                 msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"  # RFC 8058
+        for name, value in message.headers.items():
+            msg[name] = value
     except ValueError as e:  # the email policy refuses header values with line breaks
         raise ChannelError(f"invalid header: {e}") from None
     msg.set_content(message.body or (mail.plain_text(message.html) if message.html else ""))
@@ -85,9 +88,17 @@ def build(channel: Channel, message: Outbound) -> tuple[EmailMessage, str]:
     return msg, mid
 
 
-def classify(e: Exception) -> ChannelError:
+def classify(e: Exception, sending: bool = False) -> ChannelError:
     """4xx replies and lost connections are worth retrying; 5xx replies, a refused login, a missing STARTTLS or a
-    certificate that does not match the host are not."""
+    certificate that does not match the host are not. A connection lost while the message was being handed over
+    (`sending`) is ambiguous: the server may have taken it."""
+    error = _classify(e)
+    if sending and not isinstance(e, smtplib.SMTPResponseException | smtplib.SMTPRecipientsRefused):
+        error.ambiguous = True
+    return error
+
+
+def _classify(e: Exception) -> ChannelError:
     if isinstance(e, ssl.SSLCertVerificationError):
         return ChannelError(f"the SMTP server's certificate was refused: {e.verify_message}")
     if isinstance(e, smtplib.SMTPRecipientsRefused):
@@ -140,13 +151,24 @@ def check(channel: Channel) -> str:
     return "the SMTP server accepted the connection and login"
 
 
+def wire(msg: EmailMessage, message: Outbound) -> bytes:
+    """The message as it goes over the wire (CRLF line ends), DKIM signed when the outbound asks for it."""
+    raw = msg.as_bytes(policy=policy.SMTP)
+    if message.dkim:
+        domain, selector, key = message.dkim
+        raw = dkim.sign(raw, domain, selector, key)
+    return raw
+
+
 def send(channel: Channel, message: Outbound) -> SendResult:
     security, target = server(channel)
     msg, mid = build(channel, message)
+    raw, sending = wire(msg, message), False
     try:
         with Pinned(target, mail.domain_of(str(msg["From"]))) as smtp:
             login(smtp, channel, security)
-            smtp.send_message(msg, from_addr=parseaddr(str(msg["From"]))[1], to_addrs=[parseaddr(message.to)[1]])
+            sending = True
+            smtp.sendmail(parseaddr(str(msg["From"]))[1], [parseaddr(message.to)[1]], raw)
     except Exception as e:
-        raise classify(e) from None
+        raise classify(e, sending) from None
     return SendResult(mid)

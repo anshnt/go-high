@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_campaign.scheduled",
+  "description": "A campaign passed the pre-send check and was scheduled; `recipients` is the audience preview at that moment. Subject: the campaign.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "scheduled_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "recipients": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "status",
+    "scheduled_at",
+    "recipients"
+  ],
+  "additionalProperties": false
+}

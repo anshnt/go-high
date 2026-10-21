@@ -136,6 +136,7 @@ def send(channel: Channel, message: Outbound, *, base_url: str | None = None) ->
         form.append(("h:List-Unsubscribe", f"<{message.unsubscribe_url}>"))
         if message.unsubscribe_url.startswith("https://"):
             form.append(("h:List-Unsubscribe-Post", "List-Unsubscribe=One-Click"))
+    form += [(f"h:{name}", value) for name, value in message.headers.items()]
     files = [("attachment", name, ctype, data) for name, ctype, data in mail.fetch(message.attachments)]
     data = transport.post(f"{base}/v3/{quote(domain, safe='')}/messages", form=form, files=files,
                           headers={"Authorization": transport.basic("api", channel.secret("api_key"))})

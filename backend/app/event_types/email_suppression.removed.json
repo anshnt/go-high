@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_suppression.removed",
+  "description": "Staff took a manual or bounced address off the suppression list. Subject: the suppression.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "email": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "email",
+    "reason"
+  ],
+  "additionalProperties": false
+}

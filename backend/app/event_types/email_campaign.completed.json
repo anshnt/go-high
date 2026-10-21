@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_campaign.completed",
+  "description": "A campaign finished: every send has an outcome (`totals` by status). Subject: the campaign.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "totals": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "status",
+    "totals"
+  ],
+  "additionalProperties": false
+}

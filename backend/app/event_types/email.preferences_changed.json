@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email.preferences_changed",
+  "description": "A contact changed their topics on the preference page; `changes` lists each topic and its new choice. Subject: the contact.",
+  "type": "object",
+  "properties": {
+    "contact_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "send_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "changes": {
+      "type": "array"
+    }
+  },
+  "required": [
+    "contact_id",
+    "send_id",
+    "changes"
+  ],
+  "additionalProperties": false
+}

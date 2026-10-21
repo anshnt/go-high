@@ -20,6 +20,8 @@ from ..channels import ADAPTERS
 from ..channels.base import Inbound
 from ..channels.base import Request as Hook
 from ..db import rescope, scoped
+from ..marketing import feedback
+from ..marketing.settings import suppress
 from ..models import Workspace
 from ..records.models import Record
 from ..records.schema import Catalog
@@ -171,13 +173,24 @@ def report(db: Session, channel: Channel, item: Inbound) -> None:
         Message.channel_id == channel.id, Message.provider_message_id == item.provider_message_id,
         Message.direction == "out").with_for_update())
     if msg is None:
+        if channel.kind == "email" and feedback.report(db, channel, item):
+            return  # about a campaign send (module 20)
         log.info("delivery report on channel %s for an unknown message", channel.id)
         return
     conv = db.get(Conversation, msg.conversation_id)
     if item.status in ("complained", "unsubscribed"):  # the recipient does not want this mail: an opt-out
         source = "complaint" if item.status == "complained" else "unsubscribe"
         consent.record(db, msg.workspace_id, conv.contact_id, channel.kind, "opted_out", source)
+        if channel.kind == "email":
+            to = db.scalar(select(Record.email_norm).where(Record.id == conv.contact_id))
+            if to:  # campaigns never mail the address again either
+                suppress(db, msg.workspace_id, to, "complaint" if source == "complaint" else "unsubscribe",
+                         "Reported on a conversation email")
         return
+    if item.status == "failed" and channel.kind == "email":  # a permanent failure (Mailgun reports no other): a bounce
+        to = db.scalar(select(Record.email_norm).where(Record.id == conv.contact_id))
+        if to:
+            suppress(db, msg.workspace_id, to, "hard_bounce", (item.error or "Bounced")[:300])
     if RANK.get(item.status or "", -1) <= RANK.get(msg.status, -1):
         return
     previous, msg.status = msg.status, item.status

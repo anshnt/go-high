@@ -22,7 +22,7 @@ import { pipelineClient } from "./client.ts";
 import { ForecastView } from "./ForecastView";
 import { MetaGate } from "./MetaGate";
 import { MoveDialog, type Ask } from "./MoveDialog";
-import { Segmented } from "./Segmented";
+import { Segmented } from "../ui/Segmented";
 import { useBoard } from "./useBoard.ts";
 import { useCan } from "./useCan.ts";
 import { usePipelines } from "./usePipelines.ts";

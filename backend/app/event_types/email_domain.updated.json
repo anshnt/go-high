@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_domain.updated",
+  "description": "A sending domain changed: its selector, SPF include or hourly limit (`changed` names them), or its verification `status` after a DNS check. Subject: the domain.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "domain": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "dkim_mode": {
+      "type": "string"
+    },
+    "changed": {
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "domain",
+    "status",
+    "dkim_mode",
+    "changed"
+  ],
+  "additionalProperties": false
+}

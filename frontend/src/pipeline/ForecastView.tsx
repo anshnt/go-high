@@ -5,7 +5,7 @@ import { formatMoney } from "../records/format.ts";
 import { useMeta } from "../records/meta.tsx";
 import { Avatar, Button, EmptyState, Select, Skeleton } from "../ui";
 import { axisLabel, compactMoney, currencies, LAYERS, niceTicks, ownerRows, rows as buildRows, sumRows, type Layer, type OwnerRow, type Row } from "./forecast.ts";
-import { Segmented } from "./Segmented";
+import { Segmented } from "../ui/Segmented";
 import type { Forecast, Period, Pipeline, PipelineClient } from "./types.ts";
 
 type State = { status: "loading" | "ready" | "error"; data: Forecast | null; error: unknown; refreshing: boolean };

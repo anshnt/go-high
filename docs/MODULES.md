@@ -345,13 +345,13 @@ Milestones: **M0 Foundations**, **M1 Core CRM** (first sellable product), **M2 G
 - Drag and drop and HTML builders, templates, campaigns, scheduling and batch sends, A/B tests, LC Email on a shared Mailgun pool, dedicated domains, email verification, basic stats. Deliverability is the top complaint.
 
 **Better**
-- [ ] Block email builder from the design system; global blocks; dynamic content per segment; dark mode and client previews
-- [ ] Spam word, link and alt-text lint before send
-- [ ] Segment evaluated at send time with exact count and sample contacts
-- [ ] A/B on subject, content and sender with auto winner; send-time optimization; holdout groups
-- [ ] Isolated sending domain per workspace by default; warm-up schedule visible in UI
-- [ ] Deliverability dashboard: reputation by mailbox provider, blocklist monitoring, bounce and complaint auto-suppression, Google and Microsoft postmaster data
-- [ ] Revenue attribution with configurable windows; Apple MPP aware open rates
+- [ ] Block email builder from the design system; global blocks; dynamic content per segment; dark mode and client previews (the block builder with responsive, dark-mode-safe output, a plain text part, merge fields with fallbacks, saved templates and a preview at phone and desktop width, light and dark, is done; global blocks, dynamic content and other clients' previews are not)
+- [x] Spam word, link and alt-text lint before send (the pre-send check: spam words, the unsubscribe link, image to text, alt text, link domains, shorteners, IPs, plain http, mismatched link text, subject and size, with the sending domain's DNS)
+- [x] Segment evaluated at send time with exact count and sample contacts
+- [ ] A/B on subject, content and sender with auto winner; send-time optimization; holdout groups (subject, preview text and content with an automatic winner are done; sender, send-time optimization and holdouts are not)
+- [x] Isolated sending domain per workspace by default; warm-up schedule visible in UI (a domain of the workspace's own, with its own DKIM key, live SPF, DKIM and DMARC checks and the warm-up pacing every send)
+- [ ] Deliverability dashboard: reputation by mailbox provider, blocklist monitoring, bounce and complaint auto-suppression, Google and Microsoft postmaster data (bounce and complaint suppression from Mailgun reports and SMTP refusals, and per domain sending counts, are done; the rest is not)
+- [ ] Revenue attribution with configurable windows; Apple MPP aware open rates (opens by the privacy proxy and scanner clicks are counted apart; revenue waits for payments)
 
 **Done when** a campaign to a segment sends with throttling from a warmed domain and the dashboard shows placement signals and revenue.
 

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_domain.deleted",
+  "description": "A sending domain no campaign used was removed. Subject: the domain.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "domain": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "dkim_mode": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "domain",
+    "status",
+    "dkim_mode"
+  ],
+  "additionalProperties": false
+}

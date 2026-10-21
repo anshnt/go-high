@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_campaign.cancelled",
+  "description": "A campaign was cancelled; `not_sent` sends will never go. Subject: the campaign.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "not_sent": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "status",
+    "not_sent"
+  ],
+  "additionalProperties": false
+}

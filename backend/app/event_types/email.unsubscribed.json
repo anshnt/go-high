@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email.unsubscribed",
+  "description": "A contact unsubscribed from a topic (`topic_id`) or from all marketing email (no topic), by one-click, on the preference page or through the provider (`source`). Subject: the contact.",
+  "type": "object",
+  "properties": {
+    "contact_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "campaign_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "send_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "topic_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "source": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "contact_id",
+    "campaign_id",
+    "send_id",
+    "topic_id",
+    "source"
+  ],
+  "additionalProperties": false
+}

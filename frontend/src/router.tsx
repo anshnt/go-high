@@ -34,11 +34,20 @@ export const router = createBrowserRouter([
       // Forms is lazy too: the builder is large and only needed there.
       { path: "forms", lazy: async () => ({ Component: (await import("./forms/FormsPage")).FormsPage }) },
       { path: "forms/:id", lazy: async () => ({ Component: (await import("./forms/FormBuilder")).FormBuilder }) },
+      // Email marketing (module 20): campaigns, templates, sending domains, suppressions and settings.
+      { path: "email", lazy: async () => ({ Component: (await import("./email/EmailPage")).CampaignsPage }) },
+      { path: "email/campaigns/:id", lazy: async () => ({ Component: (await import("./email/CampaignPage")).CampaignPage }) },
+      { path: "email/templates", lazy: async () => ({ Component: (await import("./email/TemplatesPage")).TemplatesPage }) },
+      { path: "email/templates/:id", lazy: async () => ({ Component: (await import("./email/TemplatesPage")).TemplateEditor }) },
+      { path: "email/domains", lazy: async () => ({ Component: (await import("./email/DomainsPage")).DomainsPage }) },
+      { path: "email/suppressions", lazy: async () => ({ Component: (await import("./email/SuppressionsPage")).SuppressionsPage }) },
+      { path: "email/settings", lazy: async () => ({ Component: (await import("./email/SuppressionsPage")).EmailSettingsPage }) },
       { path: "settings", element: <SettingsPage /> },
       { path: "settings/channels", lazy: async () => ({ Component: (await import("./inbox/ChannelsSettings")).ChannelsSettings }) },
       { path: "settings/notifications", lazy: async () => ({ Component: (await import("./pages/NotificationSettings")).NotificationSettings }) },
       { path: "settings/pipelines", lazy: async () => ({ Component: (await import("./pipeline/PipelineSettings")).PipelineSettings }) },
       { path: "settings/security", lazy: async () => ({ Component: (await import("./pages/SecuritySettings")).SecuritySettings }) },
+      { path: "settings/email", loader: () => redirect("/email/domains") }, // sending domains live with the rest of Email
       { path: "settings/:sectionId", element: <SettingsSectionPage /> },
       // Gallery is lazy so it never weighs on the first load.
       { path: "dev/ui", lazy: async () => ({ Component: (await import("./pages/DevUi")).DevUi }) },
