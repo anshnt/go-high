@@ -75,6 +75,7 @@ export function RecordSearch({ object, noun, value, onChange, label = "Record", 
         label={label}
         type="search"
         autoFocus={autoFocus}
+        data-autofocus={autoFocus || undefined}
         placeholder={`Search ${noun}`}
         value={q}
         autoComplete="off"

@@ -16,6 +16,7 @@ import { errorText } from "./schema";
 import { eventGroup, eventHelp, eventLabel, objectsFor, type Scalar, type Trigger, type WfNode } from "./graph";
 
 type Errors = Record<string, string>;
+const LOOKUP_OF: Record<string, string> = { form_id: "forms", calendar_id: "calendars", to_stage_id: "stages", from_stage_id: "stages", channel_id: "channels" };
 const MOD = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent) ? "⌥" : "Alt";
 
 function Problems({ errors, known }: { errors: Errors; known: (key: string) => boolean }) {
@@ -70,7 +71,7 @@ function DataRows({ label, schema, value, onChange, error, hint }: { label: stri
         return (
           <div key={k} className="wf-row">
             {k in pickers ? (
-              <ChoiceCombo label={name} items={items ?? []} loading={!items} value={v === null ? null : String(v)} onChange={(x) => set(k, x ?? undefined)} />
+              <ChoiceCombo label={name} items={items ?? []} loading={!items} failed={!!LOOKUP_OF[k] && lookups.failed.has(LOOKUP_OF[k])} onRetry={lookups.retry} what={`the ${name.toLowerCase()}s`} value={v === null ? null : String(v)} onChange={(x) => set(k, x ?? undefined)} />
             ) : s?.enum ? (
               <Select label={name} value={String(v ?? "")} onValueChange={(x) => set(k, x)} options={s.enum.filter((x) => x !== null).map((x) => ({ value: String(x), label: String(x).replace(/_/g, " ") }))} />
             ) : s?.type === "boolean" ? (
@@ -288,7 +289,7 @@ function OwnerEditor({ config, onChange, errors, schema, object }: { config: Rec
           <input type="radio" name="wf-owner" checked={rr} onChange={() => onChange({ round_robin: config.user_id ? [config.user_id] : [] })} /> Each of a list of people in turn
         </label>
       </fieldset>
-      <ConfigForm schema={schema} value={config} onChange={(c) => onChange(rr ? { round_robin: c.round_robin ?? [] } : { user_id: c.user_id ?? null })} errors={errors} object={object} skip={[rr ? "user_id" : "round_robin"]} />
+      <ConfigForm schema={schema} value={config} onChange={(c) => onChange(rr ? { round_robin: c.round_robin ?? [] } : { user_id: c.user_id ?? null })} errors={errors} object={object} skip={[rr ? "user_id" : "round_robin"]} need={[rr ? "round_robin" : "user_id"]} />
     </>
   );
 }
@@ -359,6 +360,8 @@ function WaitEditor({ config, onChange, errors, object, catalog }: { config: Rec
 function SplitEditor({ config, onChange, error }: { config: Record<string, unknown>; onChange: (c: Record<string, unknown>) => void; error?: string }) {
   const paths = (Array.isArray(config.paths) ? config.paths : []) as { name: string; percent: number }[];
   const total = paths.reduce((s, p) => s + (Number(p.percent) || 0), 0);
+  const nameError = (name: string, i: number) =>
+    !name ? "Give the path a name" : !/^[a-z]/.test(name) ? "Start with a letter" : paths.some((p, j) => j !== i && p.name === name) ? "Another path has this name" : undefined;
   const set = (next: { name: string; percent: number }[]) => onChange({ ...config, paths: next });
   const fresh = () => {
     for (let c = 97; c < 123; c++) if (!paths.some((p) => p.name === String.fromCharCode(c))) return String.fromCharCode(c);
@@ -369,8 +372,8 @@ function SplitEditor({ config, onChange, error }: { config: Record<string, unkno
       <legend className="ui-label">Paths</legend>
       <p className="ui-hint">Each run takes one path, picked by its id, so a run always takes the same one. Names are lower case letters, digits and _.</p>
       {paths.map((p, i) => (
-        <div key={i} className="wf-row">
-          <Input aria-label={`Name of path ${i + 1}`} value={p.name} maxLength={40} onChange={(e) => set(paths.map((x, j) => (j === i ? { ...x, name: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "") } : x)))} />
+        <div key={i} className="wf-row wf-row-top">
+          <Input aria-label={`Name of path ${i + 1}`} value={p.name} maxLength={40} error={nameError(p.name, i)} onChange={(e) => set(paths.map((x, j) => (j === i ? { ...x, name: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "") } : x)))} />
           <Input aria-label={`Percent of path ${i + 1}`} inputMode="numeric" value={String(p.percent)} onChange={(e) => set(paths.map((x, j) => (j === i ? { ...x, percent: Number(e.target.value.replace(/[^0-9]/g, "").slice(0, 3)) || 0 } : x)))} />
           <span className="wf-muted" aria-hidden>
             %

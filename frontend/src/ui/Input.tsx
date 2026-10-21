@@ -41,7 +41,8 @@ export function Input({ label, hint, error, className, id, ...rest }: InputHTMLA
   );
 }
 
-export function Textarea({ label, hint, error, className, id, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement> & FieldProps) {
+/** `ref` reaches the <textarea>. */
+export function Textarea({ label, hint, error, className, id, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement> & FieldProps & { ref?: Ref<HTMLTextAreaElement> }) {
   const auto = useId();
   const fid = id ?? auto;
   return (

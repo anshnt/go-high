@@ -24,6 +24,7 @@ export function PublishDialog({ workflow, version, open, onOpenChange, onPublish
   const number = version ?? workflow.latest_version ?? undefined;
   const [plan, setPlan] = useState<PublishPlan | null>(null);
   const [graph, setGraph] = useState<Graph | null>(null);
+  const [live, setLive] = useState<Graph | null>(null); // the version most runs in flight are on: names the removed steps
   const [error, setError] = useState<string>();
   const [move, setMove] = useState(false);
   const [targets, setTargets] = useState<Record<string, string>>({});
@@ -36,11 +37,17 @@ export function PublishDialog({ workflow, version, open, onOpenChange, onPublish
     setError(undefined);
     setMove(false);
     setTargets({});
-    Promise.all([workflows.publish(workflow.id, { version: number, migrate: {}, dry_run: true }), workflows.version(workflow.id, number)])
-      .then(([res, v]) => {
+    const current = workflow.published_version;
+    Promise.all([
+      workflows.publish(workflow.id, { version: number, migrate: {}, dry_run: true }),
+      workflows.version(workflow.id, number),
+      current && current !== number ? workflows.version(workflow.id, current).catch(() => null) : Promise.resolve(null),
+    ])
+      .then(([res, v, old]) => {
         if (!alive) return;
         setPlan(res.publish);
         setGraph(v.graph);
+        setLive(old?.graph ?? null);
       })
       .catch((e) => {
         if (!alive) return;
@@ -132,11 +139,12 @@ export function PublishDialog({ workflow, version, open, onOpenChange, onPublish
                 {plan.same_node > 0 && `${plan.same_node.toLocaleString()} ${plan.same_node === 1 ? "is at a step this version still has and stays" : "are at steps this version still has and stay"} there. `}
                 {removed.length > 0 && "These steps are gone in this version; choose where their runs go:"}
               </p>
+              {plan.same_node > 0 && <p className="wf-muted">A run waiting at a wait keeps the wake-up time it was given, even if this version changes that wait; the change applies to runs that reach it from now on.</p>}
               {removed.map((n) => (
                 <Select
                   key={n.node_id}
-                  label={`${n.runs.toLocaleString()} ${n.runs === 1 ? "run" : "runs"} at "${n.node_id}"`}
-                  value={targets[n.node_id]}
+                  label={`${n.runs.toLocaleString()} ${n.runs === 1 ? "run is" : "runs are"} at ${live?.nodes[n.node_id] ? `"${title(live.nodes[n.node_id]!, { action: actionLabel })}" (${n.node_id})` : `"${n.node_id}"`}`}
+                  value={targets[n.node_id] ?? ""}
                   placeholder="Choose a step, or exit"
                   onValueChange={(v) => setTargets((t) => ({ ...t, [n.node_id]: v }))}
                   options={nodeOptions}

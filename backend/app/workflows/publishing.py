@@ -18,7 +18,7 @@ from ..security import Ctx
 from . import engine
 from .check import check
 from .models import ACTIVE, Ref, Run, Workflow, WorkflowVersion
-from .schema import GraphError, publishable, refs, validate
+from .schema import GraphError, publishable, refs, sound_parts, validate
 
 
 def invalid(errors: dict[str, str], prefix: str = "graph") -> ApiError:
@@ -41,7 +41,8 @@ def save_version(c: Ctx, wf: Workflow, graph: dict, note: str | None) -> tuple[W
     try:
         clean = validate(graph)
     except GraphError as e:
-        raise invalid(e.fields) from None
+        parts = sound_parts(graph)  # what the workspace says about the parts that are sound, in the same answer
+        raise invalid({**(check(Catalog(c), parts) if parts else {}), **e.fields}) from None
     if errors := check(Catalog(c), clean):
         raise invalid(errors)
     last = newest(c.db, wf.id)

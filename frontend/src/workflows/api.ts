@@ -170,7 +170,10 @@ export const workflows = {
   rotateSecret: (id: string) => api.post<{ signing_secret: string }>(`${root}/${enc(id)}/rotate-secret`),
   versions: (id: string, cursor?: string | null) => api.get<Page<Version>>(`${root}/${enc(id)}/versions${queryString({ cursor, limit: 50 })}`),
   version: (id: string, n: number) => api.get<Version & { graph: Graph }>(`${root}/${enc(id)}/versions/${n}`),
-  save: (id: string, graph: Graph, note?: string) => api.post<Version & { graph: Graph }>(`${root}/${enc(id)}/versions`, { graph, ...(note ? { note } : {}) }),
+  /** `base`: the newest version number the editor started from; the server answers 409 `version_conflict` when another
+   * was saved since. Leave it out to save on top of whatever is newest. */
+  save: (id: string, graph: Graph, note?: string, base?: number | null) =>
+    api.post<Version & { graph: Graph }>(`${root}/${enc(id)}/versions`, { graph, ...(note ? { note } : {}), ...(base !== undefined ? { base } : {}) }),
   diff: (id: string, from: number, to: number) => api.get<Diff>(`${root}/${enc(id)}/diff${queryString({ from, to })}`),
   publish: (id: string, body: { version?: number; migrate?: Record<string, string>; dry_run?: boolean }) => api.post<WorkflowRow & { publish: PublishPlan }>(`${root}/${enc(id)}/publish`, body),
   pause: (id: string) => api.post<WorkflowRow>(`${root}/${enc(id)}/pause`),
@@ -203,8 +206,6 @@ export const lookups = {
   stages: () => once("stages", () => api.get<Page<Stageful>>("/api/v1/pipelines").then((p) => p.data.flatMap((pl) => pl.stages.map((s) => ({ id: s.id, name: s.name, hint: pl.name }))))),
   forms: () => once("forms", () => api.get<Page<{ id: string; name: string; status: string }>>("/api/v1/forms?limit=200").then((p) => p.data.map((f) => ({ id: f.id, name: f.name, hint: f.status })))),
   calendars: () => once("calendars", () => api.get<Page<{ id: string; name: string }>>("/api/v1/calendars").then((p) => p.data.map((c) => ({ id: c.id, name: c.name })))),
-  /** forget what was read, so a list reads again (after the user made a channel in another tab) */
-  reset: () => cached.clear(),
 };
 
 export async function searchRecords(object: string, q: string): Promise<Glance[]> {

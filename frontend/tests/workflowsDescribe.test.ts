@@ -5,7 +5,8 @@ import { test } from "node:test";
 import type { JsonSchema } from "../src/workflows/api.ts";
 import { branchLabel, summary, title, triggerSummary, type Names } from "../src/workflows/describe.ts";
 import { eventHelp, eventLabel, objectsFor } from "../src/workflows/graph.ts";
-import { defaults, errorText, props, settingLabel } from "../src/workflows/schema.ts";
+import { defaults, errorText, props, readable, settingLabel } from "../src/workflows/schema.ts";
+import { STARTERS } from "../src/workflows/starters.ts";
 
 const names: Names = {
   user: (id) => (id === "u1" ? "Ada" : undefined),
@@ -41,7 +42,8 @@ test("a step's line says what it does, or what is missing", () => {
   assert.equal(summary({ type: "condition", config: { filter: {} } }, names), "Set the condition");
   assert.equal(summary({ type: "condition", config: { filter: { tag: "vip" } } }, names), "If Lifecycle stage is Customer");
   assert.equal(summary({ type: "goal", config: { filter: { tag: "vip" }, otherwise: "end" } }, names), "When Lifecycle stage is Customer; reaching it otherwise ends the run");
-  assert.equal(summary({ type: "split", config: { paths: [{ name: "a", percent: 70 }, { name: "b", percent: 30 }] } }), "a 70%, b 30%");
+  assert.equal(summary({ type: "split", config: { paths: [{ name: "a", percent: 70 }, { name: "b", percent: 30 }] } }), "Paths a 70%, b 30%");
+  assert.equal(summary({ type: "action", action: "notify.user", config: { user_id: "owner", title: "Hi" } }, names), 'The record\'s owner: "Hi"', "a line starts with a capital");
 });
 
 test("the trigger in a line, and branches in words", () => {
@@ -87,12 +89,13 @@ test("each setting gets a control from its schema, and a picker where it names s
   const p = props(send);
   assert.deepEqual(p.map((x) => [x.key, x.kind, x.widget ?? null, x.required, x.nullable]), [
     ["channel_id", "uuid", "channel", true, false],
+    ["subject", "text", null, false, true], // an email's subject comes before its message
     ["body", "long_text", null, true, false],
-    ["subject", "text", null, false, true],
     ["if_refused", "choice", null, false, false],
   ]);
   assert.equal(p[0]!.label, "Channel");
   assert.equal(p[3]!.label, "If consent says no");
+  assert.deepEqual(props({ properties: { url: { type: "string", maxLength: 2000 } } }).map((x) => x.kind), ["text"], "an address is one line");
   const t = props(task);
   assert.deepEqual(t.map((x) => [x.key, x.kind, x.widget ?? null]), [["title", "text", null], ["due", "offset", null], ["assignee", "text", "person"], ["priority", "choice", null]]);
   assert.deepEqual(props({ properties: { user_id: { anyOf: [{ format: "uuid", type: "string" }, { type: "null" }] } } }).map((x) => x.widget), ["user"]);
@@ -111,5 +114,18 @@ test("the server's errors read as sentences", () => {
   assert.equal(errorText("config.body", "uses {{x}}, which is not a field of contact"), "Message uses {{x}}, which is not a field of contact");
   assert.equal(errorText("config.values.email", "Email must be an email"), "Fields to set: Email must be an email");
   assert.equal(errorText("", "is not reachable: nothing leads to it"), "Is not reachable: nothing leads to it");
-  assert.equal(errorText("config.duration", "give exactly one of duration, until_field and event"), "How long: give exactly one of duration, until_field and event");
+  assert.equal(errorText("config.duration", "give exactly one of duration, until_field and event"), "How long: choose how long to wait, a date field, or an event");
+  assert.equal(errorText("config.filter", "needs a condition"), "Condition: add at least one condition");
+  assert.equal(errorText("config", "give a user_id or a round_robin list, not both and not neither"), "Choose one person, or the people to take turns");
+  assert.equal(errorText("config.round_robin", "List should have at least 1 item after validation, not 0"), "Round robin over: choose at least 1");
+  assert.equal(readable("is not a field of contact"), "is not a field of contact", "anything else is left as it is");
+});
+
+test("the contact starters give their tasks and reminders to the person who made them: a new contact has no owner", () => {
+  const form = STARTERS.find((x) => x.id === "form_follow_up")!.graph("u1");
+  assert.equal(form.nodes.call_task!.config.assignee, "u1");
+  assert.equal(form.nodes.nudge!.config.user_id, "u1");
+  const lead = STARTERS.find((x) => x.id === "new_lead")!.graph("u1");
+  assert.ok(Object.values(lead.nodes).every((n) => n.config.assignee !== "owner" && n.config.user_id !== "owner"));
+  assert.equal(STARTERS.find((x) => x.id === "deal_moved")!.graph("u1").nodes.follow_up!.config.assignee, "owner", "a deal has its owner");
 });

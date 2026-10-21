@@ -79,15 +79,36 @@ export function prune(g: Graph): Graph {
   const keep = reachable(g);
   const nodes: Record<string, WfNode> = {};
   const live = (t: string | null | undefined) => (t && keep.has(t) ? t : null);
+  let changed = false;
   for (const [id, n] of Object.entries(g.nodes)) {
-    if (!keep.has(id)) continue;
-    const out: WfNode = { ...n };
-    if ("next" in n) out.next = live(n.next);
-    if (n.branches) out.branches = Object.fromEntries(Object.entries(n.branches).map(([b, t]) => [b, live(t)]));
-    nodes[id] = out;
+    if (!keep.has(id)) {
+      changed = true;
+      continue;
+    }
+    nodes[id] = relink(n, live);
+    changed ||= nodes[id] !== n;
   }
-  return { ...g, start: live(g.start), nodes };
+  const start = live(g.start);
+  return changed || start !== g.start ? { ...g, start, nodes } : g;
 }
+
+/** The node with each edge passed through `to`; the same object when no edge changes (the canvas redraws only the cards
+ * whose node object changed, so an edit to one step must leave the others alone). */
+function relink(n: WfNode, to: (t: string | null | undefined) => string | null): WfNode {
+  const next = "next" in n ? to(n.next) : undefined;
+  const branches = n.branches ? Object.fromEntries(Object.entries(n.branches).map(([b, t]) => [b, to(t)])) : undefined;
+  const same = (!("next" in n) || next === (n.next ?? null)) && (!n.branches || Object.entries(n.branches).every(([b, t]) => branches![b] === (t ?? null)));
+  if (same) return n;
+  const out: WfNode = { ...n };
+  if ("next" in n) out.next = next;
+  if (branches) out.branches = branches;
+  return out;
+}
+
+/** Branch names the server accepts: path names are ids, and no two alike. A split being renamed passes through names
+ * that are neither (empty while typing, or the same as another path's); its branches must not be reshaped then, or
+ * the steps down the path would be dropped. */
+export const validBranches = (names: string[]) => names.every((n) => /^[a-z][a-z0-9_]{0,39}$/.test(n)) && new Set(names).size === names.length;
 
 /** The ids that removing `id` would take away: itself, and what only it led to. */
 export const removalImpact = (g: Graph, id: string): string[] => dropped(g, remove(g, id));
@@ -109,6 +130,10 @@ export function shape(node: WfNode, old: WfNode): WfNode {
   delete out.branches;
   const oldBranches = old.branches ?? null;
   if (ex.kind === "next") out.next = oldBranches ? (Object.values(oldBranches).find((t) => t) ?? null) : (old.next ?? null);
+  if (ex.kind === "branches" && old.branches && !validBranches(ex.names)) {
+    out.branches = old.branches; // keep the edges until the names are sound again
+    return out;
+  }
   if (ex.kind === "branches") {
     const names = ex.names;
     const oldNames = Object.keys(oldBranches ?? {});
@@ -152,11 +177,7 @@ export function remove(g: Graph, id: string): Graph {
   const swap = (t: string | null | undefined) => (t === id ? then : (t ?? null));
   const nodes: Record<string, WfNode> = {};
   for (const [nid, n] of Object.entries(g.nodes)) {
-    if (nid === id) continue;
-    const out: WfNode = { ...n };
-    if ("next" in n) out.next = swap(n.next);
-    if (n.branches) out.branches = Object.fromEntries(Object.entries(n.branches).map(([b, t]) => [b, swap(t)]));
-    nodes[nid] = out;
+    if (nid !== id) nodes[nid] = relink(n, swap);
   }
   return prune({ ...g, start: swap(g.start), nodes });
 }
@@ -224,7 +245,7 @@ export function tree(g: Graph): { main: Chain; goals: Chain[] } {
     const node = g.nodes[id]!;
     const ex = exits(node);
     const out: Out =
-      ex.kind === "next" ? { kind: "next", child: walk({ from: id }) } : ex.kind === "branches" ? { kind: "branches", branches: ex.names.map((name) => ({ name, child: walk({ from: id, branch: name }) })) } : { kind: "none" };
+      ex.kind === "next" ? { kind: "next", child: walk({ from: id }) } : ex.kind === "branches" ? { kind: "branches", branches: (validBranches(ex.names) ? ex.names : Object.keys(node.branches ?? {})).map((name) => ({ name, child: walk({ from: id, branch: name }) })) } : { kind: "none" };
     return { kind: "node", id, slot, out };
   };
   const main = walk({ from: "start" });
@@ -270,6 +291,7 @@ export function place(fields: Record<string, string> | undefined, prefix = "grap
     if ((m = /^nodes\.([^.]+)(?:\.(.*))?$/.exec(p))) (out.nodes[m[1]!] ??= {})[m[2] ?? ""] = message;
     else if ((m = /^trigger(?:\.(.*))?$/.exec(p))) out.trigger[m[1] ?? ""] = message;
     else if (p === "start") out.general.push(`The first step ${message}`);
+    else if (p === "nodes") out.general.push(message.charAt(0).toUpperCase() + message.slice(1));
     else out.general.push(p ? `${p}: ${message}` : message);
   }
   return out;

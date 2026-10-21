@@ -32,6 +32,9 @@
   min-width: 0;
 }
 .wf-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px; /* WCAG 2.2 target size */
   padding: 0;
   border: 0;
   background: none;
@@ -243,11 +246,6 @@
     justify-content: flex-start;
   }
 }
-.wf-saved {
-  color: var(--text-2);
-  font-size: var(--fs-sm);
-  white-space: nowrap;
-}
 
 /* ---- builder layout ---- */
 .wf-build {
@@ -290,6 +288,25 @@
 .wf-undo {
   display: inline-flex;
 }
+.wf-menu-anchor {
+  position: absolute;
+  pointer-events: none;
+}
+@media (max-width: 1099px) {
+  /* tablets and phones are mostly touched: the key hints would only wrap the toolbar */
+  .wf-keys-hint {
+    visibility: hidden;
+  }
+}
+.wf-row-top {
+  align-items: flex-start;
+}
+.wf-row-top > .wf-muted {
+  margin-top: 10px;
+}
+.wf-row-top > .ui-btn {
+  margin-top: 0;
+}
 .wf-keys-hint,
 .wf-test-banner {
   flex: 1;
@@ -324,6 +341,7 @@
   background: var(--hover);
 }
 .wf-scroller {
+  position: relative; /* the add menu's anchor is placed in it */
   overflow: auto;
   max-height: calc(100dvh - 240px);
   min-height: 360px;
@@ -576,11 +594,6 @@
 .wf-branch:first-child::before,
 .wf-branch:last-child::after {
   display: none;
-}
-.wf-branches::before {
-  /* the stem from the branching step down to the joining line */
-  position: absolute;
-  content: none;
 }
 .wf-chain-item > .wf-branches {
   position: relative;

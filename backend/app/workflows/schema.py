@@ -283,6 +283,23 @@ def validate(graph: Any) -> dict:
     return clean
 
 
+def sound_parts(graph: Any) -> dict | None:
+    """The parts of a graph that are sound on their own (the trigger, and each node whose type and config parse), for
+    the workspace checks to run on while the rest has errors: a save reports every problem at once, not one round of
+    structural errors and then another of the workspace's. None when even the trigger does not parse."""
+    if not isinstance(graph, dict) or not isinstance(graph.get("nodes"), dict):
+        return None
+    ignored: dict[str, str] = {}
+    trigger = parse(Trigger, graph.get("trigger"), "trigger", ignored)
+    if trigger is None:
+        return None
+    nodes: dict[str, dict] = {}
+    for nid, node in graph["nodes"].items():
+        if NODE_ID.fullmatch(str(nid)) and isinstance(node, dict):
+            keep(nid, node, f"nodes.{nid}", {}, nodes, {})
+    return {"trigger": trigger.model_dump(mode="json"), "start": graph.get("start"), "nodes": nodes}
+
+
 def keep(nid: str, node: dict, path: str, errors: dict[str, str], nodes: dict, configs: dict) -> None:
     """Checks one node and, if it is sound, adds its normalized form."""
     type_ = node.get("type")

@@ -126,6 +126,36 @@ def test_versions_are_immutable_numbered_and_saving_what_is_saved_changes_nothin
     assert r.status_code == 422 and fields(r) == {"graph": "Input should be a valid dictionary"}
 
 
+def test_a_save_reports_the_graphs_problems_and_the_workspaces_in_one_answer(crm):
+    client, ws, _ = crm
+    bad = graph({"t1": act("tag.add", {"tag": "nope"}, "t2"), "t2": act("task.create", {}, "t3"),
+                 "t3": pause({"duration": {"days": 1}}, None)}, filter={"field": "ghost", "op": "is_empty"})
+    found = fields(client.post(ROOT, json={"name": "Bad", "graph": bad}, headers={H: ws}))
+    assert found["graph.nodes.t2.config.title"] == "is required"  # the schema's
+    assert found["graph.nodes.t1.config.tag"] == "there is no tag 'nope'"  # the workspace's, in the same round
+    assert found["graph.trigger.filter.field"] == "unknown field 'ghost' on contact"
+
+
+def test_a_save_from_an_older_base_is_a_conflict_and_never_overwrites_a_newer_version(crm):
+    client, ws, _ = crm
+    make_tag(client, ws, "a")
+    make_tag(client, ws, "b")
+    wf = create(client, ws)
+    first = post(client, ws, f"/{wf['id']}/versions", {"graph": graph({"go": tag("a")}), "base": None}, status=201)
+    assert first["number"] == 1
+    r = client.post(f"{ROOT}/{wf['id']}/versions", headers={H: ws},
+                    json={"graph": graph({"go": tag("b")}), "base": None})
+    assert r.status_code == 409 and r.json()["error"]["code"] == "version_conflict"  # version 1 was saved meanwhile
+    assert post(client, ws, f"/{wf['id']}/versions", {"graph": graph({"go": tag("b")}), "base": 1}, status=201)[
+        "number"] == 2
+    stale = client.post(f"{ROOT}/{wf['id']}/versions", headers={H: ws}, json={"graph": graph({"go": tag("a")}),
+                                                                             "base": 1})
+    assert stale.status_code == 409 and "Version 2 was saved after version 1" in stale.json()["error"]["message"]
+    assert get(client, ws, f"/{wf['id']}")["latest_version"] == 2
+    # without a base it saves on top, as before (the editor's "save mine")
+    assert post(client, ws, f"/{wf['id']}/versions", {"graph": graph({"go": tag("a")})}, status=201)["number"] == 3
+
+
 def test_the_diff_between_two_versions_is_node_level_and_ignores_where_a_node_is_drawn(crm):
     client, ws, _ = crm
     for name in ("a", "b", "c"):

@@ -61,6 +61,11 @@ const person = (v: unknown, names: Names) => (v === "owner" ? "the record's owne
 
 /** The card's line: what it is set to do. Empty settings say what is missing instead. */
 export function summary(node: WfNode, names: Names = {}): string {
+  const line = describeStep(node, names);
+  return line.charAt(0).toUpperCase() + line.slice(1);
+}
+
+function describeStep(node: WfNode, names: Names): string {
   const c = node.config ?? {};
   switch (node.type) {
     case "action":
@@ -86,7 +91,7 @@ export function summary(node: WfNode, names: Names = {}): string {
     }
     case "split": {
       const paths = Array.isArray(c.paths) ? (c.paths as { name?: string; percent?: number }[]) : [];
-      return paths.map((p) => `${p.name} ${p.percent ?? 0}%`).join(", ");
+      return `Paths ${paths.map((p) => `${p.name} ${p.percent ?? 0}%`).join(", ")}`;
     }
     case "subflow":
       return "Sub-workflows are not built yet: it can be saved, not published";

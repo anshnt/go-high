@@ -54,6 +54,7 @@ class PatchWorkflow(BaseModel):
 class SaveVersion(BaseModel):
     graph: dict
     note: Note | None = None
+    base: int | None = None  # the newest version the editor started from (null: none yet); sent, it guards the save
 
 
 class Publish(BaseModel):
@@ -363,10 +364,18 @@ def create_version(workflow_id: uuid.UUID, body: SaveVersion, c: Ctx = Depends(w
                    idem: Idem = Depends(idempotency)):
     """Saves a graph as a new draft version. The graph is validated against the catalog's schemas and against this
     workspace (fields, tags, stages, channels); errors point into it (`graph.nodes.send.config.body`). Saving what the
-    newest version already holds changes nothing and returns it. The published version stays until `publish`."""
+    newest version already holds changes nothing and returns it. The published version stays until `publish`. With
+    `base` (the newest version number the editor loaded, or null for none) a version saved since is a 409
+    `version_conflict`, so two people editing at once never overwrite each other without knowing."""
     wf = workflow_or_404(c, workflow_id, lock=True)
     if wf.status == "archived":
         raise ApiError(409, "conflict", "The workflow is archived")
+    if "base" in body.model_fields_set:  # the row lock makes the check and the save one step
+        last = publishing.newest(c.db, wf.id)
+        if (last.number if last else None) != body.base:
+            since, now = "none" if body.base is None else body.base, last.number if last else "none"
+            raise ApiError(409, "version_conflict",
+                           f"Version {now} was saved after version {since}, which this edit started from")
     version, made = publishing.save_version(c, wf, body.graph, body.note)
     return idem.commit(201 if made else 200, version_json(version, wf, graph=True))
 

@@ -4,6 +4,8 @@ import { Link, useNavigate } from "react-router";
 import { ApiError, errorText } from "../lib/api";
 import { useCan } from "../lib/capabilities";
 import { timeAgo } from "../lib/device";
+import { session } from "../lib/session";
+import { useStore } from "../lib/store";
 import { useMediaQuery } from "../lib/useMediaQuery";
 import { PageHeader } from "../shell/PageHeader";
 import { TYPING } from "../shell/useShortcuts";
@@ -12,6 +14,7 @@ import { workflows, type Status, type WorkflowRow } from "./api";
 import { eventLabel } from "./graph";
 import { dateTime, enrolled, StatusBadge, versionText } from "./parts";
 import { PublishDialog } from "./PublishDialog";
+import { inChord, onSurface } from "./keys";
 import { STARTERS, type Starter } from "./starters";
 import "./workflows.css";
 
@@ -159,7 +162,7 @@ export function WorkflowsPage() {
   // j and k walk the rows, Enter opens one, / searches, n starts a new workflow
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey || (e.target instanceof Element && e.target.closest(TYPING)) || document.querySelector('[role="dialog"]')) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || inChord(e) || (e.target instanceof Element && e.target.closest(TYPING)) || document.querySelector('[role="dialog"]')) return;
       const list = rows ?? [];
       const at = list.findIndex((w) => w.id === active);
       if (e.key === "j" || e.key === "k") {
@@ -169,7 +172,7 @@ export function WorkflowsPage() {
           setActive(next.id);
           document.querySelector<HTMLElement>(`[data-wf-row="${next.id}"]`)?.scrollIntoView({ block: "nearest" });
         }
-      } else if (e.key === "Enter" && at >= 0) {
+      } else if (e.key === "Enter" && at >= 0 && onSurface(e, "body")) {
         e.preventDefault();
         navigate(`/automations/${list[at]!.id}`);
       } else if (e.key === "/") {
@@ -391,13 +394,15 @@ function NewWorkflow({ starter, onClose, onCreated }: { starter: Starter | null;
     }
   }, [starter]);
   const chosen = STARTERS.find((s) => s.id === pick)!;
+  const who = useStore(session);
+  const me = who.status === "ready" ? who.me.user.id : null;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!name.trim()) return setError("Give it a name.");
     setBusy(true);
     try {
-      const made = await workflows.create({ name: name.trim(), graph: chosen.graph, note: chosen.id === "blank" ? undefined : `From the starter "${chosen.name}"` });
+      const made = await workflows.create({ name: name.trim(), graph: chosen.graph(me), note: chosen.id === "blank" ? undefined : `From the starter "${chosen.name}"` });
       onCreated(made.id);
     } catch (err) {
       setError(errorText(err));
@@ -407,7 +412,7 @@ function NewWorkflow({ starter, onClose, onCreated }: { starter: Starter | null;
   return (
     <Dialog open={!!starter} onOpenChange={(o) => !o && !busy && onClose()} title="New workflow" description={chosen.text}>
       <form className="wf-new" onSubmit={submit} noValidate>
-        <Input label="Name" autoFocus value={name} error={error} onChange={(e) => setName(e.target.value)} placeholder="Follow up quote requests" maxLength={200} />
+        <Input label="Name" autoFocus data-autofocus value={name} error={error} onChange={(e) => setName(e.target.value)} placeholder="Follow up quote requests" maxLength={200} />
         <Select label="Start from" value={pick} onValueChange={(v) => {
           const s = STARTERS.find((x) => x.id === v)!;
           setPick(v);

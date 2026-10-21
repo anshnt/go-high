@@ -71,7 +71,7 @@ export function History({ workflowId, names, canWrite, canPublish, refreshKey, o
                 {v.published && <Badge tone="success">Live</Badge>}
                 {!v.published && v.published_at && <Badge>Was live</Badge>}
                 <span className="wf-muted">
-                  {v.nodes} {v.nodes === 1 ? "step" : "steps"}, saved <time dateTime={v.created_at} title={dateTime(v.created_at)}>{timeAgo(v.created_at)}</time>
+                  {v.nodes} {v.nodes === 1 ? "step" : "steps"}, saved <time dateTime={v.created_at} title={dateTime(v.created_at)}>{timeAgo(v.created_at).replace(/^./, (c) => c.toLowerCase())}</time>
                 </span>
               </div>
               {v.note && <p className="wf-version-note">{v.note}</p>}
@@ -105,8 +105,8 @@ export function History({ workflowId, names, canWrite, canPublish, refreshKey, o
       </section>
       <section className="wf-diff-pane" aria-label="Compare versions" ref={pane}>
         <div className="wf-diff-pick">
-          <Select label="From" value={from === null ? undefined : String(from)} placeholder="Choose" onValueChange={(v) => setFrom(Number(v))} options={options} />
-          <Select label="To" value={to === null ? undefined : String(to)} placeholder="Choose" onValueChange={(v) => setTo(Number(v))} options={options} />
+          <Select label="From" value={from === null ? "" : String(from)} placeholder="Choose" onValueChange={(v) => setFrom(Number(v))} options={options} />
+          <Select label="To" value={to === null ? "" : String(to)} placeholder="Choose" onValueChange={(v) => setTo(Number(v))} options={options} />
         </div>
         {from !== null && to !== null && from !== to ? <DiffView workflowId={workflowId} from={from} to={to} names={names} /> : <p className="wf-muted">{versions.length === 1 ? "There is one version so far: save another to compare." : "Choose two different versions."}</p>}
       </section>
@@ -160,10 +160,6 @@ function DiffView({ workflowId, from, to, names }: { workflowId: string; from: n
   if (!diff) return <Skeleton style={{ height: 80 }} />;
   const n = diff.nodes;
   const nothing = !diff.trigger.changed && !diff.start.changed && !n.added.length && !n.removed.length && !n.changed.length;
-  const line = (node: Record<string, unknown>) => {
-    const w = node as unknown as WfNode;
-    return `${title(w, names)}: ${summary(w, names)}`;
-  };
   return (
     <div className="wf-diff" aria-live="polite">
       <h3 className="wf-h3">
@@ -186,20 +182,20 @@ function DiffView({ workflowId, from, to, names }: { workflowId: string; from: n
       )}
       {n.added.map((a) => (
         <div key={`a-${a.id}`} className="wf-diff-item" data-kind="added">
-          <strong>Added</strong> <span className="mono">{a.id}</span>
-          <p>{line(a.node)}</p>
+          <strong>Added: {title(a.node as WfNode, names)}</strong> <span className="mono wf-muted">{a.id}</span>
+          <p>{summary(a.node as WfNode, names)}</p>
         </div>
       ))}
       {n.removed.map((r) => (
         <div key={`r-${r.id}`} className="wf-diff-item" data-kind="removed">
-          <strong>Removed</strong> <span className="mono">{r.id}</span>
-          <p>{line(r.node)}</p>
+          <strong>Removed: {title(r.node as WfNode, names)}</strong> <span className="mono wf-muted">{r.id}</span>
+          <p>{summary(r.node as WfNode, names)}</p>
         </div>
       ))}
       {n.changed.map((c) => (
         <div key={`c-${c.id}`} className="wf-diff-item" data-kind="changed">
-          <strong>Changed</strong> <span className="mono">{c.id}</span> <span className="wf-muted">({c.keys.join(", ")})</span>
-          <p>{line(c.after)}</p>
+          <strong>Changed: {title(c.after as WfNode, names)}</strong> <span className="mono wf-muted">{c.id}</span>
+          <p>{summary(c.after as WfNode, names)}</p>
           <dl className="wf-diff-keys">
             {changes(c.keys, c.before, c.after).map((d) => (
               <div key={d.key}>

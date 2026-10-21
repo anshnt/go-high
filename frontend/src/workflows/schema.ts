@@ -51,8 +51,25 @@ export function settingLabel(key: string): string {
   const text = LABELS[k] ?? MORE_LABELS[k] ?? (k.charAt(0).toUpperCase() + k.slice(1).replace(/_id$/, "").replace(/_/g, " "));
   return text;
 }
+/** The validator's own words, where they are written for developers, as words for people. */
+const READABLE: [RegExp, string][] = [
+  [/^needs a condition$/, "add at least one condition"],
+  [/^give a user_id or a round_robin list, not both and not neither$/, "choose one person, or the people to take turns"],
+  [/^List should have at least (\d+) items? after validation.*$/, "choose at least $1"],
+  [/^Field required$/, "is required"],
+  [/^give exactly one of duration, until_field and event$/, "choose how long to wait, a date field, or an event"],
+  [/^the percentages must add up to 100$/, "the percentages must add up to 100%"],
+  [/^Input should be a valid UUID.*$/, "choose one from the list"],
+  [/^String should have at least 1 character$/, "is required"],
+];
+export function readable(message: string): string {
+  for (const [re, words] of READABLE) if (re.test(message)) return message.replace(re, words);
+  return message;
+}
+
 /** A server message about a setting, as a sentence: "Channel is required", "Message: uses {{x}}, which...". */
-export function errorText(path: string, message: string): string {
+export function errorText(path: string, raw: string): string {
+  const message = readable(raw);
   const rest = path.replace(/^config\.?/, "");
   if (!rest) return message.charAt(0).toUpperCase() + message.slice(1);
   return `${settingLabel(rest)}${/^(is|are|must|needs?|has|have|leads|uses|cannot|can't)\b/.test(message) ? " " : ": "}${message}`;
@@ -99,7 +116,7 @@ function kindOf(key: string, s: JsonSchema): Kind {
   if (s.type === "object" && s.additionalProperties && typeof s.additionalProperties === "object") return "map";
   if (s.type === "object") return "json";
   if (s.format === "uuid") return "uuid";
-  if (s.type === "string") return (s.maxLength ?? 0) > 500 || key === "body" || key === "notes" ? "long_text" : "text";
+  if (s.type === "string") return key !== "url" && ((s.maxLength ?? 0) > 500 || key === "body" || key === "notes") ? "long_text" : "text";
   return "text";
 }
 
@@ -107,7 +124,13 @@ function kindOf(key: string, s: JsonSchema): Kind {
 export function props(root: JsonSchema | null | undefined): Prop[] {
   if (!root?.properties) return [];
   const required = new Set(root.required ?? []);
-  return Object.entries(root.properties).map(([key, raw]) => {
+  // read in the order a person fills them in: an email's subject before its message
+  const keys = Object.keys(root.properties);
+  if (keys.includes("subject") && keys.includes("body")) {
+    keys.splice(keys.indexOf("subject"), 1);
+    keys.splice(keys.indexOf("body"), 0, "subject");
+  }
+  return keys.map((key) => [key, root.properties![key]!] as const).map(([key, raw]) => {
     const { schema, nullable } = unwrap(raw, root);
     const kind = kindOf(key, schema);
     // "user_id" is a person (a user or "owner") where the schema does not insist on a uuid

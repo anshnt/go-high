@@ -2,7 +2,7 @@
 // here with no change, and the keys that name something in the workspace (a channel, a person, a stage, a tag) get a
 // picker instead of a text box.
 import { Plus, Trash2 } from "lucide-react";
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useMemo, useRef, useState } from "react";
 import { FieldEditor } from "../records/fields/FieldEditor";
 import { UserPicker } from "../records/fields/inputs";
 import { useMeta } from "../records/meta.tsx";
@@ -12,18 +12,25 @@ import { Button, Input, Select, Switch, Textarea } from "../ui";
 import { Combobox, type ComboItem } from "../ui/Combobox";
 import type { Choice, JsonSchema } from "./api";
 import { offsetOf, UNITS, type Unit } from "./graph";
-import { choiceLabel, props, type Prop } from "./schema";
+import { choiceLabel, props, readable, type Prop } from "./schema";
 
-export type Lookups = { channels: Choice[] | null; stages: Choice[] | null; forms: Choice[] | null; calendars: Choice[] | null };
-export const LookupsCtx = createContext<Lookups>({ channels: null, stages: null, forms: null, calendars: null });
+/** What the pickers list: null while loading; a kind in `failed` could not be loaded (`retry` loads those again). */
+export type Lookups = { channels: Choice[] | null; stages: Choice[] | null; forms: Choice[] | null; calendars: Choice[] | null; failed: Set<string>; retry?: () => void };
+export const LookupsCtx = createContext<Lookups>({ channels: null, stages: null, forms: null, calendars: null, failed: new Set() });
 export const useLookups = () => useContext(LookupsCtx);
 
 /** The error for a setting: its own, or the first of its parts ("values.email"). */
 export function errorFor(errors: Record<string, string>, key: string): string | undefined {
-  if (errors[key]) return errors[key];
+  const own = errors[key];
+  if (own) return sentence(readable(own));
   const sub = Object.entries(errors).find(([k]) => k.startsWith(`${key}.`));
-  return sub ? `${sub[0].slice(key.length + 1).replace(/_/g, " ")}: ${sub[1]}` : undefined;
+  if (!sub) return undefined;
+  const part = sub[0].slice(key.length + 1);
+  // "round_robin.0" is the first person of a list; "values.email" a field: name the part only when it is a name
+  return /^\d+$/.test(part) ? `The ${ordinal(Number(part))} one ${readable(sub[1])}` : `${part.replace(/[._]/g, " ")}: ${readable(sub[1])}`;
 }
+const sentence = (m: string) => m.charAt(0).toUpperCase() + m.slice(1);
+const ordinal = (n: number) => ["first", "second", "third", "fourth", "fifth"][n] ?? `number ${n + 1}`;
 
 const UNIT_OPTIONS = UNITS.map((u) => ({ value: u, label: u }));
 
@@ -74,8 +81,9 @@ export function OffsetInput({ label, value, onChange, error, hint, signed, requi
 }
 
 /** A labelled picker over a list of choices. */
-export function ChoiceCombo({ label, items, value, onChange, error, hint, placeholder = "Choose", loading, clearable }: { label: string; items: ComboItem[]; value: string | null; onChange: (v: string | null) => void; error?: string; hint?: string; placeholder?: string; loading?: boolean; clearable?: boolean }) {
+export function ChoiceCombo({ label, items, value, onChange, error, hint, placeholder = "Choose", loading, clearable, failed, onRetry, what = "the list" }: { label: string; items: ComboItem[]; value: string | null; onChange: (v: string | null) => void; error?: string; hint?: string; placeholder?: string; loading?: boolean; clearable?: boolean; failed?: boolean; onRetry?: () => void; what?: string }) {
   const known = items.find((i) => i.value === value);
+  const waiting = loading && !failed;
   return (
     <div className="ui-field">
       <span className="ui-label">{label}</span>
@@ -84,12 +92,22 @@ export function ChoiceCombo({ label, items, value, onChange, error, hint, placeh
         items={items}
         value={value}
         onChange={onChange}
-        placeholder={loading ? "Loading" : placeholder}
-        valueLabel={value && !known ? (loading ? "Loading" : /^[0-9a-f-]{36}$/i.test(value) ? "Not found any more: choose again" : `${value} (not found)`) : undefined}
+        placeholder={failed ? `Could not load ${what}` : waiting ? "Loading" : placeholder}
+        valueLabel={value && !known ? (failed ? `Could not load ${what}` : waiting ? "Loading" : /^[0-9a-f-]{36}$/i.test(value) ? "Not found any more: choose again" : `${value} (not found)`) : undefined}
         aria-invalid={!!error}
         onClear={clearable ? () => onChange(null) : undefined}
-        emptyText={loading ? "Loading" : "Nothing to choose from yet"}
+        emptyText={failed ? `Could not load ${what}` : waiting ? "Loading" : "Nothing to choose from yet"}
       />
+      {failed && (
+        <p className="ui-hint" data-tone="danger">
+          We could not load {what}.{" "}
+          {onRetry && (
+            <button type="button" className="wf-link" onClick={onRetry}>
+              Try again
+            </button>
+          )}
+        </p>
+      )}
       {error ? (
         <p className="ui-hint" data-tone="danger">
           {error}
@@ -123,11 +141,13 @@ function MergeField({ object, onPick }: { object: string; onPick: (key: string) 
 
 const MERGEABLE = new Set(["body", "title", "notes", "subject"]);
 
-type FormProps = { schema: JsonSchema | null | undefined; value: Record<string, unknown>; onChange: (v: Record<string, unknown>) => void; errors: Record<string, string>; object: string; disabled?: boolean; skip?: string[] };
+type FormProps = { schema: JsonSchema | null | undefined; value: Record<string, unknown>; onChange: (v: Record<string, unknown>) => void; errors: Record<string, string>; object: string; disabled?: boolean; skip?: string[]; /** settings the schema leaves optional that this form needs (one of two ways) */ need?: string[] };
 
 /** Every setting of the schema, in order. */
-export function ConfigForm({ schema, value, onChange, errors, object, disabled, skip = [] }: FormProps) {
-  const list = props(schema).filter((p) => !skip.includes(p.key));
+export function ConfigForm({ schema, value, onChange, errors, object, disabled, skip = [], need = [] }: FormProps) {
+  const list = props(schema)
+    .filter((p) => !skip.includes(p.key))
+    .map((p) => (need.includes(p.key) ? { ...p, required: true } : p));
   const set = (key: string, v: unknown) => {
     const next = { ...value };
     if (v === undefined || v === null || v === "") delete next[key];
@@ -150,9 +170,9 @@ function Setting({ prop: p, value, onChange, error, object }: { prop: Prop; valu
   const str = typeof value === "string" ? value : "";
   switch (p.widget) {
     case "channel":
-      return <ChoiceCombo label={label} items={(lookups.channels ?? []).map((c) => ({ value: c.id, label: c.name, hint: c.hint }))} value={str || null} onChange={onChange} error={error} loading={!lookups.channels} hint={lookups.channels?.length === 0 ? "Connect an SMS, email or WhatsApp channel in Settings, Channels first." : undefined} />;
+      return <ChoiceCombo label={label} what="the channels" failed={lookups.failed.has("channels")} onRetry={lookups.retry} items={(lookups.channels ?? []).map((c) => ({ value: c.id, label: c.name, hint: c.hint }))} value={str || null} onChange={onChange} error={error} loading={!lookups.channels} hint={lookups.channels?.length === 0 ? "Connect an SMS, email or WhatsApp channel in Settings, Channels first." : undefined} />;
     case "stage":
-      return <ChoiceCombo label={label} items={(lookups.stages ?? []).map((s) => ({ value: s.id, label: s.name, group: s.hint }))} value={str || null} onChange={onChange} error={error} loading={!lookups.stages} />;
+      return <ChoiceCombo label={label} what="the stages" failed={lookups.failed.has("stages")} onRetry={lookups.retry} items={(lookups.stages ?? []).map((s) => ({ value: s.id, label: s.name, group: s.hint }))} value={str || null} onChange={onChange} error={error} loading={!lookups.stages} />;
     case "tag":
       return (
         <ChoiceCombo
@@ -208,19 +228,41 @@ function Setting({ prop: p, value, onChange, error, object }: { prop: Prop; valu
     case "json":
       return <JsonInput label={label} value={value} onChange={onChange} error={error} />;
     case "long_text":
-    case "text": {
-      const merge = MERGEABLE.has(p.key) ? <MergeField object={object} onPick={(k) => onChange(`${str}${str && !str.endsWith(" ") ? " " : ""}{{${k}}}`)} /> : null;
-      const Control = p.kind === "long_text" ? Textarea : Input;
-      return (
-        <div className="wf-text">
-          <Control label={label} value={str} maxLength={p.max} error={error} hint={p.hint} onChange={(e: { target: { value: string } }) => onChange(e.target.value)} />
-          {merge}
-        </div>
-      );
-    }
+    case "text":
+      return <TextSetting prop={p} label={label} value={str} onChange={onChange} error={error} object={object} />;
     default:
       return <Input label={label} value={str} error={error} hint={p.hint} onChange={(e) => onChange(e.target.value)} />;
   }
+}
+
+/** A text setting; for message text, "Insert a field" puts {{key}} where the cursor was (at the end when it never was). */
+function TextSetting({ prop: p, label, value, onChange, error, object }: { prop: Prop; label: string; value: string; onChange: (v: string) => void; error?: string; object: string }) {
+  const input = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
+  const caret = useRef<[number, number] | null>(null);
+  const remember = () => {
+    const el = input.current;
+    if (el && el.selectionStart !== null) caret.current = [el.selectionStart, el.selectionEnd ?? el.selectionStart];
+  };
+  const insert = (key: string) => {
+    const [from, to] = caret.current ?? [value.length, value.length];
+    const before = value.slice(0, from);
+    const token = `${before && !/\s$/.test(before) ? " " : ""}{{${key}}}`;
+    const next = `${before}${token}${value.slice(to)}`;
+    onChange(next);
+    const at = from + token.length;
+    caret.current = [at, at];
+    requestAnimationFrame(() => {
+      input.current?.focus();
+      input.current?.setSelectionRange(at, at);
+    });
+  };
+  const common = { label, value, maxLength: p.max, error, hint: p.hint, onSelect: remember, onKeyUp: remember, onBlur: remember };
+  return (
+    <div className="wf-text">
+      {p.kind === "long_text" ? <Textarea ref={input} {...common} onChange={(e) => onChange(e.target.value)} /> : <Input ref={input} {...common} onChange={(e) => onChange(e.target.value)} />}
+      {MERGEABLE.has(p.key) && <MergeField object={object} onPick={insert} />}
+    </div>
+  );
 }
 
 /** Fields to set on the record: a field and its value per row, each value in its field's own input. */

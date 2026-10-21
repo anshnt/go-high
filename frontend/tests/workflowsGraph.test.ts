@@ -2,7 +2,7 @@
 // edges named as it names them, nothing orphaned, a removed step's followers kept, and its errors put on the right node.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { addGoal, blank, dropped, exits, insert, move, newId, offsetText, order, place, prune, reachable, remove, removalImpact, same, secondsText, slotsTo, tree, update, type Graph } from "../src/workflows/graph.ts";
+import { addGoal, blank, dropped, exits, insert, move, newId, offsetText, order, place, prune, reachable, remove, removalImpact, same, secondsText, slotsTo, tree, update, validBranches, type Graph } from "../src/workflows/graph.ts";
 
 const graph = (): Graph => ({
   trigger: { event: "form.submitted", object: "contact", filter: {}, data: {} },
@@ -125,7 +125,7 @@ test("the server's errors land on the trigger, the node and its field", () => {
   assert.deepEqual(p.nodes.send, { "config.body": "is required" });
   assert.deepEqual(p.nodes.pause, { "": "is not reachable" });
   assert.deepEqual(p.trigger, { "filter.and.0.field": "is not a field" });
-  assert.deepEqual(p.general, ["The first step is required: the id of the first node", "nodes: add a step first", "name: is too long"]);
+  assert.deepEqual(p.general, ["The first step is required: the id of the first node", "Add a step first", "name: is too long"]);
 });
 
 test("time in words", () => {
@@ -141,4 +141,27 @@ test("time in words", () => {
 test("same ignores key order and undefined values", () => {
   assert.ok(same({ a: 1, b: { c: [1, 2] } }, { b: { c: [1, 2] }, a: 1, d: undefined }));
   assert.ok(!same({ a: [1, 2] }, { a: [2, 1] }));
+});
+
+test("renaming a path through an empty or a duplicate name keeps its steps", () => {
+  const split = insert(graph(), { from: "tag" }, "ab", { type: "split", config: { paths: [{ name: "a", percent: 50 }, { name: "b", percent: 50 }] } });
+  let g = insert(split, { from: "ab", branch: "b" }, "bee", { type: "action", action: "tag.add", config: { tag: "b" } });
+  // typing "a2" over "b": "" then "a" (the other path's name) then "a2"
+  for (const name of ["", "a", "a2"]) g = update(g, "ab", { config: { paths: [{ name: "a", percent: 50 }, { name, percent: 50 }] } });
+  assert.deepEqual(g.nodes.ab!.branches, { a: null, a2: "bee" });
+  assert.ok("bee" in g.nodes);
+  assert.ok(!validBranches(["a", "a"]) && !validBranches(["a", ""]) && !validBranches(["A"]) && validBranches(["a", "b_2"]));
+});
+
+test("an edit leaves the other steps' objects alone, so the canvas redraws only what changed", () => {
+  const g = graph();
+  const added = insert(g, { from: "hello" }, "note", { type: "action", action: "notify.user", config: {} });
+  assert.equal(added.nodes.pause, g.nodes.pause);
+  assert.equal(added.nodes.check, g.nodes.check);
+  assert.notEqual(added.nodes.hello, g.nodes.hello);
+  const removed = remove(g, "pause");
+  assert.equal(removed.nodes.check, g.nodes.check);
+  const changed = update(g, "tag", { config: { tag: "warm" } });
+  assert.equal(changed.nodes.hello, g.nodes.hello);
+  assert.equal(prune(g), g, "nothing to prune: the same graph");
 });

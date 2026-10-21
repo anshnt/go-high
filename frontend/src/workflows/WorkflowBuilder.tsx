@@ -1,5 +1,5 @@
 import { Archive, ChevronLeft, CircleAlert, EllipsisVertical, FlaskConical, LockKeyhole, Minus, NotebookPen, Pause, Play, Plus, Redo2, SearchCheck, Undo2, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link, useBlocker, useNavigate, useParams, useSearchParams } from "react-router";
 import { ApiError, errorText } from "../lib/api";
 import { useCan } from "../lib/capabilities";
@@ -15,11 +15,12 @@ import { PageHeader } from "../shell/PageHeader";
 import { TYPING } from "../shell/useShortcuts";
 import { Badge, Button, Dialog, DropdownMenu, EmptyState, Input, Kbd, MenuItem, MenuSeparator, Select, Sheet, Skeleton, Switch, Tabs, TabsContent, TabsList, TabsTrigger, useToast } from "../ui";
 import { lookups as loadLookups, workflows, type Catalog, type Glance, type StepStatus, type TestResult, type WorkflowDetail, type WorkflowRow } from "./api";
-import { Canvas, firstError, type AddChoice } from "./Canvas";
+import { AddMenu, Canvas, firstError, type AddChoice } from "./Canvas";
 import { LookupsCtx, type Lookups } from "./ConfigForm";
 import { title, type Names } from "./describe";
 import { ExplainDialog } from "./ExplainDialog";
-import { addGoal, blank, connect, exits, insert, move, newId, order, place, remove, removalImpact, same, secondsText, update, type Graph, type Placed, type Slot, type WfNode } from "./graph";
+import { addGoal, blank, connect, exits, insert, move, newId, order, place, read, remove, removalImpact, same, secondsText, slotKey, update, type Graph, type Placed, type Slot, type WfNode } from "./graph";
+import { inChord, onSurface } from "./keys";
 import { History } from "./History";
 import { NodePanel, TriggerPanel } from "./Panel";
 import { enrolled, StatusBadge, versionText } from "./parts";
@@ -31,6 +32,8 @@ import { useWorkflowActions } from "./WorkflowsPage";
 import "./workflows.css";
 
 const NO_ERRORS: Placed = { trigger: {}, nodes: {}, general: [] };
+const LOOKUP_KINDS = ["channels", "stages", "forms", "calendars"] as const;
+const NO_LOOKUPS: Lookups = { channels: null, stages: null, forms: null, calendars: null, failed: new Set() };
 const TABS = ["build", "runs", "history", "settings"] as const;
 const ZOOMS = [0.5, 0.67, 0.8, 1, 1.25];
 type Stored = { base: number | null; graph: Graph; at: string };
@@ -91,7 +94,7 @@ function Builder({ id }: { id: string }) {
   const [wf, setWf] = useState<WorkflowDetail | null>(null);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [loadError, setLoadError] = useState<{ text: string; status: number }>();
-  const [lookups, setLookups] = useState<Lookups>({ channels: null, stages: null, forms: null, calendars: null });
+  const [lookups, setLookups] = useState<Lookups>(NO_LOOKUPS);
   const [graph, setGraph] = useState<Graph>(blank());
   const [saved, setSaved] = useState<Graph>(blank());
   const [base, setBase] = useState<number | null>(null);
@@ -103,7 +106,7 @@ function Builder({ id }: { id: string }) {
   const [sheet, setSheet] = useState(false);
   const [errors, setErrors] = useState<Placed>(NO_ERRORS);
   const [busy, setBusy] = useState<"save" | "publish" | "test" | null>(null);
-  const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ slot: Slot; empty: boolean; style: CSSProperties } | null>(null);
   const [zoom, setZoom] = useState(1);
   const [restore, setRestore] = useState<Stored | null>(null);
   const [conflict, setConflict] = useState<WorkflowDetail | null>(null);
@@ -138,22 +141,39 @@ function Builder({ id }: { id: string }) {
       .catch((e) => setLoadError({ text: e instanceof ApiError && e.status === 404 ? "This workflow does not exist, or it was in another workspace." : errorText(e), status: e instanceof ApiError ? e.status : 0 }));
   }, [id]);
   useEffect(load, [load]);
+  // What the pickers list. Each loads on its own: a role that may not list channels still builds the rest. A list that
+  // could not load says so and can be loaded again; it is not shown as empty, so its ids do not read as deleted.
+  const [lookupTry, setLookupTry] = useState(0);
   useEffect(() => {
-    const safe = <T,>(p: Promise<T[]>) => p.catch(() => [] as T[]); // a role that may not list channels still builds the rest
-    void Promise.all([safe(loadLookups.channels()), safe(loadLookups.stages()), safe(loadLookups.forms()), safe(loadLookups.calendars())]).then(([channels, stages, forms, calendars]) => setLookups({ channels, stages, forms, calendars }));
-  }, []);
+    let alive = true;
+    for (const kind of LOOKUP_KINDS) {
+      setLookups((l) => (l.failed.has(kind) ? { ...l, [kind]: null, failed: new Set([...l.failed].filter((k) => k !== kind)) } : l));
+      loadLookups[kind]()
+        .then((list) => alive && setLookups((l) => ({ ...l, [kind]: list })))
+        .catch(() => alive && setLookups((l) => ({ ...l, failed: new Set([...l.failed, kind]) })));
+    }
+    return () => {
+      alive = false;
+    };
+  }, [lookupTry]);
+  const retryLookups = useCallback(() => setLookupTry((n) => n + 1), []);
+  const lookupsValue = useMemo(() => ({ ...lookups, retry: retryLookups }), [lookups, retryLookups]);
 
   // a wide workflow opens with its trigger in the middle of the canvas, not its left edge
   const scroller = useRef<HTMLDivElement>(null);
   const loaded = !!wf && !!catalog;
-  useEffect(() => {
+  const centre = () => {
     const el = scroller.current;
     const trigger = el?.querySelector<HTMLElement>('[data-node="trigger"]');
-    if (!el || !trigger || tab !== "build") return;
+    if (!el || !trigger) return;
     const t = trigger.getBoundingClientRect();
     const box = el.getBoundingClientRect();
     el.scrollLeft += t.left + t.width / 2 - (box.left + box.width / 2);
-  }, [loaded, tab, zoom]);
+  };
+  // only when the canvas first shows: a zoom keeps where the person was looking
+  useEffect(() => {
+    if (tab === "build") centre();
+  }, [loaded, tab]);
 
   /** The largest zoom at which the whole width of the workflow shows. */
   const fitting = () => {
@@ -169,10 +189,15 @@ function Builder({ id }: { id: string }) {
   useEffect(() => {
     if (!loaded || !matchMedia("(min-width: 768px)").matches) return;
     const z = fitting();
-    if (z >= 0.67 && z < 1) setZoom(z);
+    if (z >= 0.67 && z < 1) {
+      setZoom(z);
+      requestAnimationFrame(centre);
+    }
   }, [loaded]);
 
-  const dirty = useMemo(() => !!wf && !same(graph, saved), [wf, graph, saved]);
+  const dirty = useMemo(() => !!wf && graph !== saved && !same(graph, saved), [wf, graph, saved]);
+  const graphRef = useRef(graph);
+  graphRef.current = graph;
   useEffect(() => {
     if (!wf || restore) return;
     const t = setTimeout(() => writeDraft(id, dirty ? { base, graph, at: new Date().toISOString() } : null), 400);
@@ -216,22 +241,47 @@ function Builder({ id }: { id: string }) {
     },
     [graph],
   );
+  const editRef = useRef(edit);
+  editRef.current = edit;
+  /** Brings a step's card into view and focus (after a removal, an undo, a "go to"), so focus never falls to the page. */
+  const focusNode = useCallback((nid: string) => {
+    requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>(`[data-node="${nid}"]`);
+      el?.focus({ preventScroll: true });
+      el?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
+  }, []);
+  /** Back to an earlier graph: the selection stays where it can, and its card takes the focus. */
+  const land = (g: Graph) => {
+    const keep = selected === "trigger" || (selected !== null && selected in g.nodes) ? selected! : "trigger";
+    setSelected(keep);
+    focusNode(keep);
+  };
   const undo = useCallback(() => {
     if (!past.length) return;
+    const to = past[past.length - 1]!;
     setFuture((f) => [graph, ...f].slice(0, 100));
-    setGraph(past[past.length - 1]!);
+    setGraph(to);
     setPast((p) => p.slice(0, -1));
     lastEdit.current = 0;
     setRevision((r) => r + 1);
-  }, [past, graph]);
+    land(to);
+  }, [past, graph, selected]);
   const redo = useCallback(() => {
     if (!future.length) return;
+    const to = future[0]!;
     setPast((p) => [...p, graph]);
-    setGraph(future[0]!);
+    setGraph(to);
     setFuture((f) => f.slice(1));
     lastEdit.current = 0;
     setRevision((r) => r + 1);
-  }, [future, graph]);
+    land(to);
+  }, [future, graph, selected]);
+  /** A toast's Undo: back to `before` as a new step of the history, so nothing done since is lost (it is a redo away). */
+  const restoreTo = (before: Graph) => {
+    editRef.current(before);
+    setRevision((r) => r + 1);
+  };
 
   /** Drops the server's errors about what an edit changed (`changed`: the paths it touched, "config.body"); the
    * other errors stay until the next save. No `changed`: all of that node's. */
@@ -273,33 +323,70 @@ function Builder({ id }: { id: string }) {
     },
     [wide],
   );
+  /** Opens the add menu at a + (the button, or the one a shortcut found). */
+  const openMenu = useCallback((slot: Slot, button: HTMLElement) => {
+    const box = scroller.current?.getBoundingClientRect();
+    const r = button.getBoundingClientRect();
+    if (!box || !scroller.current) return;
+    const el = scroller.current;
+    setMenu({ slot, empty: read(graphRef.current, slot) === null, style: { left: r.left - box.left + el.scrollLeft, top: r.top - box.top + el.scrollTop, width: r.width, height: r.height } });
+  }, []);
+  const closeMenu = (picked: boolean) => {
+    const at = menu;
+    setMenu(null);
+    if (!picked && at) requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-slot="${slotKey(at.slot)}"] .wf-add`)?.focus());
+  };
   const add = (slot: Slot, choice: AddChoice) => {
-    setMenuOpen(null);
+    setMenu(null);
     if (choice.type === "goto") return setGoto(slot);
     if (Object.keys(graph.nodes).length >= (catalog?.limits.max_nodes ?? 200)) return toast({ title: "This workflow is full", description: `A workflow has at most ${catalog?.limits.max_nodes ?? 200} steps.`, tone: "danger" });
     const made = newNode(choice);
     edit(insert(graph, slot, made.id, made.node));
     open(made.id);
-    requestAnimationFrame(() => {
-      const el = document.querySelector<HTMLElement>(`[data-node="${made.id}"]`);
-      el?.focus({ preventScroll: true });
-      el?.scrollIntoView({ block: "nearest", inline: "center" });
-    });
+    focusNode(made.id);
   };
   const addAGoal = () => {
     const gid = newId(graph, "goal");
     edit(addGoal(graph, gid, { type: "goal", config: { filter: {}, otherwise: "continue" } }));
     open(gid);
   };
+  const addGoalRef = useRef(addAGoal);
+  addGoalRef.current = addAGoal;
+  // stable for the memoized canvas: they read the latest graph through refs
+  const addGoalStable = useCallback(() => addGoalRef.current(), []);
+  const unlink = useCallback((slot: Slot) => editRef.current(connect(graphRef.current, slot, null)), []);
+  const gotoNode = useCallback(
+    (nid: string) => {
+      setSelected(nid);
+      focusNode(nid);
+    },
+    [focusNode],
+  );
+  const visits = useMemo<Record<string, StepStatus> | undefined>(() => (lastTest ? Object.fromEntries(lastTest.result.steps.map((s) => [s.node_id, s.status])) : undefined), [lastTest]);
+
   const removeNow = (nid: string) => {
     const before = graph;
     const node = graph.nodes[nid];
     if (!node) return;
     edit(remove(graph, nid));
     forget(nid);
-    setSelected(slotOf(before, nid));
+    const next = slotOf(before, nid);
+    setSelected(next);
     setSheet(false);
-    toast({ title: "Step removed", description: title(node, names), tone: "info", action: { label: "Undo", onClick: () => (setGraph(before), setRevision((r) => r + 1), setSelected(nid)) } });
+    focusNode(next);
+    toast({
+      title: "Step removed",
+      description: title(node, names),
+      tone: "info",
+      action: {
+        label: "Undo",
+        onClick: () => {
+          restoreTo(before);
+          setSelected(nid);
+          focusNode(nid);
+        },
+      },
+    });
   };
   const askRemove = (nid: string) => {
     const impact = removalImpact(graph, nid);
@@ -322,12 +409,14 @@ function Builder({ id }: { id: string }) {
     } else toast({ title: `${what} did not work`, description: errorText(e), tone: "danger" });
   };
 
-  const commitSaved = (g: Graph, n: number, row?: Partial<WorkflowRow>) => {
-    setGraph(g);
+  /** A version the server holds is now the base. `sent` is the graph that was saved: when the person kept typing while it
+   * saved, their edits stay (and stay unsaved); otherwise the editor takes the server's normalized graph. */
+  const commitSaved = (g: Graph, n: number, sent: Graph | null, row?: Partial<WorkflowRow>) => {
+    const unchanged = sent === null || graphRef.current === sent || same(graphRef.current, sent);
+    if (unchanged) setGraph(g);
     setSaved(g);
     setBase(n);
-    setRevision((r) => r + 1);
-    writeDraft(id, null);
+    if (unchanged) writeDraft(id, null);
     setHistoryKey((k) => k + 1);
     if (row) setWf((w) => (w ? { ...w, ...row } : w));
   };
@@ -338,20 +427,20 @@ function Builder({ id }: { id: string }) {
       if (!wf || !canWrite || wf.status === "archived") return null;
       if (!dirty && !note) return base;
       setBusy("save");
+      const sent = graph;
       try {
-        if (!force) {
-          const fresh = await workflows.get(wf.id);
-          if (fresh.latest_version !== base) {
-            setConflict(fresh);
-            return null;
-          }
-        }
-        const v = await workflows.save(wf.id, graph, note);
+        // the server refuses (409) when another version was saved since `base`: someone else's save is never overwritten
+        const v = await workflows.save(wf.id, sent, note, force ? undefined : base);
         setErrors(NO_ERRORS);
         const row = await workflows.get(wf.id);
-        commitSaved(v.graph, v.number, row);
+        commitSaved(v.graph, v.number, sent, row);
         return v.number;
       } catch (e) {
+        if (e instanceof ApiError && e.code === "version_conflict") {
+          const fresh = await workflows.get(wf.id).catch(() => null);
+          if (fresh) setConflict(fresh);
+          return null;
+        }
         fail(e, "Saving");
         return null;
       } finally {
@@ -399,7 +488,7 @@ function Builder({ id }: { id: string }) {
         if (dirty && !dialog && canEdit) void save();
         return;
       }
-      if (tab !== "build" || dialog) return;
+      if (tab !== "build" || dialog || inChord(e)) return;
       if (mod && !typing && e.key.toLowerCase() === "z") {
         e.preventDefault();
         if (e.shiftKey) redo();
@@ -432,11 +521,11 @@ function Builder({ id }: { id: string }) {
       if (e.altKey) return;
       if (e.key === "j" || (onNode && e.key === "ArrowDown")) (e.preventDefault(), go(at + 1));
       else if (e.key === "k" || (onNode && e.key === "ArrowUp")) (e.preventDefault(), go(at - 1));
-      else if ((e.key === "e" || (e.key === "Enter" && !onNode)) && selected) {
+      else if ((e.key === "e" || (e.key === "Enter" && onSurface(e, ".wf-scroller"))) && selected) {
         e.preventDefault();
         if (wide) document.querySelector<HTMLElement>(".wf-side :is(input, button, [tabindex]):not([disabled])")?.focus();
         else setSheet(true);
-      } else if ((e.key === "Delete" || e.key === "Backspace") && selected && selected !== "trigger" && canEdit) {
+      } else if ((e.key === "Delete" || e.key === "Backspace") && selected && selected !== "trigger" && canEdit && onSurface(e, ".wf-node, .wf-scroller")) {
         e.preventDefault();
         askRemove(selected);
       } else if (e.key === "a" && selected && canEdit) {
@@ -444,7 +533,11 @@ function Builder({ id }: { id: string }) {
         const node = graph.nodes[selected];
         const ex = node ? exits(node) : { kind: "next" as const };
         const slot: Slot | null = selected === "trigger" ? { from: "start" } : ex.kind === "next" ? { from: selected } : ex.kind === "branches" ? { from: selected, branch: ex.names[0] } : null;
-        if (slot) setMenuOpen("branch" in slot && slot.branch ? `${slot.from}:${slot.branch}` : slot.from);
+        const button = slot && document.querySelector<HTMLElement>(`[data-slot="${slotKey(slot)}"] .wf-add`);
+        if (slot && button) {
+          button.scrollIntoView({ block: "nearest", inline: "nearest" });
+          openMenu(slot, button);
+        }
       } else if (e.key === "t" && canEdit) {
         e.preventDefault();
         void startTest();
@@ -478,7 +571,6 @@ function Builder({ id }: { id: string }) {
 
   const archived = wf.status === "archived";
   const editable = canWrite && !archived;
-  const visits: Record<string, StepStatus> | undefined = lastTest ? Object.fromEntries(lastTest.result.steps.map((s) => [s.node_id, s.status])) : undefined;
   const sel = selected && selected !== "trigger" ? graph.nodes[selected] : undefined;
   const problems = [
     ...errors.general,
@@ -527,7 +619,7 @@ function Builder({ id }: { id: string }) {
           if (lost.length) {
             const before = graph;
             edit(next);
-            toast({ title: `${lost.length} ${lost.length === 1 ? "step" : "steps"} removed with that branch`, description: lost.join(", "), tone: "info", action: { label: "Undo", onClick: () => (setGraph(before), setRevision((r) => r + 1)) } });
+            toast({ title: `${lost.length} ${lost.length === 1 ? "step" : "steps"} removed with that branch`, description: lost.join(", "), tone: "info", action: { label: "Undo", onClick: () => restoreTo(before) } });
           } else edit(next, { coalesce: true });
         }}
       />
@@ -535,9 +627,10 @@ function Builder({ id }: { id: string }) {
       <p className="wf-muted wf-panel-empty">Select the trigger or a step to change its settings.</p>
     );
 
+  const noSteps = Object.keys(graph.nodes).length === 0;
   const savedText = busy === "save" ? "Saving" : dirty ? "Unsaved changes" : wf.latest_version ? `Saved as version ${wf.latest_version}` : "Not saved yet";
   return (
-    <LookupsCtx.Provider value={lookups}>
+    <LookupsCtx.Provider value={lookupsValue}>
       <div className="sh-page wf-page wf-builder">
         <Link to="/automations" className="sh-back">
           <ChevronLeft size={16} aria-hidden />
@@ -546,7 +639,7 @@ function Builder({ id }: { id: string }) {
         <Tabs value={tab} onValueChange={(t) => setParams(t === "build" ? {} : { tab: t }, { replace: true })}>
           <PageHeader
             title={wf.name}
-            description={`${versionText(wf)}. ${enrolled(wf).toLocaleString()} ${enrolled(wf) === 1 ? "record" : "records"} in it now.`}
+            description={`${versionText(wf)}. ${enrolled(wf).toLocaleString()} ${enrolled(wf) === 1 ? "record" : "records"} in it now.${editable ? ` ${savedText}.` : ""}`}
             actions={
               <div className="wf-head-actions">
                 <StatusBadge status={wf.status} />
@@ -554,7 +647,7 @@ function Builder({ id }: { id: string }) {
                 {!canWrite && <Badge>Read only</Badge>}
                 {editable && (
                   <>
-                    <span className="wf-saved" role="status">
+                    <span className="sr-only" role="status">
                       {savedText}
                     </span>
                     <Button onClick={() => void startTest()} loading={busy === "test"} disabled={!!busy && busy !== "test"} aria-keyshortcuts="t">
@@ -566,7 +659,7 @@ function Builder({ id }: { id: string }) {
                   </>
                 )}
                 {canPublish && !archived && (
-                  <Button variant="primary" onClick={() => void startPublish()} disabled={!!busy || (!dirty && wf.latest_version === null)}>
+                  <Button variant="primary" onClick={() => void startPublish()} disabled={!!busy || noSteps} title={noSteps ? "Add a step first: there is nothing to run" : undefined}>
                     {wf.status !== "draft" && !wf.has_draft_changes && !dirty ? "Republish" : "Publish"}
                   </Button>
                 )}
@@ -725,20 +818,20 @@ function Builder({ id }: { id: string }) {
                 <div className="wf-scroller" aria-label="Workflow canvas" role="region" ref={scroller}>
                   <Canvas
                     graph={graph}
-                    catalog={catalog}
                     names={names}
                     selected={selected}
                     onSelect={setSelected}
                     onOpen={open}
                     errors={errors}
-                    onAdd={editable ? add : null}
-                    onUnlink={editable ? (slot) => edit(connect(graph, slot, null)) : null}
-                    onAddGoal={editable ? addAGoal : null}
-                    menuOpen={menuOpen}
-                    onMenuOpen={setMenuOpen}
+                    editable={editable}
+                    onAddAt={openMenu}
+                    onUnlink={unlink}
+                    onAddGoal={addGoalStable}
+                    onGoto={gotoNode}
                     visits={visits}
                     zoom={zoom}
                   />
+                  <AddMenu at={menu} catalog={catalog} object={object} hasNodes={Object.keys(graph.nodes).length > 0} onPick={add} onClose={closeMenu} />
                 </div>
               </div>
               {wide && (
@@ -880,7 +973,8 @@ function Builder({ id }: { id: string }) {
                   setConflict(null);
                   const g = c.graph ?? blank();
                   setWf(c);
-                  commitSaved(g, c.latest_version ?? 0);
+                  commitSaved(g, c.latest_version ?? 0, null);
+                  setRevision((r) => r + 1);
                   setBase(c.latest_version);
                   setPast([]);
                   setFuture([]);
@@ -944,7 +1038,15 @@ function GotoDialog({ slot, graph, names, onClose, onPick }: { slot: Slot | null
         </>
       }
     >
-      <Select label="Step" value={target} placeholder="Choose a step" onValueChange={setTarget} options={order(graph).map((nid) => ({ value: nid, label: `${title(graph.nodes[nid]!, names)} (${nid})` }))} />
+      <Select
+        label="Step"
+        value={target ?? ""}
+        placeholder="Choose a step"
+        onValueChange={setTarget}
+        options={order(graph)
+          .filter((nid) => nid !== slot?.from) // a step that goes to itself runs forever
+          .map((nid) => ({ value: nid, label: `${title(graph.nodes[nid]!, names)} (${nid})` }))}
+      />
     </Dialog>
   );
 }
@@ -963,7 +1065,7 @@ function NoteDialog({ open, onOpenChange, busy, onSave }: { open: boolean; onOpe
           if (note.trim()) onSave(note.trim());
         }}
       >
-        <Input label="Note" autoFocus value={note} maxLength={500} placeholder="Wait 3 days instead of 2" onChange={(e) => setNote(e.target.value)} />
+        <Input label="Note" autoFocus data-autofocus value={note} maxLength={500} placeholder="Wait 3 days instead of 2" onChange={(e) => setNote(e.target.value)} />
         <div className="wf-dialog-actions">
           <Button onClick={() => onOpenChange(false)} disabled={busy}>
             Cancel
