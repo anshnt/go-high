@@ -18,7 +18,8 @@ migration = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(migration)
 CAPS = {"owner": {"payments.read", "payments.write", "payments.refund", "payments.manage"},
         "admin": {"payments.read", "payments.write", "payments.refund", "payments.manage"},
-        "manager": {"payments.read", "payments.write", "payments.refund"}, "member": {"payments.read", "payments.write"},
+        "manager": {"payments.read", "payments.write", "payments.refund"},
+        "member": {"payments.read", "payments.write"},
         "viewer": {"payments.read"}, "automation": {"payments.read", "payments.write"}, "custom": set()}
 
 
