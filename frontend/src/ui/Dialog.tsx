@@ -18,7 +18,19 @@ function Modal({ kind, open, onOpenChange, title, description, children, footer 
       <RDialog.Portal>
         <RDialog.Overlay className="ui-overlay" />
         {/* Phones: both kinds render as a bottom sheet (see ui.css). */}
-        <RDialog.Content className="ui-modal" data-kind={kind} {...(description ? {} : { "aria-describedby": undefined })}>
+        <RDialog.Content
+          className="ui-modal"
+          data-kind={kind}
+          {...(description ? {} : { "aria-describedby": undefined })}
+          onOpenAutoFocus={(e) => {
+            // a field marked data-autofocus takes the focus, not the first button (the close button)
+            const first = (e.currentTarget as HTMLElement | null)?.querySelector<HTMLElement>("[data-autofocus]");
+            if (first) {
+              e.preventDefault();
+              first.focus();
+            }
+          }}
+        >
           <header className="ui-modal-head">
             <div>
               <RDialog.Title className="ui-modal-title">{title}</RDialog.Title>

@@ -161,6 +161,8 @@ export function Table<T>({
   const span = columns.length + (selectable ? 1 : 0);
 
   const click = (row: T) => (e: MouseEvent) => {
+    // a click in a menu or dialog opened from the row reaches the row through React's tree, not the DOM's: not a row click
+    if (!(e.currentTarget as Node).contains(e.target as Node)) return;
     if ((e.target as HTMLElement).closest("a, button, input, label, [role='checkbox'], [role='button']")) return;
     onRowClick?.(row);
   };

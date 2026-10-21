@@ -120,7 +120,7 @@ Where the code differs from the sketch above, or decides what it left open:
   trigger's data and an event wait's match). Templates and other workflows join it when they exist.
 - **Permissions** are `workflows.read`, `workflows.write` and `workflows.publish`; a run is visible with its record's
   scope and its steps' input and output are withheld from a role that hides fields.
-- **Not built**: subflows, AI steps, code steps, the inbound webhook trigger, loops over records, the canvas builder,
+- **Not built**: subflows, AI steps, code steps, the inbound webhook trigger, loops over records,
   cost preview, bulk retry and enrollment, a time window per workflow, stop on response, "wait until met" goals, and
   migrating runs in a job (it is done in the request).
 
