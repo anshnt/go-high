@@ -1549,7 +1549,8 @@ def test_a_public_email_link_acts_on_its_own_send_only(two_orgs, db):
     r = hooks.post(f"/api/public/email/u/{a_ids['email_unsubscribe_token']}", content=b"List-Unsubscribe=One-Click",
                    headers={"Content-Type": "application/x-www-form-urlencoded"})
     assert r.status_code == 200
-    unsubscribed = dict(db.execute(text("SELECT workspace_id::text, unsubscribed_at IS NOT NULL FROM email_sends")).all())
+    rows = db.execute(text("SELECT workspace_id::text, unsubscribed_at IS NOT NULL FROM email_sends")).all()
+    unsubscribed = dict(rows)
     assert unsubscribed == {a_ids["workspace_id"]: True, b_ids["workspace_id"]: False}
 
 
