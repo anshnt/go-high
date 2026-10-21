@@ -7,7 +7,7 @@ import logging
 import secrets
 import time
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -57,8 +57,8 @@ GIVE_UP = timedelta(days=3)  # an endpoint that only failed for this long is dis
 STATUSES = ("pending", "retrying", "succeeded", "failed")
 
 
-# ponytail: the secret is stored as is because every delivery must sign with it. Encrypt it with a managed key
-# (and offer rotation) before this holds customer secrets at scale.
+# ponytail: the secret is stored as is because every delivery must sign with it (and it can be revealed again). Encrypt
+# it with a managed key before this holds customer secrets at scale.
 class WebhookEndpoint(Base):
     __tablename__ = "webhook_endpoints"
     __table_args__ = (UniqueConstraint("id", "workspace_id"),)
@@ -131,7 +131,7 @@ class PatchWebhook(BaseModel):
 
 def endpoint_json(ep: WebhookEndpoint) -> dict:
     return {"id": ep.id, "url": ep.url, "event_types": ep.event_types, "filter": ep.filter, "active": ep.active,
-            "disabled_reason": ep.disabled_reason, "created_at": ep.created_at}
+            "disabled_reason": ep.disabled_reason, "failing_since": ep.failing_since, "created_at": ep.created_at}
 
 
 def delivery_json(d: WebhookDelivery, event_type: str | None) -> dict:
@@ -176,6 +176,12 @@ def create_webhook(body: NewWebhook, c: Ctx = Depends(manage), idem: Idem = Depe
                 {k: v for k, v in endpoint_json(ep).items() if k in ("id", "event_types", "filter", "active")},
                 actor=("user", c.user_id))
     return idem.commit(201, {**endpoint_json(ep), "secret": ep.secret})  # the only time the secret is shown
+
+
+@router.get("/event-types")
+def event_types(c: Ctx = Depends(manage)):
+    """The event types an endpoint can subscribe to, with their descriptions and data schemas (the picker's list)."""
+    return {"data": events.catalog(), "next_cursor": None}
 
 
 @router.get("")
@@ -231,17 +237,72 @@ def send_test_event(endpoint_id: uuid.UUID, c: Ctx = Depends(manage), idem: Idem
     return idem.commit(202, {"event_id": event.id})
 
 
+@router.post("/{endpoint_id}/reveal-secret")
+def reveal_secret(endpoint_id: uuid.UUID, c: Ctx = Depends(manage)):
+    """The signing secret, for whoever sets up the receiver later than the endpoint was made. A POST, so no cache or
+    proxy keeps it, and an audited one (`webhook_endpoint.secret_revealed`, without the secret)."""
+    need_verified_email(c)
+    ep = endpoint_or_404(c, endpoint_id)
+    events.emit(c.db, "webhook_endpoint.secret_revealed", "webhook_endpoint", ep.id, {"id": ep.id},
+                actor=("user", c.user_id))
+    c.db.commit()
+    return {"secret": ep.secret}
+
+
+@router.post("/{endpoint_id}/rotate-secret")
+def rotate_secret(endpoint_id: uuid.UUID, c: Ctx = Depends(manage)):
+    """A new signing secret, returned here; every delivery from now on, retries of older ones included, is signed
+    with it, and the old one stops working at once.
+    ponytail: no overlap window; keep the previous secret for a day and send two v1 signatures when receivers ask."""
+    need_verified_email(c)
+    ep = endpoint_or_404(c, endpoint_id)
+    ep.secret = f"whsec_{secrets.token_urlsafe(32)}"
+    events.emit(c.db, "webhook_endpoint.secret_rotated", "webhook_endpoint", ep.id, {"id": ep.id},
+                actor=("user", c.user_id))
+    c.db.commit()
+    return {**endpoint_json(ep), "secret": ep.secret}
+
+
 @router.get("/{endpoint_id}/deliveries")
 def list_deliveries(endpoint_id: uuid.UUID, status: Literal["pending", "retrying", "succeeded", "failed"] | None = None,
+                    type: Annotated[str | None, Query(pattern=r"^[a-z_]+\.([a-z_]+|\*)$")] = None,
+                    since: Annotated[datetime | None, Query(alias="from")] = None,
+                    until: Annotated[datetime | None, Query(alias="to")] = None,
                     limit: int = Query(50, ge=1, le=200), cursor: str | None = None,
                     c: Ctx = Depends(manage)):
+    """Newest first. `status`; `type`, an event type (`record.updated`) or every type of a family (`record.*`); `from`
+    and `to`, inclusive bounds on when the delivery was made (a time without a zone is UTC)."""
     endpoint_or_404(c, endpoint_id)
     stmt = (select(WebhookDelivery, Event.type).outerjoin(Event, Event.id == WebhookDelivery.event_id)
             .where(WebhookDelivery.endpoint_id == endpoint_id))
     if status:
         stmt = stmt.where(WebhookDelivery.status == status)
+    if type:
+        stmt = (stmt.where(Event.type.startswith(type.removesuffix("*"), autoescape=True)) if type.endswith("*")
+                else stmt.where(Event.type == type))
+    if since:
+        stmt = stmt.where(WebhookDelivery.created_at >= utc(since))
+    if until:
+        stmt = stmt.where(WebhookDelivery.created_at <= utc(until))
     rows, next_cursor = paginate(c.db, stmt, WebhookDelivery, limit, cursor)
     return {"data": [delivery_json(d, event_type) for d, event_type in rows], "next_cursor": next_cursor}
+
+
+def utc(at: datetime) -> datetime:
+    return at if at.tzinfo else at.replace(tzinfo=UTC)
+
+
+@router.get("/deliveries/{delivery_id}")
+def get_delivery(delivery_id: uuid.UUID, c: Ctx = Depends(manage)):
+    """One delivery with what it sends: the JSON body and the headers (the signature is made again for every
+    attempt, so it is shown as a placeholder). `payload` is null when the event no longer exists."""
+    d = c.db.get(WebhookDelivery, delivery_id)  # row level security: this workspace's deliveries only
+    if d is None:
+        raise HTTPException(404, "Delivery not found")
+    ev = c.db.get(Event, d.event_id)
+    ev = ev if ev is not None and ev.workspace_id == d.workspace_id else None
+    headers = ev and {**request_headers(ev, d), "GoHigh-Signature": "t=<unix time>,v1=<hex HMAC-SHA256>"}
+    return {**delivery_json(d, ev.type if ev else None), "payload": ev and body_of(ev), "request_headers": headers}
 
 
 @router.post("/deliveries/{delivery_id}/replay", status_code=202)
@@ -288,6 +349,20 @@ def signature(secret: str, timestamp: int, body: str) -> str:
     return f"t={timestamp},v1={hmac.new(secret.encode(), f'{timestamp}.{body}'.encode(), hashlib.sha256).hexdigest()}"
 
 
+def body_of(ev: Event) -> dict:
+    """The JSON body of every delivery of an event."""
+    return jsonable_encoder({
+        "id": ev.id, "type": ev.type, "workspace_id": ev.workspace_id, "occurred_at": ev.occurred_at,
+        "subject": {"type": ev.subject_type, "id": ev.subject_id}, "actor": {"type": ev.actor_type, "id": ev.actor_id},
+        "data": ev.data})
+
+
+def request_headers(ev: Event, d: WebhookDelivery) -> dict:
+    """The headers of a delivery, but its signature."""
+    return {"Content-Type": "application/json", "User-Agent": "go-high-webhooks/1", "GoHigh-Event-Id": str(ev.id),
+            "GoHigh-Event-Type": ev.type, "GoHigh-Delivery-Id": str(d.id)}
+
+
 def describe(error: Exception) -> str:
     return str(error) if isinstance(error, (ssrf.Blocked, TimeoutError)) else f"{type(error).__name__}: {error}"[:300]
 
@@ -317,13 +392,8 @@ def deliver(db: Session, payload: dict) -> None:
     if d.status == "failed":
         db.commit()
         return
-    body = json.dumps(jsonable_encoder({
-        "id": ev.id, "type": ev.type, "workspace_id": ev.workspace_id, "occurred_at": ev.occurred_at,
-        "subject": {"type": ev.subject_type, "id": ev.subject_id}, "actor": {"type": ev.actor_type, "id": ev.actor_id},
-        "data": ev.data}), separators=(",", ":"))
-    headers = {"Content-Type": "application/json", "User-Agent": "go-high-webhooks/1", "GoHigh-Event-Id": str(ev.id),
-               "GoHigh-Event-Type": ev.type, "GoHigh-Delivery-Id": str(d.id),
-               "GoHigh-Signature": signature(ep.secret, int(time.time()), body)}
+    body = json.dumps(body_of(ev), separators=(",", ":"))
+    headers = {**request_headers(ev, d), "GoHigh-Signature": signature(ep.secret, int(time.time()), body)}
     started = time.monotonic()
     d.response_status = d.response_body_excerpt = d.error = None
     try:

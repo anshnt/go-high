@@ -39,6 +39,11 @@ export const router = createBrowserRouter([
       { path: "settings/notifications", lazy: async () => ({ Component: (await import("./pages/NotificationSettings")).NotificationSettings }) },
       { path: "settings/pipelines", lazy: async () => ({ Component: (await import("./pipeline/PipelineSettings")).PipelineSettings }) },
       { path: "settings/security", lazy: async () => ({ Component: (await import("./pages/SecuritySettings")).SecuritySettings }) },
+      // The admin screens (src/admin): people, roles, teams and the access check; the audit log; webhooks; the data model.
+      { path: "settings/team/:tab?/:id?", lazy: async () => ({ Component: (await import("./admin/TeamSettings")).TeamSettings }) },
+      { path: "settings/audit", lazy: async () => ({ Component: (await import("./admin/AuditLog")).AuditLog }) },
+      { path: "settings/api/:id?", lazy: async () => ({ Component: (await import("./admin/Webhooks")).WebhooksPage }) },
+      { path: "settings/fields/:object?", lazy: async () => ({ Component: (await import("./admin/DataModel")).DataModelPage }) },
       { path: "settings/:sectionId", element: <SettingsSectionPage /> },
       // Gallery is lazy so it never weighs on the first load.
       { path: "dev/ui", lazy: async () => ({ Component: (await import("./pages/DevUi")).DevUi }) },

@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import exists, select
 
 from . import permissions
-from .models import Team, TeamMember, User
+from .models import SCOPES, Team, TeamMember, User
 from .permissions import ACTIONS, requires
 from .records.models import Record
 from .records.schema import Catalog
@@ -77,6 +77,14 @@ def my_capabilities(c: Ctx = Depends(in_workspace)):
     """What the caller's role allows in this workspace: capabilities (the strings of `permissions.CATALOG`), the
     scope and hidden and read-only fields per object, and their teams."""
     return summary(c, c.org_admin)
+
+
+@router.get("/catalog")
+def catalog(c: Ctx = Depends(requires("members.read"))):
+    """What a role is made of, for the role editor: every capability with its module and what it allows (in the order
+    of `permissions.CATALOG`), and the record scopes a rule can have."""
+    return {"capabilities": [{"module": m, "capability": cap, "description": d} for m, cap, d in permissions.CATALOG],
+            "scopes": list(SCOPES)}
 
 
 @router.get("/explain")
