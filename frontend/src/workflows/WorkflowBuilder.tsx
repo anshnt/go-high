@@ -1,5 +1,5 @@
 import { Archive, ChevronLeft, CircleAlert, EllipsisVertical, FlaskConical, LockKeyhole, Minus, NotebookPen, Pause, Play, Plus, Redo2, SearchCheck, Undo2, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useBlocker, useNavigate, useParams, useSearchParams } from "react-router";
 import { ApiError, errorText } from "../lib/api";
 import { useCan } from "../lib/capabilities";
@@ -15,7 +15,7 @@ import { PageHeader } from "../shell/PageHeader";
 import { TYPING } from "../shell/useShortcuts";
 import { Badge, Button, Dialog, DropdownMenu, EmptyState, Input, Kbd, MenuItem, MenuSeparator, Select, Sheet, Skeleton, Switch, Tabs, TabsContent, TabsList, TabsTrigger, useToast } from "../ui";
 import { lookups as loadLookups, workflows, type Catalog, type Glance, type StepStatus, type TestResult, type WorkflowDetail, type WorkflowRow } from "./api";
-import { AddMenu, Canvas, firstError, type AddChoice } from "./Canvas";
+import { AddMenu, Canvas, firstError, type AddChoice, type AddMenuHandle } from "./Canvas";
 import { LookupsCtx, type Lookups } from "./ConfigForm";
 import { title, type Names } from "./describe";
 import { ExplainDialog } from "./ExplainDialog";
@@ -106,7 +106,7 @@ function Builder({ id }: { id: string }) {
   const [sheet, setSheet] = useState(false);
   const [errors, setErrors] = useState<Placed>(NO_ERRORS);
   const [busy, setBusy] = useState<"save" | "publish" | "test" | null>(null);
-  const [menu, setMenu] = useState<{ slot: Slot; empty: boolean; style: CSSProperties } | null>(null);
+  const menuHost = useRef<AddMenuHandle>(null);
   const [zoom, setZoom] = useState(1);
   const [restore, setRestore] = useState<Stored | null>(null);
   const [conflict, setConflict] = useState<WorkflowDetail | null>(null);
@@ -324,20 +324,9 @@ function Builder({ id }: { id: string }) {
     [wide],
   );
   /** Opens the add menu at a + (the button, or the one a shortcut found). */
-  const openMenu = useCallback((slot: Slot, button: HTMLElement) => {
-    const box = scroller.current?.getBoundingClientRect();
-    const r = button.getBoundingClientRect();
-    if (!box || !scroller.current) return;
-    const el = scroller.current;
-    setMenu({ slot, empty: read(graphRef.current, slot) === null, style: { left: r.left - box.left + el.scrollLeft, top: r.top - box.top + el.scrollTop, width: r.width, height: r.height } });
-  }, []);
-  const closeMenu = (picked: boolean) => {
-    const at = menu;
-    setMenu(null);
-    if (!picked && at) requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-slot="${slotKey(at.slot)}"] .wf-add`)?.focus());
-  };
+  const openMenu = useCallback((slot: Slot, button: HTMLElement) => menuHost.current?.open(slot, button), []);
+  const isEmpty = useCallback((slot: Slot) => read(graphRef.current, slot) === null, []);
   const add = (slot: Slot, choice: AddChoice) => {
-    setMenu(null);
     if (choice.type === "goto") return setGoto(slot);
     if (Object.keys(graph.nodes).length >= (catalog?.limits.max_nodes ?? 200)) return toast({ title: "This workflow is full", description: `A workflow has at most ${catalog?.limits.max_nodes ?? 200} steps.`, tone: "danger" });
     const made = newNode(choice);
@@ -831,7 +820,7 @@ function Builder({ id }: { id: string }) {
                     visits={visits}
                     zoom={zoom}
                   />
-                  <AddMenu at={menu} catalog={catalog} object={object} hasNodes={Object.keys(graph.nodes).length > 0} onPick={add} onClose={closeMenu} />
+                  <AddMenu ref={menuHost} scroller={scroller} isEmpty={isEmpty} catalog={catalog} object={object} hasNodes={Object.keys(graph.nodes).length > 0} onPick={add} />
                 </div>
               </div>
               {wide && (

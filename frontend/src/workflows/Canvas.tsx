@@ -21,7 +21,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import { memo, type CSSProperties, type ReactNode } from "react";
+import { memo, useImperativeHandle, useRef, useState, type CSSProperties, type ReactNode, type Ref, type RefObject } from "react";
 import { cn } from "../lib/cn";
 import { DropdownMenu, MenuItem, MenuLabel, MenuSeparator } from "../ui";
 import type { Catalog, StepStatus } from "./api";
@@ -121,8 +121,10 @@ const NodeCard = memo(function NodeCard({ id, node, names, selected, errors, vis
 
 const addLabel = (slot: Slot) => `Add a step here${slot.from === "start" ? ", first" : ` after ${slot.from}${"branch" in slot && slot.branch ? `, ${slot.branch} branch` : ""}`}`;
 
-/** The + on an edge: a plain button (a workflow has hundreds); the one menu lives outside the canvas, in the builder. */
-const AddButton = memo(function AddButton({ slot, onAddAt }: { slot: Slot; onAddAt: (slot: Slot, button: HTMLElement) => void }) {
+/** The + on an edge: a plain button (a workflow has hundreds); the one menu lives outside the canvas, in the builder.
+ * Its props are strings, so the memo holds across renders. */
+const AddButton = memo(function AddButton({ from, branch, onAddAt }: { from: string; branch?: string; onAddAt: (slot: Slot, button: HTMLElement) => void }) {
+  const slot: Slot = branch === undefined ? { from } : { from, branch };
   return (
     <button type="button" className="wf-add" aria-haspopup="menu" aria-label={addLabel(slot)} onClick={(e) => onAddAt(slot, e.currentTarget)}>
       <Plus size={14} aria-hidden />
@@ -130,62 +132,71 @@ const AddButton = memo(function AddButton({ slot, onAddAt }: { slot: Slot; onAdd
   );
 });
 
-/** The whole workflow, top to bottom. Memoized with stable handlers: typing in the panel redraws only what changed. */
+/** The whole workflow, top to bottom. Memoized with stable handlers. A run of steps is drawn as siblings, not nested
+ * in each other, so adding or removing a step inserts or drops elements instead of redrawing all that follow it. */
 export const Canvas = memo(function Canvas(p: Props) {
   const { main, goals } = tree(p.graph);
 
-  const card = (id: string): ReactNode => (
-    <NodeCard key={id} id={id} node={p.graph.nodes[id]!} names={p.names} selected={p.selected === id} errors={p.errors.nodes[id]} visit={p.visits?.[id]} onSelect={p.onSelect} onOpen={p.onOpen} />
-  );
-
   const edge = (slot: Slot, tail = false) => (
-    <div className={cn("wf-edge", tail && "wf-edge-tail")} data-slot={slotKey(slot)}>
-      {p.editable && <AddButton slot={slot} onAddAt={p.onAddAt} />}
+    <div key={`edge:${slotKey(slot)}`} className={cn("wf-edge", tail && "wf-edge-tail")} data-slot={slotKey(slot)}>
+      {p.editable && <AddButton from={slot.from} branch={"branch" in slot ? slot.branch : undefined} onAddAt={p.onAddAt} />}
     </div>
   );
 
-  const chain = (c: Chain): ReactNode => {
-    if (c.kind === "end") return <div className="wf-stop">End</div>;
-    if (c.kind === "goto") {
-      const target = p.graph.nodes[c.id];
-      return (
-        <div className="wf-goto">
-          <button type="button" className="wf-goto-link" onClick={() => p.onGoto(c.id)}>
-            <CornerDownRight size={14} aria-hidden />
-            Go to {target ? title(target, p.names) : c.id}
-            <span className="mono wf-muted">{c.id}</span>
-          </button>
-          {p.editable && (
-            <button type="button" className="wf-goto-x" aria-label={`End here instead of going to ${c.id}`} onClick={() => p.onUnlink(c.slot)}>
-              <X size={14} aria-hidden />
+  /** A chain as a flat list: each step, the edge after it, and at a branching step its branches side by side. */
+  const column = (c: Chain): ReactNode[] => {
+    const out: ReactNode[] = [];
+    for (let cur: Chain | null = c; cur; ) {
+      if (cur.kind === "end") {
+        out.push(
+          <div key={`end:${slotKey(cur.slot)}`} className="wf-stop">
+            End
+          </div>,
+        );
+        break;
+      }
+      if (cur.kind === "goto") {
+        const at = cur;
+        const target = p.graph.nodes[at.id];
+        out.push(
+          <div key={`goto:${slotKey(at.slot)}`} className="wf-goto">
+            <button type="button" className="wf-goto-link" onClick={() => p.onGoto(at.id)}>
+              <CornerDownRight size={14} aria-hidden />
+              Go to {target ? title(target, p.names) : at.id}
+              <span className="mono wf-muted">{at.id}</span>
             </button>
-          )}
-        </div>
-      );
-    }
-    const node = p.graph.nodes[c.id]!;
-    return (
-      <div className="wf-chain-item">
-        {card(c.id)}
-        {c.out.kind === "next" && (
-          <>
-            {edge({ from: c.id }, c.out.child.kind === "end")}
-            {chain(c.out.child)}
-          </>
-        )}
-        {c.out.kind === "branches" && (
-          <div className="wf-branches" role="group" aria-label={`Branches of ${title(node, p.names)}`}>
-            {c.out.branches.map((b) => (
+            {p.editable && (
+              <button type="button" className="wf-goto-x" aria-label={`End here instead of going to ${at.id}`} onClick={() => p.onUnlink(at.slot)}>
+                <X size={14} aria-hidden />
+              </button>
+            )}
+          </div>,
+        );
+        break;
+      }
+      const id = cur.id;
+      const node = p.graph.nodes[id]!;
+      out.push(<NodeCard key={id} id={id} node={node} names={p.names} selected={p.selected === id} errors={p.errors.nodes[id]} visit={p.visits?.[id]} onSelect={p.onSelect} onOpen={p.onOpen} />);
+      if (cur.out.kind === "next") {
+        out.push(edge({ from: id }, cur.out.child.kind === "end"));
+        cur = cur.out.child;
+        continue;
+      }
+      if (cur.out.kind === "branches")
+        out.push(
+          <div key={`branches:${id}`} className="wf-branches" role="group" aria-label={`Branches of ${title(node, p.names)}`}>
+            {cur.out.branches.map((b) => (
               <div key={b.name} className="wf-branch">
                 <span className="wf-branch-label">{branchLabel(node, b.name)}</span>
-                {edge({ from: c.id, branch: b.name }, b.child.kind === "end")}
-                {chain(b.child)}
+                {edge({ from: id, branch: b.name }, b.child.kind === "end")}
+                {column(b.child)}
               </div>
             ))}
-          </div>
-        )}
-      </div>
-    );
+          </div>,
+        );
+      break;
+    }
+    return out;
   };
 
   const t = p.graph.trigger;
@@ -220,7 +231,7 @@ export const Canvas = memo(function Canvas(p: Props) {
           </span>
         </button>
         {edge({ from: "start" }, main.kind === "end")}
-        {main.kind === "end" && p.editable ? <p className="wf-hint-start">Add the first step with the + above.</p> : chain(main)}
+        {main.kind === "end" && p.editable ? <p className="wf-hint-start">Add the first step with the + above.</p> : column(main)}
       </div>
       {(goals.length > 0 || p.editable) && (
         <section className="wf-goals" aria-label="Goals">
@@ -228,8 +239,8 @@ export const Canvas = memo(function Canvas(p: Props) {
           <p className="wf-muted">A run jumps to a goal the moment its condition holds, wherever it is: "stop the follow-ups once they book".</p>
           <div className="wf-goal-list">
             {goals.map((g) => (
-              <div key={g.kind === "node" ? g.id : ""} className="wf-goal">
-                {chain(g)}
+              <div key={g.kind === "node" ? g.id : ""} className="wf-goal wf-chain-item">
+                {column(g)}
               </div>
             ))}
           </div>
@@ -244,20 +255,40 @@ export const Canvas = memo(function Canvas(p: Props) {
   );
 });
 
-/** The add menu, opened at one + at a time: an invisible anchor laid where that button is. */
-export function AddMenu({ at, catalog, object, hasNodes, onPick, onClose }: { at: { slot: Slot; empty: boolean; style: CSSProperties } | null; catalog: Catalog; object: string; hasNodes: boolean; onPick: (slot: Slot, choice: AddChoice) => void; onClose: (picked: boolean) => void }) {
+export type AddMenuHandle = { open: (slot: Slot, button: HTMLElement) => void };
+
+/** The add menu, opened at one + at a time: an invisible anchor laid where that button is. It keeps its own state, so
+ * opening it redraws only the menu, not the builder. */
+export function AddMenu({ ref, scroller, isEmpty, catalog, object, hasNodes, onPick }: { ref: Ref<AddMenuHandle>; scroller: RefObject<HTMLElement | null>; isEmpty: (slot: Slot) => boolean; catalog: Catalog; object: string; hasNodes: boolean; onPick: (slot: Slot, choice: AddChoice) => void }) {
+  const [at, setAt] = useState<{ slot: Slot; empty: boolean; style: CSSProperties } | null>(null);
+  const picked = useRef(false);
+  useImperativeHandle(ref, () => ({
+    open: (slot, button) => {
+      const el = scroller.current;
+      if (!el) return;
+      const box = el.getBoundingClientRect();
+      const r = button.getBoundingClientRect();
+      picked.current = false;
+      setAt({ slot, empty: isEmpty(slot), style: { left: r.left - box.left + el.scrollLeft, top: r.top - box.top + el.scrollTop, width: r.width, height: r.height } });
+    },
+  }));
   if (!at) return null;
-  let picked = false;
   const pick = (choice: AddChoice) => {
-    picked = true;
+    picked.current = true;
+    setAt(null);
     onPick(at.slot, choice);
+  };
+  const close = () => {
+    setAt(null);
+    // back to the + it came from (a pick moves the focus to the new step instead)
+    if (!picked.current) requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-slot="${slotKey(at.slot)}"] .wf-add`)?.focus());
   };
   return (
     <DropdownMenu
       label="Add a step"
       align="start"
       open
-      onOpenChange={(o) => !o && onClose(picked)}
+      onOpenChange={(o) => !o && close()}
       onCloseAutoFocus={(e) => e.preventDefault()}
       trigger={<span className="wf-menu-anchor" style={at.style} aria-hidden />}
     >

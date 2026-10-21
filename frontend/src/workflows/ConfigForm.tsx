@@ -246,8 +246,9 @@ function TextSetting({ prop: p, label, value, onChange, error, object }: { prop:
   const insert = (key: string) => {
     const [from, to] = caret.current ?? [value.length, value.length];
     const before = value.slice(0, from);
+    const after = value.slice(to);
     const token = `${before && !/\s$/.test(before) ? " " : ""}{{${key}}}`;
-    const next = `${before}${token}${value.slice(to)}`;
+    const next = `${before}${token}${after && !/^[\s.,!?;:]/.test(after) ? " " : ""}${after}`;
     onChange(next);
     const at = from + token.length;
     caret.current = [at, at];

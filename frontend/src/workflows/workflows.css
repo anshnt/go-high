@@ -595,10 +595,10 @@
 .wf-branch:last-child::after {
   display: none;
 }
-.wf-chain-item > .wf-branches {
+.wf-branches {
   position: relative;
 }
-.wf-chain-item > .wf-branches::after {
+.wf-branches::after {
   position: absolute;
   top: -20px;
   left: 50%;
