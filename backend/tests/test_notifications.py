@@ -215,7 +215,8 @@ def test_preferences_are_per_person_and_per_workspace(team, make_user):
 def test_preferences_start_from_defaults_and_save_what_is_sent(team):
     clients, who, ws = team
     first = clients["ben"].get(f"{N}/prefs", headers={H: ws}).json()["data"]
-    assert [p["kind"] for p in first] == ["task_assigned", "task_due", "record_assigned", "workflow"]
+    assert [p["kind"] for p in first] == ["task_assigned", "task_due", "record_assigned", "workflow",
+                                              "billing"]
     assert all(p["label"] and p["channels"] == ["in_app"] and p["scope"] == "mine" and p["digest"] == "off"
                and p["quiet_start"] is None and p["quiet_end"] is None and p["tz"] is None for p in first)
     paris = {"quiet_start": "22:00", "quiet_end": "07:30", "tz": "Europe/Paris"}

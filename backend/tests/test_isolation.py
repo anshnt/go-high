@@ -275,8 +275,9 @@ def fill_billing(client, ids: dict, name: str) -> None:
         "amount": 1_230_000, "description": ids["adjustment_text"]}, headers=ws).json()["id"]
     r = client.patch(f"/api/v1/channels/{ids['channel_id']}", json={"config": {"segment_cost": "0.0079"}}, headers=ws)
     assert r.status_code == 200, r.text
+    ids["billed_name"] = f"{title} Billed"
     contact = client.post("/api/v1/objects/contact/records", headers=ws, json={"values": {
-        "first_name": f"{title} Billed", "phone": f"+1415555030{'1' if name == 'alpha' else '2'}"}}).json()
+        "first_name": ids["billed_name"], "phone": f"+1415555030{'1' if name == 'alpha' else '2'}"}}).json()
     conv = client.post("/api/v1/conversations", json={"contact_id": contact["id"]}, headers=ws).json()
     sent = client.post(f"/api/v1/conversations/{conv['id']}/messages", headers=ws, json={
         "body": f"{title} secret paid text", "channel_id": ids["channel_id"]})
@@ -934,10 +935,10 @@ def test_a_user_of_a_gets_404s_for_bs_objects_fields_records_tags_views_and_link
     # what A can list and search is A's: not B's names, not B's tag, not B's count
     page = a.get(contact, params={"count": "true", "include": "tags,company", "limit": 200}, headers=mine).json()
     names = {r["display_name"] for r in page["data"]}  # A's contacts: the person, the texting customer, a chat visitor
-    # the contact one of A's forms made and the invitee of A's booking
+    # the contact one of A's forms made, the invitee of A's booking and the contact A's paid text went to
     assert (names - {a_ids["customer_phone"]} - {n for n in names if n.startswith("Visitor ")}
-            == {a_ids["record_name"], a_ids["form_answer"], a_ids["invitee_name"]})
-    assert page["total"] == 5
+            == {a_ids["record_name"], a_ids["form_answer"], a_ids["invitee_name"], a_ids["billed_name"]})
+    assert page["total"] == 6
     assert not any(leak in json.dumps(page) for leak in secrets_of(b_ids))
     for query in ({"q": "bravo"}, {"q": "secret"}, {"q": b_ids["record_name"]}, {"filter": json.dumps({"tag": tag})},
                   {"filter": json.dumps({"tag": b_ids["tag_name"]})},
@@ -1068,8 +1069,8 @@ def test_the_app_role_cannot_move_a_row_to_another_workspace_or_point_one_across
             assert conn.execute(text("DELETE FROM pipelines WHERE id NOT IN (SELECT pipeline_id FROM stages)")
                                 ).rowcount == 1  # Sales, which has nothing left
             conn.rollback()
-    # as filled, with the inbox's two contacts, the contact a form made and the one a booking made
-    assert db.scalar(text("SELECT count(*) FROM records WHERE workspace_id = :w"), {"w": b_ws}) == 9
+    # as filled, with the inbox's two contacts, the contact a form made, the one a booking made and the one billed
+    assert db.scalar(text("SELECT count(*) FROM records WHERE workspace_id = :w"), {"w": b_ws}) == 10
     assert db.scalar(text("SELECT count(*) FROM stages WHERE workspace_id = :w"), {"w": b_ws}) == 8
     assert db.scalar(text("SELECT count(*) FROM pipelines WHERE workspace_id = :w"), {"w": b_ws}) == 2
     assert db.scalar(text("SELECT count(*) FROM tasks WHERE workspace_id = :w"), {"w": b_ws}) == 2

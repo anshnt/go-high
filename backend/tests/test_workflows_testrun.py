@@ -75,7 +75,8 @@ def test_a_test_run_with_a_two_day_wait_finishes_at_once_with_a_full_trace_and_c
     assert by["look", "completed"]["output"] == {"matched": True, "branch": "yes"}  # it saw its own earlier changes
     assert by["hold", "waiting"]["output"]["skipped_seconds"] == 2 * 86400 and done["skipped_seconds"] == 2 * 86400
     assert by["hold", "completed"]["output"]["resumed_by"] == "timer"
-    assert by["send", "completed"]["output"] == {"would_send": True, "sent": False}
+    assert by["send", "completed"]["output"] == {"would_send": True, "sent": False, "price": 0, "currency": "USD",
+                                                 "allowed": True}
     assert by["send", "completed"]["input"] == {"channel": "Main line", "to": "+14155550123", "subject": None,
                                                  "body": "Hi Ada"}
     assert by["hook", "completed"]["output"] == {"would_post": True, "sent": False}
@@ -166,7 +167,8 @@ def test_a_message_in_quiet_hours_is_described_as_put_off_and_the_virtual_clock_
     done = try_flow(client, ws, wf["id"], ada["id"])
     assert [(s["node_id"], s["status"]) for s in done["steps"]] == [("go", "waiting"), ("go", "completed")]
     assert done["steps"][0]["output"]["reason"].startswith("Quiet hours") and done["skipped_seconds"] > 3600 * 6
-    assert done["steps"][1]["output"] == {"would_send": True, "sent": False} and world(db) == before
+    assert done["steps"][1]["output"] == {"would_send": True, "sent": False, "price": 0, "currency": "USD",
+                                          "allowed": True} and world(db) == before
 
 
 def test_a_test_run_needs_a_visible_record_of_the_workflows_object_a_real_version_and_valid_paths(crm, db):
