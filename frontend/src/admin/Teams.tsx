@@ -1,6 +1,6 @@
 // Team and roles > Teams: the teams of the workspace as a tree (a team may sit under another), each with its members.
 // A role with the `team` scope sees what anyone in its holder's teams, or the teams below them, owns.
-import { ChevronRight, Network, Pencil, Plus, Trash2, UserMinus, UserPlus } from "lucide-react";
+import { CornerDownRight, Network, Pencil, Plus, Trash2, UserMinus, UserPlus } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router";
 import { ApiError } from "../lib/api";
@@ -114,7 +114,7 @@ export function Teams() {
               {tree.map(({ team: t, depth }) => (
                 <li key={t.id}>
                   <button type="button" className="adm-tree-item" aria-current={t.id === selectedId || undefined} style={{ paddingLeft: `calc(var(--space-3) + ${depth} * var(--space-5))` }} onClick={() => select(t.id)}>
-                    {depth > 0 && <ChevronRight size={14} aria-hidden className="adm-muted" />}
+                    {depth > 0 && <CornerDownRight size={14} aria-hidden className="adm-muted" />}
                     <span className="adm-tree-name">{t.name}</span>
                     <span className="adm-muted">{t.member_count}</span>
                     <span className="sr-only">{t.member_count === 1 ? "member" : "members"}</span>
