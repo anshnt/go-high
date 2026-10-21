@@ -215,6 +215,11 @@ def test_quiet_hours_follow_the_contacts_time_zone_unless_they_wrote_recently(cr
     assert error(reply(client, ws, ny))["code"] == "quiet_hours"  # 01:00 in New York
     sms_in(anonymous, channel, "+13105550123", "I just wrote")  # a contact who wrote within a day may be answered
     talking = [c for c in conversations_of(client, ws)["data"] if c["contact"]["phone"] == "+13105550123"][0]
+    # the message is stamped by the real clock and the consent clock is faked to tomorrow: date it an hour before
+    # that, or the test fails when the suite runs in the first hours of a UTC day
+    db.execute(text("UPDATE conversations SET last_inbound_at = :t WHERE id = :c"),
+               {"t": night - timedelta(hours=1), "c": talking["id"]})
+    db.commit()
     assert reply(client, ws, talking).status_code == 201
 
 
