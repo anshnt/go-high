@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "payment.failed",
+  "description": "A payment did not go through. For a subscription renewal, `attempt` is the collection attempt, `next_attempt_at` when the card is tried again (null when it is not) and `final` true when retries are used up. Subject: the payment.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "contact_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "invoice_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "subscription_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "amount": {
+      "type": "integer"
+    },
+    "currency": {
+      "type": "string"
+    },
+    "provider": {
+      "type": "string"
+    },
+    "method": {
+      "type": "string"
+    },
+    "failure_code": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "failure_message": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "attempt": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "next_attempt_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "final": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "id",
+    "contact_id",
+    "invoice_id",
+    "subscription_id",
+    "amount",
+    "currency",
+    "provider",
+    "method",
+    "failure_code",
+    "failure_message",
+    "attempt",
+    "next_attempt_at",
+    "final"
+  ],
+  "additionalProperties": false
+}

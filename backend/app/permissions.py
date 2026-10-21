@@ -53,6 +53,11 @@ CATALOG = [
     ("Messaging", "conversations.write", "Assign, snooze, close and reopen conversations, and add internal notes"),
     ("Messaging", "consents.manage", "Switch do not disturb on and off for a contact"),
     ("Messaging", "channels.manage", "Add, change, disable and test messaging channels and their credentials"),
+    ("Payments", "payments.read", "See products, prices, coupons, invoices, subscriptions and transactions"),
+    ("Payments", "payments.write", "Create and change products, prices, coupons, payment links, invoices and "
+                                   "subscriptions, and send invoices"),
+    ("Payments", "payments.refund", "Refund payments, void invoices and record payments taken outside go-high"),
+    ("Payments", "payments.manage", "Connect the payment provider, and change tax rates and payment settings"),
     ("Billing", "billing.manage", "Change the plan, the wallet and payment methods"),
     ("Developer", "webhooks.manage", "Manage webhooks and replay their deliveries"),
     ("People", "members.read", "See members, teams and roles"),

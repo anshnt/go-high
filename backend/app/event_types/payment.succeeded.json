@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "payment.succeeded",
+  "description": "Money was taken: a checkout, an off-session charge of a kept card, or a payment recorded by hand (`provider` manual). Applied to its invoice once, whatever the provider repeats. Subject: the payment; it shows on the contact's timeline.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "contact_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "invoice_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "subscription_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "amount": {
+      "type": "integer"
+    },
+    "currency": {
+      "type": "string"
+    },
+    "provider": {
+      "type": "string"
+    },
+    "method": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "contact_id",
+    "invoice_id",
+    "subscription_id",
+    "amount",
+    "currency",
+    "provider",
+    "method"
+  ],
+  "additionalProperties": false
+}

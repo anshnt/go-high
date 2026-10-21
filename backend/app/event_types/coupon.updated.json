@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "coupon.updated",
+  "description": "A coupon's name, limit, end or active flag changed. Subject: the coupon.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "code": {
+      "type": "string"
+    },
+    "active": {
+      "type": "boolean"
+    },
+    "changes": {
+      "type": "object",
+      "description": "Field to {old, new}."
+    }
+  },
+  "required": [
+    "id",
+    "code",
+    "active",
+    "changes"
+  ],
+  "additionalProperties": false
+}

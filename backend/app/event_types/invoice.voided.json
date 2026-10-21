@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "invoice.voided",
+  "description": "An open invoice was voided: by staff, because its subscription ended, or because a payment link's checkout lapsed unpaid (`reason`). A payment that still arrives is refunded. Subject: the invoice.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "number": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "open",
+        "paid",
+        "void",
+        "uncollectible"
+      ]
+    },
+    "billing_reason": {
+      "type": "string"
+    },
+    "contact_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "currency": {
+      "type": "string"
+    },
+    "total": {
+      "type": "integer"
+    },
+    "amount_paid": {
+      "type": "integer"
+    },
+    "amount_due": {
+      "type": "integer"
+    },
+    "subscription_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "due_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "reason": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "number",
+    "status",
+    "billing_reason",
+    "contact_id",
+    "currency",
+    "total",
+    "amount_paid",
+    "amount_due",
+    "subscription_id",
+    "due_at",
+    "reason"
+  ],
+  "additionalProperties": false
+}

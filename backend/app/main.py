@@ -23,6 +23,11 @@ from .forms import responses as form_responses
 from .inbox import channels, chat, consent, conversations, inbound, outbound, stream
 from .logs import setup_logging, trace_id
 from .notifications import routes as notifications
+from .payments import billing as payment_billing  # noqa: F401  (registers the collection and renewal jobs)
+from .payments import hooks as payment_hooks
+from .payments import public as payment_public
+from .payments import routes_billing as payment_billing_routes
+from .payments import routes_catalog as payment_catalog
 from .records import associations, board, forecast, objects, pipelines, tags, timeline, views
 from .records import routes as records
 from .security import COOKIE, UNSAFE
@@ -112,15 +117,17 @@ def health(db: Session = Depends(get_db)):
 app.include_router(auth.router)
 app.include_router(workspaces.router)
 app.include_router(webhooks.router)
+app.include_router(payment_hooks.router)  # /api/hooks/payments/..., before the inbox's /api/hooks/{provider}/{id}
 for module in (objects, records, associations, tags, views, timeline, pipelines, board, forecast, roles, teams,
                simulator, audit, tasks, day, notifications, channels, conversations, outbound,
                consent, inbound, stream, chat,
                forms, form_responses, form_analytics, form_public, calendars, availability, bookings, public,
-               workflows):
+               workflows, payment_catalog, payment_billing_routes):
     app.include_router(module.router)
 app.include_router(simulator.mine)
 app.include_router(form_public.pages)  # /f/{key} and /embed.js, before the catch-all below
 app.include_router(public.pages)
+app.include_router(payment_public.router)  # /pay/..., /invoice/... and their /api/public checkouts
 
 
 @app.get("/{path:path}", include_in_schema=False)

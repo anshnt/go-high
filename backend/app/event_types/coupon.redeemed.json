@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "coupon.redeemed",
+  "description": "A coupon was used on an invoice or to start a subscription. Subject: the coupon.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "code": {
+      "type": "string"
+    },
+    "contact_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "invoice_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "subscription_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "times_redeemed": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "code",
+    "contact_id",
+    "invoice_id",
+    "subscription_id",
+    "times_redeemed"
+  ],
+  "additionalProperties": false
+}

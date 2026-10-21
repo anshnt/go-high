@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "subscription.created",
+  "description": "A subscription was started, trialing or incomplete until its first invoice is paid. Subject: the subscription; it shows on the contact's timeline.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "contact_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "price_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "product_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "status": {
+      "type": "string"
+    },
+    "quantity": {
+      "type": "integer"
+    },
+    "currency": {
+      "type": "string"
+    },
+    "current_period_start": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "current_period_end": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "trial_end": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "cancel_at_period_end": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "id",
+    "contact_id",
+    "price_id",
+    "product_id",
+    "status",
+    "quantity",
+    "currency",
+    "current_period_start",
+    "current_period_end",
+    "trial_end",
+    "cancel_at_period_end"
+  ],
+  "additionalProperties": false
+}
