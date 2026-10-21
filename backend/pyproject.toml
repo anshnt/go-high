@@ -12,6 +12,7 @@ dependencies = [
     "cryptography>=50.0.2",
     "phonenumbers>=9.0.41",
     "tzdata>=2026.5",
+    "dnspython>=2.7",
 ]
 
 [dependency-groups]
@@ -20,6 +21,7 @@ dev = [
     "httpx2>=2.13.1",
     "ruff>=0.15",
     "pytest-cov>=7.1.0",
+    "dkimpy>=1.1",
 ]
 
 [tool.pytest.ini_options]

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_suppression.added",
+  "description": "An address went on the suppression list: a hard bounce, a complaint, an unsubscribe or a manual entry (`reason`). Subject: the suppression.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "email": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "detail": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "campaign_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    }
+  },
+  "required": [
+    "id",
+    "email",
+    "reason",
+    "detail",
+    "campaign_id"
+  ],
+  "additionalProperties": false
+}

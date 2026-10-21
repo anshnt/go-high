@@ -36,7 +36,9 @@ TENANT_TABLES = ["organizations", "brands", "workspaces", "users", "org_members"
                  "resources", "calendar_resources", "availability", "bookings", "booking_resources", "busy_blocks",
                  "booking_reminders", "booking_attempts", "feed_tokens",
                  "workflows", "workflow_versions", "workflow_runs", "workflow_steps", "workflow_trigger_checks",
-                 "workflow_waiters", "workflow_refs", "workflow_deliveries"]
+                 "workflow_waiters", "workflow_refs", "workflow_deliveries",
+                 "email_settings", "email_domains", "email_templates", "email_topics", "email_preferences",
+                 "email_campaigns", "email_links", "email_sends", "email_events", "email_suppressions"]
 NOT_TENANT_DATA = {"jobs", "event_cursors"}  # the queue and the consumer cursors: no tenant rows, no app role access
 
 
@@ -260,6 +262,55 @@ def fill_workflows(client, ids: dict, name: str, db) -> None:
     db.commit()
 
 
+def fill_marketing(client, ids: dict, name: str, db) -> None:
+    """A sending domain, a template, a topic, the footer settings, a suppressed address and a campaign with a send,
+    a link, an open and a topic choice; every name, address and text goes into `ids`."""
+    ws, title = {"X-Workspace-Id": ids["workspace_id"]}, name.title()
+
+    def post(path, **body):
+        r = client.post(path, json=body, headers=ws)
+        assert r.status_code == 201, r.text
+        return r.json()
+
+    ids["email_domain"] = f"{name}-mail.example.com"
+    ids["email_domain_id"] = post("/api/v1/email/domains", domain=ids["email_domain"])["id"]
+    ids["email_template_name"] = f"{title} Secret Template"
+    ids["email_template_id"] = post("/api/v1/email/templates", name=ids["email_template_name"],
+                                    subject=f"{title} secret template subject")["id"]
+    ids["email_topic_name"] = f"{title} Secret Topic"
+    ids["email_topic_id"] = post("/api/v1/email/topics", name=ids["email_topic_name"])["id"]
+    ids["email_company"], ids["email_address"] = f"{title} Secret Company", f"{name} secret street 1"
+    r = client.put("/api/v1/email/settings", headers=ws, json={"company_name": ids["email_company"],
+                                                               "postal_address": ids["email_address"]})
+    assert r.status_code == 200, r.text
+    ids["email_suppressed"] = f"{name}.suppressed@secret.example"
+    ids["email_suppression_id"] = post("/api/v1/email/suppressions", email=ids["email_suppressed"])["id"]
+    ids["email_campaign_name"], ids["email_subject"] = f"{title} Secret Campaign", f"{title} secret subject"
+    campaign = post("/api/v1/email/campaigns", name=ids["email_campaign_name"])
+    r = client.patch(f"/api/v1/email/campaigns/{campaign['id']}", headers=ws, json={
+        "subject": ids["email_subject"], "from_email": f"news@{ids['email_domain']}",
+        "audience": {"all": True}, "topic_id": ids["email_topic_id"],
+        "document": {"blocks": [{"type": "text", "text": f"{title} secret body [x](https://{name}.example.com/l)"}]}})
+    assert r.status_code == 200, r.text
+    ids["email_campaign_id"], ids["email_link"] = campaign["id"], f"https://{name}.example.com/secret-link"
+    ids["email_send_id"] = str(db.scalar(text(
+        "INSERT INTO email_sends (workspace_id, campaign_id, contact_id, domain_id, email, status, variant) "
+        "VALUES (:w, :c, :r, :d, :e, 'sent', 'A') RETURNING id"),
+        {"w": ids["workspace_id"], "c": campaign["id"], "r": ids["record_id"], "d": ids["email_domain_id"],
+         "e": f"{name}.person@secret.example"}))
+    mine = {"w": ids["workspace_id"], "c": campaign["id"], "s": ids["email_send_id"]}
+    db.execute(text("INSERT INTO email_links (campaign_id, idx, workspace_id, url) VALUES (:c, 0, :w, :u)"),
+               {**mine, "u": ids["email_link"]})
+    db.execute(text("INSERT INTO email_events (workspace_id, campaign_id, send_id, type, detail) "
+                    "VALUES (:w, :c, :s, 'open', :d)"), {**mine, "d": f"{name} secret detail"})
+    db.execute(text("INSERT INTO email_preferences (contact_id, topic_id, workspace_id, subscribed, source) "
+                    "VALUES (:r, :t, :w, false, 'manual')"),
+               {"r": ids["record_id"], "t": ids["email_topic_id"], "w": ids["workspace_id"]})
+    db.commit()
+    from app.marketing import tokens
+    ids["email_unsubscribe_token"] = tokens.make("unsubscribe", __import__("uuid").UUID(ids["email_send_id"]))
+
+
 @pytest.fixture
 def two_orgs(make_user, db, monkeypatch):
     """Org A and org B, each with a user, a second workspace, a live session, a webhook and one delivery in its log,
@@ -283,13 +334,14 @@ def two_orgs(make_user, db, monkeypatch):
         fill_tasks(client, ids, name, db)
         fill_forms(client, ids, name)
         fill_workflows(client, ids, name, db)
+        fill_marketing(client, ids, name, db)
     b_ids["session_id"] = b.get("/api/auth/sessions").json()[0]["id"]
     b_ids["user_id"] = b.get("/api/me").json()["user"]["id"]
     a_ids["user_id"] = a.get("/api/me").json()["user"]["id"]
     return a, a_ids, b, b_ids
 
 
-NOT_SECRET = {"booking_day"}  # a date: A's own rows can name the same day
+NOT_SECRET = {"booking_day", "email_unsubscribe_token"}  # a date, and a link the recipient holds (tested apart)
 
 
 def secrets_of(ids: dict) -> list[str]:
@@ -322,7 +374,11 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
                "calendar_id": b_ids["calendar_id"],
                "booking_id": b_ids["booking_id"], "resource_id": b_ids["resource_id"],
                # workflows: B's workflow and run
-               "workflow_id": b_ids["workflow_id"], "run_id": b_ids["workflow_run_id"]}
+               "workflow_id": b_ids["workflow_id"], "run_id": b_ids["workflow_run_id"],
+               # email marketing: B's domain, template, topic, suppression and campaign
+               "domain_id": b_ids["email_domain_id"], "template_id": b_ids["email_template_id"],
+               "topic_id": b_ids["email_topic_id"], "suppression_id": b_ids["email_suppression_id"],
+               "campaign_id": b_ids["email_campaign_id"]}
     others = {"key": [b_ids["object_key"], "contact"], "field_key": [b_ids["field_key"], "email"],  # B's, and A's own
               "kind": ["sms"], "number": ["1"],
               "owner": ["users", "resources"], "owner_id": [b_ids["user_id"], b_ids["resource_id"]],
@@ -367,6 +423,13 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
             # workflows: a graph, a version number and branch choices wherever a body takes one
             "graph": {"trigger": {"event": "record.created"}, "start": None, "nodes": {}}, "note": "swept",
             "version": 1, "paths": {}, "migrate": None, "dry_run": True, "folder": "swept",
+            # email marketing: B's template, topic and send wherever a body takes one
+            "domain": "swept.example.com", "dkim_mode": "managed", "spf_include": "mailgun.org", "hourly_limit": 5,
+            "subject": "swept", "preheader": "swept", "document": {"blocks": []}, "audience": {"all": True},
+            "ab": {"enabled": False}, "from_email": f"news@{b_ids['email_domain']}", "from_name": "swept",
+            "template_id": b_ids["email_template_id"], "topic_id": b_ids["email_topic_id"],
+            "company_name": "swept", "postal_address": "swept", "track_opens": True, "track_clicks": True,
+            "detail": "swept", "timezone": "UTC", "archived": False,
             # calendars: B's calendar, resource, person and booking wherever a body names one
             "calendar_id": b_ids["calendar_id"], "resource_id": b_ids["resource_id"],
             "hosts": [{"user_id": b_ids["user_id"]}], "start": at(b_ids["booking_day"], "10:00").isoformat(),
@@ -382,7 +445,9 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
                    "calendars", "calendar_hosts", "resources", "calendar_resources", "availability",
                    "bookings", "booking_resources", "busy_blocks", "booking_reminders", "booking_attempts",
                    "feed_tokens", "workflows", "workflow_versions", "workflow_runs", "workflow_steps",
-                   "workflow_trigger_checks", "workflow_waiters", "workflow_refs", "workflow_deliveries")
+                   "workflow_trigger_checks", "workflow_waiters", "workflow_refs", "workflow_deliveries",
+                   "email_settings", "email_domains", "email_templates", "email_topics", "email_preferences",
+                   "email_campaigns", "email_links", "email_sends", "email_events", "email_suppressions")
     snapshot = "SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t::text), '')) FROM {} t WHERE {} = :w"
 
     def rows_of_b():
@@ -459,7 +524,20 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
         "/api/v1/workflows/{workflow_id}/versions/{number}", "/api/v1/workflows/{workflow_id}/diff",
         "/api/v1/workflows/{workflow_id}/publish", "/api/v1/workflows/{workflow_id}/pause",
         "/api/v1/workflows/{workflow_id}/resume", "/api/v1/workflows/{workflow_id}/test",
-        "/api/v1/workflows/{workflow_id}/explain"}
+        "/api/v1/workflows/{workflow_id}/explain",
+        # email marketing: domains, settings, topics, suppressions, templates, campaigns and the public links
+        "/api/v1/email/domains", "/api/v1/email/domains/{domain_id}", "/api/v1/email/domains/{domain_id}/check",
+        "/api/v1/email/settings", "/api/v1/email/topics", "/api/v1/email/topics/{topic_id}",
+        "/api/v1/email/suppressions", "/api/v1/email/suppressions/{suppression_id}", "/api/v1/email/templates",
+        "/api/v1/email/templates/{template_id}", "/api/v1/email/templates/{template_id}/duplicate",
+        "/api/v1/email/merge-fields", "/api/v1/email/render", "/api/v1/email/campaigns",
+        "/api/v1/email/campaigns/{campaign_id}", "/api/v1/email/campaigns/{campaign_id}/duplicate",
+        "/api/v1/email/campaigns/{campaign_id}/audience", "/api/v1/email/campaigns/{campaign_id}/check",
+        "/api/v1/email/campaigns/{campaign_id}/schedule", "/api/v1/email/campaigns/{campaign_id}/unschedule",
+        "/api/v1/email/campaigns/{campaign_id}/pause", "/api/v1/email/campaigns/{campaign_id}/resume",
+        "/api/v1/email/campaigns/{campaign_id}/cancel", "/api/v1/email/campaigns/{campaign_id}/report",
+        "/api/v1/email/campaigns/{campaign_id}/recipients", "/api/public/email/o/{token}.gif",
+        "/api/public/email/c/{token}", "/api/public/email/u/{token}"}
 
     seen_own_data = False
     alice = signin_alice()
@@ -472,7 +550,8 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
                 if route.path == "/api/v1/stream" and headers.get("X-Workspace-Id") == a_ids["workspace_id"]:
                     continue  # a stream of A's own never ends: test_inbox_stream reads it against a live server
                 query = {"object": b_ids["object_key"]} if route.path == "/api/v1/trash" else None
-                r = alice.request(method, path, params=query, headers=headers, json=body if method in UNSAFE else None)
+                sent = {**body, "email": "swept@example.com"} if route.path == "/api/v1/email/suppressions" else body
+                r = alice.request(method, path, params=query, headers=headers, json=sent if method in UNSAFE else None)
                 label = f"{method} {route.path} {values} {headers}"
                 assert r.status_code < 500, label
                 assert not any(leak in r.text for leak in leaks), f"{label} leaked: {r.text[:300]}"
@@ -684,7 +763,14 @@ def test_the_app_role_holds_only_the_grants_its_handlers_need():
               "workflows": {"SELECT", "INSERT", "UPDATE"}, "workflow_versions": {"SELECT", "INSERT"},
               "workflow_runs": {"SELECT", "INSERT", "UPDATE"}, "workflow_steps": {"SELECT", "INSERT"},
               "workflow_trigger_checks": {"SELECT", "INSERT"}, "workflow_waiters": {"SELECT", "INSERT", "UPDATE"},
-              "workflow_refs": {"SELECT", "INSERT"}, "workflow_deliveries": {"SELECT", "INSERT"}}
+              "workflow_refs": {"SELECT", "INSERT"}, "workflow_deliveries": {"SELECT", "INSERT"},
+              # email marketing: templates are archived and only drafts deleted; sends and the log are the worker's
+              # (a request cancels sends, the public links count opens and clicks), links are never changed
+              "email_settings": {"SELECT", "INSERT", "UPDATE"}, "email_domains": ALL4,
+              "email_templates": {"SELECT", "INSERT", "UPDATE"}, "email_topics": {"SELECT", "INSERT", "UPDATE"},
+              "email_preferences": {"SELECT", "INSERT", "UPDATE"}, "email_campaigns": ALL4,
+              "email_links": {"SELECT"}, "email_sends": {"SELECT", "INSERT", "UPDATE"},
+              "email_events": {"SELECT", "INSERT"}, "email_suppressions": {"SELECT", "INSERT", "DELETE"}}
     every = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
     with engine.connect() as conn:
         for table, expected in wanted.items():
@@ -1230,7 +1316,8 @@ def test_the_app_role_cannot_read_ciphertext_or_write_inbox_rows_across_workspac
                 conn.execute(text(statement))
         with conn.begin():
             context(conn, workspace_id=a_ws)
-            assert len(conn.execute(text("SELECT id FROM secrets")).all()) == 1  # A's own, by id only, none of B's
+            # A's own (its text channel's token and its sending domain's DKIM key), by id only, none of B's
+            assert len(conn.execute(text("SELECT id FROM secrets")).all()) == 2
         # a row cannot be put into, or moved to, another workspace
         for statement in (
                 "INSERT INTO channels (workspace_id, kind, provider, name) VALUES (:b, 'sms', 'twilio', 'x')",
@@ -1403,3 +1490,119 @@ def test_the_app_role_cannot_move_or_point_workflow_rows_across_workspaces_or_ch
         found = db.scalar(text(f"SELECT count(*) FROM {table} WHERE workspace_id = :w"), {"w": b_ws})
         assert found == count if count else found > 0, table
     assert db.scalar(text("SELECT status FROM workflow_runs WHERE workspace_id = :w"), {"w": b_ws}) == "completed"
+
+
+def test_a_user_of_a_gets_404s_for_bs_email_domains_templates_campaigns_and_suppressions(two_orgs):
+    a, a_ids, b, b_ids = two_orgs
+    mine = {"X-Workspace-Id": a_ids["workspace_id"]}
+    root = "/api/v1/email"
+    campaign = f"{root}/campaigns/{b_ids['email_campaign_id']}"
+    attempts = [
+        ("GET", f"{root}/domains/{b_ids['email_domain_id']}", None),
+        ("PATCH", f"{root}/domains/{b_ids['email_domain_id']}", {"hourly_limit": 5}),
+        ("DELETE", f"{root}/domains/{b_ids['email_domain_id']}", None),
+        ("POST", f"{root}/domains/{b_ids['email_domain_id']}/check", None),
+        ("GET", f"{root}/templates/{b_ids['email_template_id']}", None),
+        ("PATCH", f"{root}/templates/{b_ids['email_template_id']}", {"name": "stolen"}),
+        ("POST", f"{root}/templates/{b_ids['email_template_id']}/duplicate", None),
+        ("PATCH", f"{root}/topics/{b_ids['email_topic_id']}", {"name": "stolen"}),
+        ("DELETE", f"{root}/suppressions/{b_ids['email_suppression_id']}", None),
+        ("GET", campaign, None), ("PATCH", campaign, {"name": "stolen"}), ("DELETE", campaign, None),
+        ("POST", f"{campaign}/duplicate", None), ("GET", f"{campaign}/audience", None),
+        ("POST", f"{campaign}/check", None), ("POST", f"{campaign}/schedule", {}),
+        ("POST", f"{campaign}/unschedule", None), ("POST", f"{campaign}/pause", None),
+        ("POST", f"{campaign}/resume", None), ("POST", f"{campaign}/cancel", None),
+        ("GET", f"{campaign}/report", None), ("GET", f"{campaign}/recipients", None),
+        ("POST", f"{root}/render", {"document": {"blocks": []}, "contact_id": b_ids["record_id"]}),
+    ]
+    for method, path, body in attempts:
+        r = a.request(method, path, json=body, headers=mine)
+        assert r.status_code == 404, (method, path, r.status_code, r.text[:200])
+        assert not any(leak in r.text for leak in secrets_of(b_ids)), (method, path)
+    # A's own campaign cannot use B's template, topic or sending domain
+    own = f"{root}/campaigns/{a_ids['email_campaign_id']}"
+    for body, field in (({"template_id": b_ids["email_template_id"]}, "template_id"),
+                        ({"topic_id": b_ids["email_topic_id"]}, "topic_id"),
+                        ({"from_email": f"x@{b_ids['email_domain']}"}, "from_email")):
+        r = a.patch(own, json=body, headers=mine)
+        assert r.status_code == 422 and field in r.json()["error"]["fields"], (body, r.text)
+        assert not any(leak in r.text for leak in secrets_of(b_ids))
+    r = a.post(f"{root}/campaigns", json={"name": "x", "template_id": b_ids["email_template_id"]}, headers=mine)
+    assert r.status_code == 422
+    # what A lists is A's
+    for path in ("domains", "templates", "topics", "suppressions", "campaigns", "settings"):
+        r = a.get(f"{root}/{path}", headers=mine)
+        assert r.status_code == 200 and not any(leak in r.text for leak in secrets_of(b_ids)), path
+    assert a_ids["email_campaign_name"] in a.get(f"{root}/campaigns", headers=mine).text
+    # and B still has all of it, untouched
+    theirs = {"X-Workspace-Id": b_ids["workspace_id"]}
+    kept = b.get(f"{root}/campaigns/{b_ids['email_campaign_id']}", headers=theirs).json()
+    assert kept["name"] == b_ids["email_campaign_name"] and kept["status"] == "draft"
+
+
+def test_a_public_email_link_acts_on_its_own_send_only(two_orgs, db):
+    _, a_ids, _, b_ids = two_orgs
+    page = hooks.get(f"/api/public/email/u/{a_ids['email_unsubscribe_token']}")
+    assert page.status_code == 200 and a_ids["email_company"] in page.text
+    assert not any(leak in page.text for leak in secrets_of(b_ids))
+    r = hooks.post(f"/api/public/email/u/{a_ids['email_unsubscribe_token']}", content=b"List-Unsubscribe=One-Click",
+                   headers={"Content-Type": "application/x-www-form-urlencoded"})
+    assert r.status_code == 200
+    unsubscribed = dict(db.execute(text("SELECT workspace_id::text, unsubscribed_at IS NOT NULL FROM email_sends")))
+    assert unsubscribed == {a_ids["workspace_id"]: True, b_ids["workspace_id"]: False}
+
+
+def test_the_app_role_cannot_move_or_point_email_rows_across_workspaces(two_orgs, db):
+    _, a_ids, _, b_ids = two_orgs
+    a_ws, b_ws = a_ids["workspace_id"], b_ids["workspace_id"]
+    ids = {"a": a_ws, "b": b_ws, "bc": b_ids["email_campaign_id"], "bs": b_ids["email_send_id"],
+           "bt": b_ids["email_topic_id"], "bd": b_ids["email_domain_id"], "br": b_ids["record_id"],
+           "ac": a_ids["email_campaign_id"], "ar": a_ids["record_id"], "ad": a_ids["email_domain_id"],
+           "bch": b_ids["channel_id"]}
+    tables = ("email_settings", "email_domains", "email_templates", "email_topics", "email_preferences",
+              "email_campaigns", "email_links", "email_sends", "email_events", "email_suppressions")
+    with engine.connect() as conn:
+        for table in tables:  # nothing of B is visible, and a row cannot change its workspace
+            with conn.begin():
+                context(conn, workspace_id=a_ws)
+                assert conn.execute(text(f"SELECT count(*) FROM {table} WHERE workspace_id = :b"), ids).scalar() == 0
+            if table in ("email_links", "email_events"):
+                continue  # no UPDATE at all (below)
+            with pytest.raises(DBAPIError, match="row-level security"), conn.begin():
+                context(conn, workspace_id=a_ws)
+                conn.execute(text(f"UPDATE {table} SET workspace_id = :b"), ids)
+        for statement in (
+                "INSERT INTO email_domains (workspace_id, domain, dkim_selector) VALUES (:b, 'x.example.com', 's')",
+                "INSERT INTO email_campaigns (workspace_id, name) VALUES (:b, 'x')",
+                "INSERT INTO email_suppressions (workspace_id, email, reason) VALUES (:b, 'x@y.z', 'manual')",
+                "INSERT INTO email_events (workspace_id, campaign_id, send_id, type) VALUES (:b, :bc, :bs, 'open')"):
+            with pytest.raises(DBAPIError, match="row-level security"), conn.begin():
+                context(conn, workspace_id=a_ws)
+                conn.execute(text(statement), ids)
+        for statement in (  # a row of A cannot point at a row of B: the foreign keys carry the workspace
+                "INSERT INTO email_sends (workspace_id, campaign_id, contact_id, email) VALUES (:a, :bc, :ar, 'x@y.z')",
+                "INSERT INTO email_sends (workspace_id, campaign_id, contact_id, email) VALUES (:a, :ac, :br, 'x@y.z')",
+                "INSERT INTO email_sends (workspace_id, campaign_id, contact_id, domain_id, email) "
+                "VALUES (:a, :ac, :ar, :bd, 'q@y.z')",
+                "INSERT INTO email_events (workspace_id, campaign_id, send_id, type) VALUES (:a, :ac, :bs, 'open')",
+                "INSERT INTO email_preferences (contact_id, topic_id, workspace_id, subscribed, source) "
+                "VALUES (:ar, :bt, :a, false, 'x')",
+                "UPDATE email_campaigns SET topic_id = :bt WHERE id = :ac",
+                "UPDATE email_campaigns SET channel_id = :bch WHERE id = :ac",
+                "UPDATE email_campaigns SET domain_id = :bd WHERE id = :ac"):
+            with pytest.raises(DBAPIError, match="foreign key"), conn.begin():
+                context(conn, workspace_id=a_ws)
+                conn.execute(text(statement), ids)
+        for statement in ("UPDATE email_links SET url = 'https://evil.test'", "DELETE FROM email_links",
+                          "UPDATE email_events SET machine = true", "DELETE FROM email_events",
+                          "DELETE FROM email_sends", "DELETE FROM email_templates", "DELETE FROM email_topics"):
+            with pytest.raises(DBAPIError, match="permission denied"), conn.begin():
+                context(conn, workspace_id=a_ws)
+                conn.execute(text(statement))
+        with conn.begin():  # the system scope (a public link looking up its send) reads sends only
+            context(conn, system="on")
+            assert conn.execute(text("SELECT count(*) FROM email_sends")).scalar() == 2
+            for table in tables:
+                if table != "email_sends":
+                    assert conn.execute(text(f"SELECT count(*) FROM {table}")).scalar() == 0, table
+            assert conn.execute(text("UPDATE email_sends SET opens = 9")).rowcount == 0

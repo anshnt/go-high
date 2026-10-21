@@ -22,6 +22,11 @@ from .forms import public as form_public
 from .forms import responses as form_responses
 from .inbox import channels, chat, consent, conversations, inbound, outbound, stream
 from .logs import setup_logging, trace_id
+from .marketing import campaigns as email_campaigns
+from .marketing import domains as email_domains
+from .marketing import public as email_public
+from .marketing import settings as email_settings
+from .marketing import templates as email_templates
 from .notifications import routes as notifications
 from .records import associations, board, forecast, objects, pipelines, tags, timeline, views
 from .records import routes as records
@@ -116,7 +121,7 @@ for module in (objects, records, associations, tags, views, timeline, pipelines,
                simulator, audit, tasks, day, notifications, channels, conversations, outbound,
                consent, inbound, stream, chat,
                forms, form_responses, form_analytics, form_public, calendars, availability, bookings, public,
-               workflows):
+               workflows, email_domains, email_settings, email_templates, email_campaigns, email_public):
     app.include_router(module.router)
 app.include_router(simulator.mine)
 app.include_router(form_public.pages)  # /f/{key} and /embed.js, before the catch-all below

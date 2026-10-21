@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_campaign.winner_chosen",
+  "description": "An A/B test ended: `winner` goes to the rest of the audience; `rates` holds each variant's numbers. Subject: the campaign.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "winner": {
+      "type": "string"
+    },
+    "rates": {
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "status",
+    "winner",
+    "rates"
+  ],
+  "additionalProperties": false
+}

@@ -13,3 +13,4 @@ export { Tooltip, TooltipProvider } from "./Tooltip";
 export { ToastProvider, useToast } from "./Toast";
 export { Avatar, Badge, EmptyState, Kbd, Skeleton, type Tone } from "./Display";
 export { Table, type Column, type Sort } from "./Table";
+export { Segmented } from "./Segmented";

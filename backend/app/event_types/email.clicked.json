@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email.clicked",
+  "description": "A contact clicked a link of a campaign email for the first time (scanner clicks are not counted). Subject: the contact.",
+  "type": "object",
+  "properties": {
+    "contact_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "campaign_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "send_id": {
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "required": [
+    "contact_id",
+    "campaign_id",
+    "send_id"
+  ],
+  "additionalProperties": false
+}

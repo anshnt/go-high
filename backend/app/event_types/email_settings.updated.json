@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_settings.updated",
+  "description": "The workspace's email footer or tracking settings changed; `changes` holds the old and new value of each. Subject: the workspace.",
+  "type": "object",
+  "properties": {
+    "changes": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "changes"
+  ],
+  "additionalProperties": false
+}

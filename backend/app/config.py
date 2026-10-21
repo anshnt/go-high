@@ -57,3 +57,11 @@ BOOKING_WINDOW_MINUTES = int(os.getenv("BOOKING_WINDOW_MINUTES", "10"))
 # Workflows (module 18): how many steps of one workspace's runs may execute at the same moment, so a workspace that
 # enrolls thousands of records at once cannot take every worker.
 WORKFLOW_CONCURRENCY = int(os.getenv("WORKFLOW_CONCURRENCY", "8"))
+
+# Email marketing (module 20). A sending domain past its warm-up sends at most EMAIL_MAX_PER_HOUR an hour; a campaign's
+# batch job hands out at most EMAIL_BATCH_SIZE sends per run and runs every EMAIL_BATCH_SECONDS while there is room.
+# EMAIL_PRICE_PER_1000 is what the estimate before a send multiplies by, until the usage ledger (module 06) prices it.
+EMAIL_MAX_PER_HOUR = int(os.getenv("EMAIL_MAX_PER_HOUR", "20000"))
+EMAIL_BATCH_SIZE = int(os.getenv("EMAIL_BATCH_SIZE", "200"))
+EMAIL_BATCH_SECONDS = int(os.getenv("EMAIL_BATCH_SECONDS", "60"))
+EMAIL_PRICE_PER_1000 = os.getenv("EMAIL_PRICE_PER_1000", "0")

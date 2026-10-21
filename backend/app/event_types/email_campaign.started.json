@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_campaign.started",
+  "description": "A campaign started sending: its audience was read and `recipients` sends were queued. Subject: the campaign.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "recipients": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "status",
+    "recipients"
+  ],
+  "additionalProperties": false
+}

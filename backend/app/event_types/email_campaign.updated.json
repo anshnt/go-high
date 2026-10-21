@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_campaign.updated",
+  "description": "A campaign draft changed, or went back to a draft (`changed` names the fields). Subject: the campaign.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "changed": {
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "status",
+    "changed"
+  ],
+  "additionalProperties": false
+}

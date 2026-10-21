@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email.bounced",
+  "description": "A campaign email to a contact bounced for good; the address is now suppressed. Subject: the contact.",
+  "type": "object",
+  "properties": {
+    "contact_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "campaign_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "send_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "reason": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "contact_id",
+    "campaign_id",
+    "send_id",
+    "reason"
+  ],
+  "additionalProperties": false
+}

@@ -70,13 +70,16 @@ def call(method: str, url: str, body: bytes | None, headers: dict[str, str], ret
     u = urlsplit(url)
     connection = http.client.HTTPSConnection if u.scheme == "https" else http.client.HTTPConnection
     conn = connection(u.hostname, u.port, timeout=timeout)
+    sent = False
     try:
         out = {"Accept": "application/json", "User-Agent": "go-high/1", **headers}
         conn.request(method, u.path + (f"?{u.query}" if u.query else ""), body, out)
+        sent = True
         response = conn.getresponse()
         status, raw = response.status, response.read(MAX_RESPONSE)
     except (OSError, http.client.HTTPException) as e:  # TimeoutError and ConnectionError are OSErrors
-        raise ChannelError(f"{type(e).__name__}: {e}"[:EXCERPT], retryable=True) from None
+        # once the request is out, a lost answer leaves it unknown whether the provider took it
+        raise ChannelError(f"{type(e).__name__}: {e}"[:EXCERPT], retryable=True, ambiguous=sent) from None
     finally:
         conn.close()
     try:

@@ -57,7 +57,7 @@ export type AppInfo = { id: string; label: string; icon: LucideIcon; blurb: stri
 export const APPS: AppInfo[] = [
   { id: "forms", label: "Forms", icon: ClipboardList, path: "/forms", blurb: "Forms, surveys and quizzes with branching, scoring and embeds that create contacts." },
   { id: "sites", label: "Sites and funnels", icon: Globe, blurb: "Build fast pages and funnels that publish as static HTML." },
-  { id: "email", label: "Email marketing", icon: Mail, blurb: "Campaigns and newsletters with deliverability checks built in." },
+  { id: "email", label: "Email marketing", icon: Mail, path: "/email", blurb: "Campaigns and newsletters with deliverability checks built in." },
   { id: "payments", label: "Payments", icon: CreditCard, blurb: "Invoices, subscriptions and payment links with a clear cost preview." },
   { id: "social", label: "Social planner", icon: Share2, blurb: "Plan and publish posts across your social accounts." },
   { id: "reputation", label: "Reputation", icon: Star, blurb: "Ask for reviews and reply to them from one queue." },
@@ -104,9 +104,9 @@ export const sidebarPrefs = persisted<SidebarPrefs>("gh:sidebar", { order: [], h
   return p && isIds(p.order) && isIds(p.hidden) ? { order: p.order, hidden: p.hidden } : undefined;
 });
 
-// ponytail: which apps are on lives in localStorage, like the sidebar; it moves to workspace settings with them. Forms is
-// on by default for now.
-export const appsOn = persisted<string[]>("gh:apps", ["forms"], (v) => (isIds(v) ? v : undefined));
+// ponytail: which apps are on lives in localStorage, like the sidebar; it moves to workspace settings with them. Forms and
+// Email are on by default for now.
+export const appsOn = persisted<string[]>("gh:apps", ["forms", "email"], (v) => (isIds(v) ? v : undefined));
 
 /** The apps that are built and switched on, as sidebar items. */
 export const enabledApps = (on: string[]): NavItem[] =>

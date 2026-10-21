@@ -24,10 +24,13 @@ class ChannelError(Exception):
     """A send failed. `retryable` is True for timeouts, 429 and 5xx (try again later) and False for what a retry
     cannot fix: a rejected request, bad credentials, a refused address. `code` is the provider's own error code."""
 
-    def __init__(self, message: str, retryable: bool = False, code: str = ""):
+    def __init__(self, message: str, retryable: bool = False, code: str = "", ambiguous: bool = False):
         super().__init__(message)
         self.retryable = retryable
         self.code = code
+        # the request had been sent when it failed (no answer came back), so the provider may have accepted it: a
+        # sender that must never send twice does not retry
+        self.ambiguous = ambiguous
 
 
 @dataclass
@@ -117,6 +120,8 @@ class Outbound:
     idempotency_key: str | None = None  # the message id: a retry must not send twice
     status_callback: str | None = None  # where the provider reports delivery (SMS)
     unsubscribe_url: str | None = None  # email: https URL for List-Unsubscribe
+    headers: dict[str, str] = field(default_factory=dict)  # email: more headers (List-Id, Feedback-ID)
+    dkim: tuple[str, str, str] | None = None  # email over SMTP: (domain, selector, private key PEM) to sign with
     template: Template | None = None  # WhatsApp: required outside the 24 hour window
 
 
