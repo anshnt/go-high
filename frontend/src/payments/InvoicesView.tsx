@@ -1,6 +1,6 @@
 import { Copy, ExternalLink, FileText, Plus, Send, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import { errorText } from "../lib/api";
 import { useCan } from "../lib/capabilities";
 import { Button, EmptyState, Input, Select, Sheet, Table, Textarea, useToast, type Column } from "../ui";
@@ -22,7 +22,7 @@ export function InvoicesView() {
   const list = useList((cursor) => pay.invoices({ status: status === "all" ? undefined : status, q: q || undefined, cursor }), [status, q]);
 
   const columns: Column<Invoice>[] = [
-    { key: "number", header: "Invoice", mono: true, cell: (i) => invoiceName(i) },
+    { key: "number", header: "Invoice", mono: true, cell: (i) => <Link className="pay-rowlink" to={`/payments/invoices/${i.id}`}>{invoiceName(i)}</Link> },
     { key: "contact", header: "Customer", cell: (i) => i.contact?.display_name ?? <span className="pay-muted">Hidden</span> },
     { key: "status", header: "Status", cell: (i) => <Status meta={INVOICE_STATUS[i.status]} /> },
     { key: "total", header: "Total", align: "right", mono: true, cell: (i) => money(i.total, i.currency) },
@@ -170,7 +170,25 @@ function InvoiceEditor({ initial, onClose, onSaved }: { initial: Invoice | null;
   }
 
   return (
-    <Sheet open onOpenChange={(o) => !o && !busy && onClose()} title={initial ? "Edit draft invoice" : "New invoice"} description="Totals, tax and discounts are worked out by the server as you type.">
+    <Sheet
+      open
+      onOpenChange={(o) => !o && !busy && onClose()}
+      title={initial ? "Edit draft invoice" : "New invoice"}
+      description="Totals, tax and discounts are worked out by the server as you type."
+      footer={
+        <>
+          <Button onClick={onClose} disabled={!!busy}>
+            Cancel
+          </Button>
+          <Button onClick={() => void save(false)} loading={busy === "save"} disabled={!!busy}>
+            Save draft
+          </Button>
+          <Button variant="primary" onClick={() => void save(true)} loading={busy === "send"} disabled={!!busy}>
+            <Send size={16} aria-hidden /> Save and send
+          </Button>
+        </>
+      }
+    >
       <div className="pay-form">
         <ContactPicker label="Bill to" value={contact} onChange={setContact} error={fields.contact_id} />
         <Select label="Currency" value={currency} onValueChange={setCurrency} options={CURRENCIES.map((c) => ({ value: c, label: c.toUpperCase() }))} />
@@ -220,17 +238,6 @@ function InvoiceEditor({ initial, onClose, onSaved }: { initial: Invoice | null;
         </div>
         <Textarea label="Note to the customer" value={memo} onChange={(e) => setMemo(e.target.value)} maxLength={2000} rows={3} />
         <Totals invoice={preview} />
-        <div className="pay-actions">
-          <Button onClick={onClose} disabled={!!busy}>
-            Cancel
-          </Button>
-          <Button onClick={() => void save(false)} loading={busy === "save"} disabled={!!busy}>
-            Save draft
-          </Button>
-          <Button variant="primary" onClick={() => void save(true)} loading={busy === "send"} disabled={!!busy}>
-            <Send size={16} aria-hidden /> Save and send
-          </Button>
-        </div>
       </div>
     </Sheet>
   );

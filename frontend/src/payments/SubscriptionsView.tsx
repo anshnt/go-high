@@ -1,6 +1,6 @@
 import { Plus, Repeat } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import { errorText } from "../lib/api";
 import { useCan } from "../lib/capabilities";
 import { Button, Dialog, EmptyState, Input, Select, Sheet, Switch, Table, useToast, type Column } from "../ui";
@@ -22,7 +22,7 @@ export function SubscriptionsView() {
   const list = useList((cursor) => pay.subscriptions({ status: status === "all" ? undefined : status, cursor }), [status]);
   const columns: Column<Subscription>[] = [
     { key: "contact", header: "Customer", cell: (s) => s.contact?.display_name ?? <span className="pay-muted">Hidden</span> },
-    { key: "plan", header: "Plan", cell: (s) => `${plan(s)}${s.quantity > 1 ? ` × ${s.quantity}` : ""}` },
+    { key: "plan", header: "Plan", cell: (s) => <Link className="pay-rowlink" to={`/payments/subscriptions/${s.id}`}>{`${plan(s)}${s.quantity > 1 ? ` × ${s.quantity}` : ""}`}</Link> },
     { key: "status", header: "Status", cell: (s) => <span className="pay-badges"><Status meta={SUB_STATUS[s.status]} />{s.cancel_at_period_end && <Status meta={{ label: "Ends at period end", tone: "warning" }} />}</span> },
     { key: "amount", header: "Amount", align: "right", mono: true, cell: (s) => (s.amount === null ? "" : `${money(s.amount, s.currency)} ${every(s.price?.interval ?? null, s.price?.interval_count)}`) },
     { key: "renews", header: "Period ends", cell: (s) => (["canceled", "incomplete_expired"].includes(s.status) ? "" : day(s.current_period_end)) },

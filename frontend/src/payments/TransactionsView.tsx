@@ -1,6 +1,6 @@
 import { ArrowLeftRight } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import { errorText } from "../lib/api";
 import { useCan } from "../lib/capabilities";
 import { Button, EmptyState, Input, Select, Sheet, Table, useToast, type Column } from "../ui";
@@ -23,7 +23,7 @@ export function TransactionsView() {
   const [status, setStatus] = useState("all");
   const list = useList((cursor) => pay.transactions({ status: status === "all" ? undefined : status, cursor }), [status]);
   const columns: Column<Payment>[] = [
-    { key: "date", header: "Date", cell: (p) => day(p.created_at) },
+    { key: "date", header: "Date", cell: (p) => <Link className="pay-rowlink" to={`/payments/transactions/${p.id}`}>{day(p.created_at)}</Link> },
     { key: "contact", header: "Customer", cell: (p) => p.contact?.display_name ?? <span className="pay-muted">Hidden</span> },
     { key: "amount", header: "Amount", align: "right", mono: true, cell: (p) => money(p.amount, p.currency) },
     { key: "status", header: "Status", cell: (p) => <Status meta={paymentState(p)} /> },
