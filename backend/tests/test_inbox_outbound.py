@@ -17,6 +17,7 @@ from inbox_helpers import (
     sql,
 )
 from sqlalchemy import text
+from usage_helpers import USD, fund
 
 from app import compliance
 from app.inbox import consent
@@ -122,6 +123,7 @@ def test_segments_and_estimated_cost_come_back_with_the_message(crm):
     assert free["segments"] == 2 and free["estimated_cost"] == "0.000000"
     assert free["estimate"] == {"encoding": "gsm7", "segments": 2, "chars": 200, "estimated_cost": "0.000000"}
     configure(client, ws, channel, segment_cost="0.0079")
+    fund(client, ws, USD)  # a paid message needs money in the wallet (module 06)
     priced = reply(client, ws, conv, "x" * 200).json()
     assert (priced["segments"], priced["estimated_cost"]) == (2, "0.015800")
     emoji = reply(client, ws, conv, "hi \U0001f600").json()["estimate"]

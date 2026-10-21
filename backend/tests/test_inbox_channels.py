@@ -314,8 +314,10 @@ def test_the_estimate_counts_segments_and_prices_them_per_channel(crm):
     paid = add_channel(client, ws, "telnyx", config={"public_key": CHANNELS["telnyx"]["config"]["public_key"],
                                                      "segment_cost": "0.0079"})
     one = client.post(f"/api/v1/channels/{free['id']}/estimate", json={"body": "x" * 160}, headers={H: ws}).json()
+    assert one.pop("charge")["price"] == 0  # what the wallet would charge (test_usage_sends goes further)
     assert one == {"encoding": "gsm7", "segments": 1, "chars": 160, "estimated_cost": "0.000000"}
     two = client.post(f"/api/v1/channels/{paid['id']}/estimate", json={"body": "x" * 161}, headers={H: ws}).json()
+    assert (two.pop("charge")["price"], two.pop("charge", None)) == (15_800, None)
     assert two == {"encoding": "gsm7", "segments": 2, "chars": 161, "estimated_cost": "0.015800"}
     smile = {"body": "hi \U0001f600"}
     emoji = client.post(f"/api/v1/channels/{paid['id']}/estimate", json=smile, headers={H: ws}).json()

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "wallet.topup_failed",
+  "description": "The payment provider refused or failed a top-up; `error` is its reason. Amounts in micros. Subject: the top-up.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "amount": {
+      "type": "integer"
+    },
+    "currency": {
+      "type": "string"
+    },
+    "trigger": {
+      "type": "string"
+    },
+    "error": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "amount",
+    "currency",
+    "trigger",
+    "error"
+  ],
+  "additionalProperties": false
+}

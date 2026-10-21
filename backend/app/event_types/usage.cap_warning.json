@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "usage.cap_warning",
+  "description": "This month's usage crossed the alert level of the workspace's monthly cap (`alert_pct` of `cap`). Amounts in micros; `month` is the first day of the month (UTC). Subject: the wallet (the workspace id).",
+  "type": "object",
+  "properties": {
+    "spent": {
+      "type": "integer"
+    },
+    "cap": {
+      "type": "integer"
+    },
+    "alert_pct": {
+      "type": "integer"
+    },
+    "currency": {
+      "type": "string"
+    },
+    "month": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "spent",
+    "cap",
+    "alert_pct",
+    "currency",
+    "month"
+  ],
+  "additionalProperties": false
+}

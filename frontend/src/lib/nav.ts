@@ -79,7 +79,7 @@ export const SETTINGS: SettingsSection[] = [
   { id: "profile", label: "Profile", blurb: "Your name, photo, password and sign-in methods.", keywords: "account password 2fa avatar" },
   { id: "workspace", label: "Workspace", blurb: "Business name, time zone, currency and hours.", keywords: "business timezone company" },
   { id: "team", label: "Team and roles", blurb: "Invite people and control what each role can see.", keywords: "users permissions invite" },
-  { id: "billing", label: "Billing and usage", blurb: "Plan, wallet balance and a clear view of usage costs.", keywords: "invoice plan wallet credits" },
+  { id: "billing", label: "Billing and usage", blurb: "Wallet balance, top-ups, usage history, alerts, the monthly cap and prices.", keywords: "invoice plan wallet credits top up recharge usage ledger cost price rate card markup cap export" },
   { id: "channels", label: "Channels", blurb: "Connect SMS, email, WhatsApp and web chat accounts, and the web chat widget.", keywords: "inbox sms email whatsapp webchat twilio telnyx smtp mailgun widget provider webhook" },
   { id: "phone", label: "Phone and SMS", blurb: "Numbers, sender registration and quiet hours.", keywords: "a2p twilio text calling" },
   { id: "email", label: "Email and domains", blurb: "Sending domains, SPF, DKIM and mailbox connections.", keywords: "dns dkim spf deliverability" },

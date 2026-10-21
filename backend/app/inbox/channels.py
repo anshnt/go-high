@@ -19,6 +19,7 @@ from ..api import ApiError, Idem, idempotency, paginate
 from ..channels.base import ChannelError
 from ..permissions import grants, requires
 from ..security import Ctx
+from ..usage import sending, wallet
 from . import gateway, vault
 from .models import Channel
 
@@ -247,5 +248,11 @@ def test_channel(channel_id: uuid.UUID, c: Ctx = Depends(manage)):
 
 @router.post("/{channel_id}/estimate")
 def estimate_message(channel_id: uuid.UUID, body: Estimate, c: Ctx = Depends(read)):
-    """Segments and estimated cost of a text, for the composer while typing."""
-    return estimate(channel_or_404(c, channel_id), body.body)
+    """Segments and estimated cost of a text, for the composer while typing, and `charge`: what the workspace would be
+    charged for it and whether the wallet would let it through now (the cost preview of module 06)."""
+    ch = channel_or_404(c, channel_id)
+    p = wallet.preview(c.db, c.workspace, sending.items(ch, body.body))
+    c.db.commit()  # the wallet is made on first use
+    charge = {k: v for k, v in p.json().items() if k in ("currency", "price", "balance", "balance_after", "allowed",
+                                                            "code", "reason", "warnings")}
+    return {**estimate(ch, body.body), "charge": charge}

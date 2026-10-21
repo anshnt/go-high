@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "usage.exported",
+  "description": "The usage ledger was exported as CSV; `filters` are the ones the export used. Subject: the workspace.",
+  "type": "object",
+  "properties": {
+    "rows": {
+      "type": "integer"
+    },
+    "truncated": {
+      "type": "boolean"
+    },
+    "filters": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "rows",
+    "truncated",
+    "filters"
+  ],
+  "additionalProperties": false
+}

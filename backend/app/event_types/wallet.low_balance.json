@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "wallet.low_balance",
+  "description": "A charge took the wallet's balance below the workspace's alert (`threshold`). Amounts in micros. Subject: the wallet (the workspace id).",
+  "type": "object",
+  "properties": {
+    "balance": {
+      "type": "integer"
+    },
+    "threshold": {
+      "type": "integer"
+    },
+    "currency": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "balance",
+    "threshold",
+    "currency"
+  ],
+  "additionalProperties": false
+}

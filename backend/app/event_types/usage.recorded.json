@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "usage.recorded",
+  "description": "A paid action was charged to the workspace's wallet: a ledger entry of kind usage. Amounts are integer micros (millionths of the currency unit); `amount` is minus `price`. Subject: the ledger entry.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "meter": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "quantity": {
+      "type": "integer"
+    },
+    "cost": {
+      "type": "integer"
+    },
+    "price": {
+      "type": "integer"
+    },
+    "amount": {
+      "type": "integer"
+    },
+    "balance_after": {
+      "type": "integer"
+    },
+    "currency": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string"
+    },
+    "subject_type": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "subject_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    }
+  },
+  "required": [
+    "id",
+    "kind",
+    "meter",
+    "quantity",
+    "cost",
+    "price",
+    "amount",
+    "balance_after",
+    "currency",
+    "source",
+    "subject_type",
+    "subject_id"
+  ],
+  "additionalProperties": false
+}

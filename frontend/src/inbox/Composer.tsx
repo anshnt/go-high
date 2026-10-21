@@ -2,15 +2,17 @@ import { Bold, ChevronDown, Italic, Link2, List, Lock, Send, StickyNote } from "
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode, type Ref } from "react";
 import { MOD } from "../lib/platform";
 import { formatPhone } from "../records/format.ts";
+import { Link } from "react-router";
+import { formatMoney } from "../billing/money";
 import { Button, Kbd } from "../ui";
 import { Combobox } from "../ui/Combobox";
 import { estimate as fetchEstimate } from "./api";
 import { ChannelIcon } from "./ChannelIcon";
 import { defaultChannel, reachable } from "./reach.ts";
-import { consentRefusal, type Refusal } from "./refusal.ts";
+import { consentRefusal, walletRefusal, WALLET_CODES, type Refusal } from "./refusal.ts";
 import { RefusalBanner } from "./RefusalBanner";
 import { charsLeft, segmentLabel, smsSegments } from "./segments.ts";
-import type { Channel, Consent, Conversation } from "./types.ts";
+import type { Channel, Charge, Consent, Conversation } from "./types.ts";
 import type { SendInput, SendResult } from "./useThread";
 import { useDebounced } from "../records/useDebounced";
 import { CHANNEL_LABEL } from "./views.ts";
@@ -114,25 +116,30 @@ export function Composer({ conv, channels, consents, canSend, canNote, canDnd, d
     const c = channel && consents?.find((x) => x.kind === channel.kind);
     return mode === "reply" && c ? consentRefusal(c) : null;
   }, [channel, consents, mode]);
-  const shown = refusal ?? known;
   const blocked = mode === "reply" && (!channel || !!known?.blocking);
 
-  // The estimate under an SMS: the count is instant (same rules as the server), the price comes from the channel's own call.
+  // The cost preview under a paid message (module 06): the SMS segment count is instant (same rules as the server); what
+  // the wallet would charge, and whether it would let the message through, comes from the channel's estimate call.
   const local = useMemo(() => smsSegments(draft.text), [draft.text]);
   const typed = useDebounced(draft.text, 350);
-  const [perSegment, setPerSegment] = useState<{ channel: string; price: number } | null>(null);
+  const paid = mode === "reply" && !!channel && channel.kind !== "webchat";
+  const [quote, setQuote] = useState<{ channel: string; units: number; charge: Charge } | null>(null);
   useEffect(() => {
-    if (!sms || !channel || !typed.trim()) return;
+    if (!paid || !channel || !typed.trim()) return;
     let live = true;
     fetchEstimate(channel.id, typed).then(
-      (e) => live && setPerSegment({ channel: channel.id, price: e.segments > 0 ? Number(e.estimated_cost) / e.segments : 0 }),
+      (e) => live && e.charge && setQuote({ channel: channel.id, units: sms ? Math.max(1, e.segments) : 1, charge: e.charge }),
       () => undefined,
     );
     return () => {
       live = false;
     };
-  }, [sms, channel, typed]);
-  const price = perSegment && channel && perSegment.channel === channel.id ? perSegment.price : 0;
+  }, [paid, sms, channel, typed]);
+  const charge = paid && quote && channel && quote.channel === channel.id ? quote.charge : null;
+  // the price per unit times what is typed now, so the figure keeps up with typing between two estimate calls
+  const price = charge && quote ? Math.round((charge.price / quote.units) * (sms ? Math.max(1, local.segments) : 1)) : 0;
+  const priceText = charge && price > 0 ? `about ${formatMoney(price, charge.currency)}` : "";
+  const shown = refusal ?? known ?? (draft.text.trim() ? walletRefusal(charge) : null);
 
   const empty = !draft.text.trim();
   const send = async () => {
@@ -197,6 +204,10 @@ export function Composer({ conv, channels, consents, canSend, canNote, canDnd, d
               <button type="button" className="ib-refusal-action" onClick={() => onDndOff(channel.kind)}>
                 Turn off do not disturb for {CHANNEL_LABEL[channel.kind]}
               </button>
+            ) : WALLET_CODES.includes(shown.code) ? (
+              <Link className="ib-refusal-action" to="/settings/billing">
+                Open billing and usage
+              </Link>
             ) : undefined
           }
         />
@@ -262,9 +273,11 @@ export function Composer({ conv, channels, consents, canSend, canNote, canDnd, d
         <span className="ib-estimate" aria-live="polite">
           {sms && local.segments > 0 ? (
             <>
-              {segmentLabel({ ...local, estimated_cost: price ? String(price * local.segments) : null })}
+              {[segmentLabel(local), priceText].filter(Boolean).join(" · ")}
               <span className="ib-left"> {"·"} {charsLeft(local)} left</span>
             </>
+          ) : paid && priceText && draft.text.trim() ? (
+            priceText
           ) : null}
         </span>
         <Button variant="primary" className="ib-send" disabled={empty || blocked} onClick={() => void send()} aria-keyshortcuts="Control+Enter Meta+Enter">

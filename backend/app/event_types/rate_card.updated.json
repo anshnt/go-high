@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "rate_card.updated",
+  "description": "A rate card's price or markup changed; `changes` holds the old and new values. Subject: the rate card.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "meter": {
+      "type": "string"
+    },
+    "scope": {
+      "type": "string"
+    },
+    "org_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "brand_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "workspace_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "currency": {
+      "type": "string"
+    },
+    "price": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "markup_bp": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "changes": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "id",
+    "meter",
+    "scope",
+    "org_id",
+    "brand_id",
+    "workspace_id",
+    "currency",
+    "price",
+    "markup_bp",
+    "changes"
+  ],
+  "additionalProperties": false
+}

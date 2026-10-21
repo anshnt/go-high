@@ -102,12 +102,12 @@ Milestones: **M0 Foundations**, **M1 Core CRM** (first sellable product), **M2 G
 - Plan fee plus a wallet charged for SMS, calls, email, AI, premium workflow actions; agencies can mark up usage on the top plan only.
 
 **Better**
-- [ ] One metered ledger (event, unit, cost, price, markup) behind every paid action
-- [ ] Prepaid wallet and postpaid modes, auto top-up, low balance alerts, never deleted on plan change
-- [ ] Per-workspace monthly caps with hard stop and alerts
+- [x] One metered ledger (event, unit, cost, price, markup) behind every paid action (SMS, email and WhatsApp sends today; calls and AI record through it when they exist)
+- [x] Prepaid wallet and postpaid modes, auto top-up, low balance alerts, never deleted on plan change (top-ups through a pluggable provider; Stripe comes with module 21)
+- [x] Per-workspace monthly caps with hard stop and alerts
 - [ ] Cost estimate shown before any send, campaign, call or AI run
 - [ ] Usage dashboard per workspace and per feature; statements that itemize carrier fees
-- [ ] Markup rules available on every plan
+- [x] Markup rules available on every plan (rate cards per organization, brand and workspace)
 
 **Done when** a bulk SMS shows its estimated cost before sending, the ledger records the real cost after, and a cap stops sends when reached.
 

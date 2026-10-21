@@ -28,7 +28,7 @@ def records(*actions: str) -> set[str]:
 MEMBER = {*records("read", "write", "delete"), "schema.read", "tags.write", "views.write", "messages.send",
            "members.read", "tasks.read", "tasks.write", "tasks.delete", "conversations.read", "conversations.write",
            "consents.manage", "forms.read", "forms.write", "responses.read", "calendars.read", "calendars.write",
-           "workflows.read", "workflows.write"}
+           "workflows.read", "workflows.write", "usage.read"}
 # key: (name, description, capabilities). Every role starts with the rule "all records of every object".
 SYSTEM_ROLES = {
     "owner": ("Owner", "Everything, billing included. Cannot be changed.", set(CAPABILITIES)),

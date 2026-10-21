@@ -53,7 +53,9 @@ CATALOG = [
     ("Messaging", "conversations.write", "Assign, snooze, close and reopen conversations, and add internal notes"),
     ("Messaging", "consents.manage", "Switch do not disturb on and off for a contact"),
     ("Messaging", "channels.manage", "Add, change, disable and test messaging channels and their credentials"),
-    ("Billing", "billing.manage", "Change the plan, the wallet and payment methods"),
+    ("Billing", "usage.read", "See the wallet balance, usage history, prices and cost previews"),
+    ("Billing", "billing.manage", "Top up the wallet, change its alerts, auto-recharge, monthly cap and payment "
+                                  "method, and (organization owners) set rate cards"),
     ("Developer", "webhooks.manage", "Manage webhooks and replay their deliveries"),
     ("People", "members.read", "See members, teams and roles"),
     ("People", "members.manage", "Assign roles, manage teams and ask what a user can see"),

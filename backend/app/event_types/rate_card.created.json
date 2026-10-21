@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "rate_card.created",
+  "description": "An organization owner or admin set a price (micros per unit) or a markup (basis points) for a meter, for the organization, a brand or a workspace. Subject: the rate card.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "meter": {
+      "type": "string"
+    },
+    "scope": {
+      "type": "string"
+    },
+    "org_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "brand_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "workspace_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "currency": {
+      "type": "string"
+    },
+    "price": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "markup_bp": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "meter",
+    "scope",
+    "org_id",
+    "brand_id",
+    "workspace_id",
+    "currency",
+    "price",
+    "markup_bp"
+  ],
+  "additionalProperties": false
+}
