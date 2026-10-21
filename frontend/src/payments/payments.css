@@ -1,0 +1,330 @@
+/* Payments: the lists, sheets, editors and settings. Tokens only; the same components as the rest of the app. */
+
+.pay-page {
+  max-width: 1280px;
+}
+.pay-tabs {
+  margin-top: var(--space-4);
+}
+.pay-tabs .ui-tab {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+.pay-tabs .ui-tab:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.pay-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius);
+  background: var(--warning-soft);
+  color: var(--warning-text);
+}
+.pay-banner a {
+  color: inherit;
+  font-weight: 600;
+}
+.pay-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+  margin: 0 0 var(--space-5);
+}
+.pay-stats > div {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.pay-stats dt {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.pay-stats dd {
+  margin: var(--space-1) 0 0;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.pay-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.pay-toolbar > .ui-field {
+  flex: 0 1 220px;
+}
+.pay-grow {
+  flex: 1;
+}
+.pay-more {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-4);
+}
+.pay-muted {
+  color: var(--text-2);
+}
+.pay-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.pay-name .pay-muted {
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pay-prices {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--fs-sm);
+}
+.pay-badges,
+.pay-row-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.pay-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.pay-grid2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+}
+.pay-lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  margin: 0;
+  min-width: 0;
+}
+.pay-lines legend {
+  padding: 0 var(--space-1);
+  font-weight: 600;
+}
+.pay-line {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.pay-line-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.pay-line-main > .ui-btn {
+  align-self: flex-start;
+}
+.pay-line-nums,
+.pay-tier {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  align-items: end;
+  gap: var(--space-2);
+}
+.pay-tier .ui-hint {
+  grid-column: 1 / -1;
+}
+.pay-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.pay-actions-start {
+  justify-content: flex-start;
+}
+.pay-totals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  margin-left: auto;
+  width: min(320px, 100%);
+}
+.pay-totals-empty {
+  font-size: var(--fs-sm);
+}
+.pay-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.pay-row dt {
+  color: var(--text-2);
+}
+.pay-row dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.pay-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.pay-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.pay-big {
+  font-size: var(--fs-xl);
+  font-variant-numeric: tabular-nums;
+}
+.pay-facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+}
+.pay-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+.pay-table th,
+.pay-table td {
+  padding: var(--space-2) var(--space-1);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+.pay-table th {
+  color: var(--text-2);
+  font-weight: 600;
+}
+.pay-table .num {
+  text-align: right;
+  white-space: nowrap;
+}
+.pay-note {
+  white-space: pre-line;
+  color: var(--text-2);
+}
+.pay-h3 {
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+.pay-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pay-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.pay-link {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent-text);
+  font: inherit;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.pay-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.pay-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.pay-card h2 {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+}
+.pay-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.pay-caps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-sm);
+}
+.pay-caps li {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+.pay-caps svg {
+  flex: none;
+  margin-top: 2px;
+}
+.pay-ok {
+  color: var(--success);
+}
+.pay-no {
+  color: var(--text-3);
+}
+.pay-provider {
+  display: inline-flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 360px;
+  font-size: var(--fs-sm);
+}
+@media (max-width: 640px) {
+  .pay-toolbar > .ui-field {
+    flex: 1 1 100%;
+  }
+  .pay-toolbar .pay-grow {
+    display: none;
+  }
+  .pay-card {
+    padding: var(--space-4);
+  }
+}

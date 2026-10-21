@@ -178,7 +178,7 @@ function Terms({ manage }: { manage: boolean }) {
     if (days.some((d) => !Number.isInteger(d) || d < 1 || d > 60)) return setErrors({ retry_days: "Days from 1 to 60, rising, separated by commas" });
     setBusy(true);
     try {
-      const { next_invoice_number: _, ...rest } = draft;
+      const { next_invoice_number: _, ...rest } = draft as Settings;
       void _;
       const saved = await pay.saveSettings({ ...rest, retry_days: days });
       setS(saved);

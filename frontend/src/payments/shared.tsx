@@ -32,7 +32,6 @@ export function useList<T>(load: (cursor: string | null) => Promise<Page<T>>, de
       })
       .catch((e) => setError(errorText(e)))
       .finally(() => setMore(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
   useEffect(() => fetchPage(null), [fetchPage]);
   return { rows, error, cursor, loadingMore: more, reload: () => fetchPage(null), loadMore: () => cursor && fetchPage(cursor), setRows };

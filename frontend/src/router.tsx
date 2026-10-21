@@ -34,7 +34,10 @@ export const router = createBrowserRouter([
       // Forms is lazy too: the builder is large and only needed there.
       { path: "forms", lazy: async () => ({ Component: (await import("./forms/FormsPage")).FormsPage }) },
       { path: "forms/:id", lazy: async () => ({ Component: (await import("./forms/FormBuilder")).FormBuilder }) },
+      // Payments (an app): invoices, subscriptions, transactions, the catalog and settings, /payments/<tab>/<id>.
+      { path: "payments/:tab?/:id?", lazy: async () => ({ Component: (await import("./payments/PaymentsPage")).PaymentsPage }) },
       { path: "settings", element: <SettingsPage /> },
+      { path: "settings/payments", loader: () => redirect("/payments/settings") },
       { path: "settings/channels", lazy: async () => ({ Component: (await import("./inbox/ChannelsSettings")).ChannelsSettings }) },
       { path: "settings/notifications", lazy: async () => ({ Component: (await import("./pages/NotificationSettings")).NotificationSettings }) },
       { path: "settings/pipelines", lazy: async () => ({ Component: (await import("./pipeline/PipelineSettings")).PipelineSettings }) },

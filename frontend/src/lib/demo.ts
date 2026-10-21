@@ -60,6 +60,18 @@ export async function demoRequest<T>(method: string, path: string, body?: unknow
       return answer(ws);
     }
   }
+  // ponytail: payments show their empty states in the demo (no provider, nothing paid); creating says it is not available
+  if (method === "GET" && /^\/api\/v1\/(invoices|subscriptions|products|coupons|payment-links|tax-rates|prices|payments\/transactions)$/.test(path.split("?")[0])) {
+    return answer({ data: [], next_cursor: null });
+  }
+  if (route === "GET /api/v1/payments/summary") return answer({ currencies: [], live_subscriptions: 0, saved_cards: 0 });
+  if (route === "GET /api/v1/payments/account") {
+    const no = { available: false, reason: "Payments are not available in the demo." };
+    return answer({ account: null, capabilities: { invoices: no, manual_payments: no, online_payments: no, payment_links: no, subscriptions: no, saved_cards: no, refunds: no }, providers: [{ key: "stripe", label: "Stripe", available: false, reason: no.reason }], webhook_path: "" });
+  }
+  if (route === "GET /api/v1/payments/settings") {
+    return answer({ default_currency: "usd", invoice_prefix: "INV-", invoice_due_days: 14, retry_days: [1, 3, 5], after_retries: "cancel", business_name: "Acme Agency", business_details: "", invoice_footer: "", next_invoice_number: 1 });
+  }
   if (route === "DELETE /api/auth/sessions/demo-session") {
     signedIn = false;
     return answer(undefined);
