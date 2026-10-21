@@ -54,6 +54,8 @@ export async function demoRequest<T>(method: string, path: string, body?: unknow
       return answer(undefined);
     case "GET /api/v1/forms": // ponytail: the forms area shows its empty state in the demo; creating one says it is not available
       return answer({ data: [], next_cursor: null });
+    case "GET /api/v1/workflows": // ponytail: like forms, automations show their empty state; creating one says it is not available
+      return answer({ data: [], next_cursor: null });
     case "POST /api/workspaces": {
       const ws: Workspace = { id: `demo-ws-${me.workspaces.length + 1}`, name: input.name, org_id: ORG, brand_id: BRAND, role: "admin" };
       me.workspaces.push(ws);

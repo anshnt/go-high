@@ -46,6 +46,26 @@ const BOARD: typeof GENERAL = [
   { keys: ["Shift", "Up or Down"], label: "Move the deal within its stage" },
   { keys: ["Shift", "Left or Right"], label: "Move the deal to the next stage" },
 ];
+const WORKFLOWS: typeof GENERAL = [
+  { keys: ["J"], label: "Next workflow" },
+  { keys: ["K"], label: "Previous workflow" },
+  { keys: ["Enter"], label: "Open the workflow" },
+  { keys: ["/"], label: "Search workflows" },
+  { keys: ["N"], label: "New workflow" },
+];
+const BUILDER: typeof GENERAL = [
+  { keys: ["J"], label: "Next step (Down on a step)" },
+  { keys: ["K"], label: "Previous step (Up on a step)" },
+  { keys: ["E"], label: "Edit the selected step" },
+  { keys: ["A"], label: "Add a step after the selected one" },
+  { keys: ["Del"], label: "Remove the selected step" },
+  { keys: ["Alt", "Up or Down"], label: "Move the step up or down" },
+  { keys: ["T"], label: "Test on a record" },
+  { keys: [MOD, "S"], label: "Save as a version" },
+  { keys: [MOD, "Z"], label: "Undo (add Shift to redo)" },
+  { keys: ["+ or -"], label: "Zoom in or out (0 resets)" },
+  { keys: ["F"], label: "Zoom to fit the width" },
+];
 const GO = [MY_DAY_NAV, ...CORE].filter((c) => c.gKey).map((c) => ({ keys: ["G", c.gKey!.toUpperCase()], label: `Go to ${c.label}` }));
 
 function Group({ title, rows }: { title: string; rows: typeof GENERAL }) {
@@ -80,6 +100,8 @@ export function ShortcutSheet({ open, onOpenChange }: { open: boolean; onOpenCha
       <Group title="Lists and records" rows={LISTS} />
       <Group title="Tasks" rows={TASKS} />
       <Group title="Pipeline board (focus a deal)" rows={BOARD} />
+      <Group title="Automations" rows={WORKFLOWS} />
+      <Group title="Workflow builder" rows={BUILDER} />
     </Sheet>
   );
 }

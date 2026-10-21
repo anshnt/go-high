@@ -23,9 +23,12 @@ export const router = createBrowserRouter([
       { path: "calendar", lazy: async () => ({ Component: (await import("./calendar/CalendarPage")).CalendarPage }) },
       // Contacts is the records area: /contacts, /companies, /deals and custom objects, all one screen (src/records).
       { path: "inbox/:id?", lazy: async () => ({ Component: (await import("./inbox/InboxPage")).InboxPage }) },
-      ...CORE.filter((item) => !["inbox", "contacts", "tasks", "calendar", "pipeline"].includes(item.id)).map((item) => ({ path: item.path.slice(1), element: <ModulePage item={item} /> })),
+      ...CORE.filter((item) => !["inbox", "contacts", "tasks", "calendar", "pipeline", "automations"].includes(item.id)).map((item) => ({ path: item.path.slice(1), element: <ModulePage item={item} /> })),
       // The board, its forecast (/pipeline/:id/forecast) and, in the settings, the pipelines and their stages.
       { path: "pipeline/:pipelineId?/:tab?", lazy: async () => ({ Component: (await import("./pipeline/PipelinePage")).PipelinePage }) },
+      // The workflow builder (src/workflows): the list, then one workflow's canvas, runs, history and settings.
+      { path: "automations", lazy: async () => ({ Component: (await import("./workflows/WorkflowsPage")).WorkflowsPage }) },
+      { path: "automations/:id", lazy: async () => ({ Component: (await import("./workflows/WorkflowBuilder")).WorkflowBuilder }) },
       { path: "contacts/:id?", lazy: async () => ({ Component: (await import("./pages/RecordPages")).ContactsPage }) },
       { path: "companies/:id?", lazy: async () => ({ Component: (await import("./pages/RecordPages")).CompaniesPage }) },
       { path: "deals/:id?", lazy: async () => ({ Component: (await import("./pages/RecordPages")).DealsPage }) },
