@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "wallet.updated",
+  "description": "The wallet's settings changed: `changes` maps each setting to its old and new value (a payment method only to `changed`, never its token). Subject: the wallet (the workspace id).",
+  "type": "object",
+  "properties": {
+    "changes": {
+      "type": "object"
+    },
+    "currency": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "changes",
+    "currency"
+  ],
+  "additionalProperties": false
+}

@@ -36,7 +36,8 @@ TENANT_TABLES = ["organizations", "brands", "workspaces", "users", "org_members"
                  "resources", "calendar_resources", "availability", "bookings", "booking_resources", "busy_blocks",
                  "booking_reminders", "booking_attempts", "feed_tokens",
                  "workflows", "workflow_versions", "workflow_runs", "workflow_steps", "workflow_trigger_checks",
-                 "workflow_waiters", "workflow_refs", "workflow_deliveries"]
+                 "workflow_waiters", "workflow_refs", "workflow_deliveries",
+                 "wallets", "usage_ledger", "wallet_topups", "rate_cards"]
 NOT_TENANT_DATA = {"jobs", "event_cursors"}  # the queue and the consumer cursors: no tenant rows, no app role access
 
 
@@ -260,6 +261,34 @@ def fill_workflows(client, ids: dict, name: str, db) -> None:
     db.commit()
 
 
+def fill_billing(client, ids: dict, name: str) -> None:
+    """A wallet with a saved card, a top-up, an adjustment with a reason, a paid SMS (the inbox's channel gets a carrier
+    rate first) and two rate cards; their ids, the card's token and the reason go into `ids`."""
+    ws, title = {"X-Workspace-Id": ids["workspace_id"]}, name.title()
+    ids["payment_token"] = f"pm_fake_{name}_secret_token"
+    assert client.patch("/api/v1/billing/wallet", json={"payment_method": ids["payment_token"]},
+                        headers=ws).status_code == 200
+    made = client.post("/api/v1/billing/topups", json={"amount": 7_000_000}, headers=ws).json()
+    assert made["status"] == "succeeded", made
+    ids["topup_id"], ids["adjustment_text"] = made["id"], f"{title} secret adjustment reason"
+    ids["adjustment_id"] = client.post("/api/v1/billing/adjustments", json={
+        "amount": 1_230_000, "description": ids["adjustment_text"]}, headers=ws).json()["id"]
+    r = client.patch(f"/api/v1/channels/{ids['channel_id']}", json={"config": {"segment_cost": "0.0079"}}, headers=ws)
+    assert r.status_code == 200, r.text
+    ids["billed_name"] = f"{title} Billed"
+    contact = client.post("/api/v1/objects/contact/records", headers=ws, json={"values": {
+        "first_name": ids["billed_name"], "phone": f"+1415555030{'1' if name == 'alpha' else '2'}"}}).json()
+    conv = client.post("/api/v1/conversations", json={"contact_id": contact["id"]}, headers=ws).json()
+    sent = client.post(f"/api/v1/conversations/{conv['id']}/messages", headers=ws, json={
+        "body": f"{title} secret paid text", "channel_id": ids["channel_id"]})
+    assert sent.status_code == 201, sent.text
+    card = client.post("/api/v1/billing/rate-cards", json={"meter": "sms.segment", "markup_bp": 4_242}, headers=ws)
+    assert card.status_code == 201, card.text
+    ids["card_id"] = card.json()["id"]
+    assert client.post("/api/v1/billing/rate-cards", json={"meter": "email.message", "scope": "workspace",
+                                                            "price": 4_242}, headers=ws).status_code == 201
+
+
 @pytest.fixture
 def two_orgs(make_user, db, monkeypatch):
     """Org A and org B, each with a user, a second workspace, a live session, a webhook and one delivery in its log,
@@ -283,6 +312,7 @@ def two_orgs(make_user, db, monkeypatch):
         fill_tasks(client, ids, name, db)
         fill_forms(client, ids, name)
         fill_workflows(client, ids, name, db)
+        fill_billing(client, ids, name)
     b_ids["session_id"] = b.get("/api/auth/sessions").json()[0]["id"]
     b_ids["user_id"] = b.get("/api/me").json()["user"]["id"]
     a_ids["user_id"] = a.get("/api/me").json()["user"]["id"]
@@ -322,7 +352,9 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
                "calendar_id": b_ids["calendar_id"],
                "booking_id": b_ids["booking_id"], "resource_id": b_ids["resource_id"],
                # workflows: B's workflow and run
-               "workflow_id": b_ids["workflow_id"], "run_id": b_ids["workflow_run_id"]}
+               "workflow_id": b_ids["workflow_id"], "run_id": b_ids["workflow_run_id"],
+               # billing: B's rate card
+               "card_id": b_ids["card_id"]}
     others = {"key": [b_ids["object_key"], "contact"], "field_key": [b_ids["field_key"], "email"],  # B's, and A's own
               "kind": ["sms"], "number": ["1"],
               "owner": ["users", "resources"], "owner_id": [b_ids["user_id"], b_ids["resource_id"]],
@@ -367,6 +399,9 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
             # workflows: a graph, a version number and branch choices wherever a body takes one
             "graph": {"trigger": {"event": "record.created"}, "start": None, "nodes": {}}, "note": "swept",
             "version": 1, "paths": {}, "migrate": None, "dry_run": True, "folder": "swept",
+            # billing: an amount, a meter and a rate card aimed at B's workspace wherever a body takes one
+            "amount": 5_000_000, "meter": "sms.segment", "price": 1, "scope": "workspace", "recipients": 2,
+            "payment_method": "pm_fake_swept", "items": [{"meter": "sms.segment", "quantity": 1}],
             # calendars: B's calendar, resource, person and booking wherever a body names one
             "calendar_id": b_ids["calendar_id"], "resource_id": b_ids["resource_id"],
             "hosts": [{"user_id": b_ids["user_id"]}], "start": at(b_ids["booking_day"], "10:00").isoformat(),
@@ -382,14 +417,15 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
                    "calendars", "calendar_hosts", "resources", "calendar_resources", "availability",
                    "bookings", "booking_resources", "busy_blocks", "booking_reminders", "booking_attempts",
                    "feed_tokens", "workflows", "workflow_versions", "workflow_runs", "workflow_steps",
-                   "workflow_trigger_checks", "workflow_waiters", "workflow_refs", "workflow_deliveries")
+                   "workflow_trigger_checks", "workflow_waiters", "workflow_refs", "workflow_deliveries",
+                   "wallets", "usage_ledger", "wallet_topups")
     snapshot = "SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t::text), '')) FROM {} t WHERE {} = :w"
 
     def rows_of_b():
         db.expire_all()
         return ([db.scalar(text(snapshot.format(t, "workspace_id")), {"w": b_ids["workspace_id"]}) for t in tables_of_b]
                 + [db.scalar(text(snapshot.format(t, "org_id")), {"w": b_ids["org_id"]})
-                   for t in ("roles", "role_object_rules")]
+                   for t in ("roles", "role_object_rules", "rate_cards")]
                 + [db.scalar(text(snapshot.format("workspace_members", "workspace_id")), {"w": b_ids["workspace_id"]})])
 
     events_of_b = db.scalar(text("SELECT count(*) FROM events WHERE workspace_id = :w"), {"w": b_ids["workspace_id"]})
@@ -535,6 +571,11 @@ def test_no_api_route_returns_org_bs_data_to_a_user_of_org_a(two_orgs, monkeypat
     assert [s["id"] for s in alice.get(f"/api/v1/forms/{a_ids['form_id']}/submissions", headers=own
                                        ).json()["data"]] == [a_ids["waiting_id"], a_ids["submission_id"]]
     assert alice.get(f"/api/public/forms/{a_ids['form_public_key']}").status_code == 200  # A's own key works
+    # billing: A's ledger holds A's top-up and adjustment, and A's rate cards are A's
+    entries = alice.get("/api/v1/billing/ledger", headers=own, params={"limit": 200}).json()["data"]
+    assert {a_ids["adjustment_id"]} <= {e["id"] for e in entries}
+    assert a_ids["topup_id"] in {e["subject_id"] for e in entries}
+    assert a_ids["card_id"] in {c["id"] for c in alice.get("/api/v1/billing/rate-cards", headers=own).json()["data"]}
 
 
 def test_a_user_of_a_cannot_target_b_with_a_valid_looking_request(two_orgs):
@@ -684,7 +725,11 @@ def test_the_app_role_holds_only_the_grants_its_handlers_need():
               "workflows": {"SELECT", "INSERT", "UPDATE"}, "workflow_versions": {"SELECT", "INSERT"},
               "workflow_runs": {"SELECT", "INSERT", "UPDATE"}, "workflow_steps": {"SELECT", "INSERT"},
               "workflow_trigger_checks": {"SELECT", "INSERT"}, "workflow_waiters": {"SELECT", "INSERT", "UPDATE"},
-              "workflow_refs": {"SELECT", "INSERT"}, "workflow_deliveries": {"SELECT", "INSERT"}}
+              "workflow_refs": {"SELECT", "INSERT"}, "workflow_deliveries": {"SELECT", "INSERT"},
+              # money: the ledger is append only (INSERT of chosen columns, below), a wallet's balance is moved by
+              # the ledger trigger alone, a top-up is settled through a few columns, a rate card's price alone changes
+              "wallets": {"SELECT"}, "usage_ledger": {"SELECT"}, "wallet_topups": {"SELECT", "INSERT"},
+              "rate_cards": {"SELECT", "INSERT", "DELETE"}}
     every = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
     with engine.connect() as conn:
         for table, expected in wanted.items():
@@ -708,6 +753,17 @@ def test_the_app_role_holds_only_the_grants_its_handlers_need():
                                    {"c": c}) for c in ("published_at", "graph", "number", "workflow_id", "note")}
         assert versions == {"published_at": True, "graph": False, "number": False, "workflow_id": False,
                             "note": False}  # a saved graph is never changed
+        money = {(t, c, p): conn.scalar(text("SELECT has_column_privilege('gohigh_app', :t, :c, :p)"),
+                                        {"t": t, "c": c, "p": p})
+                 for t, c, p in (("wallets", "balance", "UPDATE"), ("wallets", "balance", "INSERT"),
+                                 ("wallets", "workspace_id", "UPDATE"), ("wallets", "monthly_cap", "UPDATE"),
+                                 ("usage_ledger", "balance_after", "INSERT"), ("usage_ledger", "created_at", "INSERT"),
+                                 ("usage_ledger", "amount", "INSERT"), ("usage_ledger", "amount", "UPDATE"),
+                                 ("wallet_topups", "amount", "UPDATE"), ("wallet_topups", "status", "UPDATE"),
+                                 ("rate_cards", "org_id", "UPDATE"), ("rate_cards", "price", "UPDATE"))}
+        assert [k for k, v in money.items() if v] == [
+            ("wallets", "monthly_cap", "UPDATE"), ("usage_ledger", "amount", "INSERT"),
+            ("wallet_topups", "status", "UPDATE"), ("rate_cards", "price", "UPDATE")]
         for sequence in ("jobs_id_seq", "events_id_seq"):
             assert conn.scalar(text("SELECT has_sequence_privilege('gohigh_app', :s, 'USAGE')"), {"s": sequence})
 
@@ -879,10 +935,10 @@ def test_a_user_of_a_gets_404s_for_bs_objects_fields_records_tags_views_and_link
     # what A can list and search is A's: not B's names, not B's tag, not B's count
     page = a.get(contact, params={"count": "true", "include": "tags,company", "limit": 200}, headers=mine).json()
     names = {r["display_name"] for r in page["data"]}  # A's contacts: the person, the texting customer, a chat visitor
-    # the contact one of A's forms made and the invitee of A's booking
+    # the contact one of A's forms made, the invitee of A's booking and the contact A's paid text went to
     assert (names - {a_ids["customer_phone"]} - {n for n in names if n.startswith("Visitor ")}
-            == {a_ids["record_name"], a_ids["form_answer"], a_ids["invitee_name"]})
-    assert page["total"] == 5
+            == {a_ids["record_name"], a_ids["form_answer"], a_ids["invitee_name"], a_ids["billed_name"]})
+    assert page["total"] == 6
     assert not any(leak in json.dumps(page) for leak in secrets_of(b_ids))
     for query in ({"q": "bravo"}, {"q": "secret"}, {"q": b_ids["record_name"]}, {"filter": json.dumps({"tag": tag})},
                   {"filter": json.dumps({"tag": b_ids["tag_name"]})},
@@ -1013,8 +1069,8 @@ def test_the_app_role_cannot_move_a_row_to_another_workspace_or_point_one_across
             assert conn.execute(text("DELETE FROM pipelines WHERE id NOT IN (SELECT pipeline_id FROM stages)")
                                 ).rowcount == 1  # Sales, which has nothing left
             conn.rollback()
-    # as filled, with the inbox's two contacts, the contact a form made and the one a booking made
-    assert db.scalar(text("SELECT count(*) FROM records WHERE workspace_id = :w"), {"w": b_ws}) == 9
+    # as filled, with the inbox's two contacts, the contact a form made, the one a booking made and the one billed
+    assert db.scalar(text("SELECT count(*) FROM records WHERE workspace_id = :w"), {"w": b_ws}) == 10
     assert db.scalar(text("SELECT count(*) FROM stages WHERE workspace_id = :w"), {"w": b_ws}) == 8
     assert db.scalar(text("SELECT count(*) FROM pipelines WHERE workspace_id = :w"), {"w": b_ws}) == 2
     assert db.scalar(text("SELECT count(*) FROM tasks WHERE workspace_id = :w"), {"w": b_ws}) == 2

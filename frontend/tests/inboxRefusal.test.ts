@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { consentLine, consentRefusal, describeRefusal, isRefusalCode, REFUSAL_CODES } from "../src/inbox/refusal.ts";
+import { consentLine, consentRefusal, describeRefusal, isRefusalCode, REFUSAL_CODES, walletRefusal, WALLET_CODES } from "../src/inbox/refusal.ts";
 import type { Consent } from "../src/inbox/types.ts";
 
 const NOW = new Date(2026, 9, 21, 15, 30);
 
 test("every refusal code the server can answer with has a title, a way forward and the server's own sentence", () => {
-  assert.deepEqual([...REFUSAL_CODES].sort(), ["channel_disabled", "dnd", "frequency_cap", "no_address", "no_channel", "opted_out", "quiet_hours"]);
+  assert.deepEqual([...REFUSAL_CODES].sort(), ["channel_disabled", "credit_limit", "dnd", "frequency_cap", "no_address", "no_channel", "opted_out", "quiet_hours", "usage_cap", "wallet_empty"]);
   for (const code of REFUSAL_CODES) {
     const r = describeRefusal({ code, message: `server says ${code}` }, NOW)!;
     assert.equal(r.code, code);
@@ -58,4 +58,18 @@ test("a consent on file reads like the server's refusal, before anyone presses S
   assert.equal(consentLine(consent("opted_in", "start")), "Opted in");
   assert.equal(consentLine(consent("dnd", "manual")), "Do not disturb");
   assert.equal(consentLine(consent("opted_out", "stop")), "Opted out by STOP on Oct 3");
+});
+
+test("the wallet's refusals point at billing, keep the draft and never block for good", () => {
+  for (const code of WALLET_CODES) {
+    const r = describeRefusal({ code, message: "The wallet balance ($0.00) does not cover this ($0.0079)." }, NOW)!;
+    assert.equal(r.blocking, false, code);
+    assert.match(r.hint, /draft is kept/);
+  }
+  assert.equal(walletRefusal(null), null);
+  assert.equal(walletRefusal({ allowed: true, code: null, reason: null }), null);
+  assert.equal(walletRefusal({ allowed: false, code: "something_new", reason: "x" }), null);
+  const before = walletRefusal({ allowed: false, code: "usage_cap", reason: "This month's usage cap of $50.00 is reached." })!;
+  assert.equal(before.title, "Monthly usage cap reached");
+  assert.equal(before.text, "This month's usage cap of $50.00 is reached.");
 });

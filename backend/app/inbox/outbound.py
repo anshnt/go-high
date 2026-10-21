@@ -14,9 +14,11 @@ from sqlalchemy.orm import Session
 from .. import events, jobs
 from ..api import ApiError, Idem, idempotency
 from ..channels.base import ChannelError, Outbound
+from ..models import Workspace
 from ..permissions import require, requires
 from ..records.models import Record
 from ..security import Ctx
+from ..usage import sending, wallet
 from . import channels, consent, gateway, threads
 from .conversations import conversation_or_404, mark_read
 from .models import Channel, Conversation, Message
@@ -79,11 +81,13 @@ def channel_for(c: Ctx, conv: Conversation, channel_id: uuid.UUID | None) -> Cha
 def queue_reply(db: Session, conv: Conversation, contact: Record, channel: Channel, *, body: str,
                 subject: str | None = None, html: str | None = None, attachments: list[str] = (),
                 sent_by: uuid.UUID | None = None, actor: tuple[str, uuid.UUID] | None = None,
-                idempotency_key: str | None = None) -> tuple[Message, dict | None]:
+                idempotency_key: str | None = None, source: str = "inbox") -> tuple[Message, dict | None]:
     """Stores a reply to the contact on `channel`, whose consent the caller has checked, with its events: `queued` for
     the worker (which sends it), or sent at once on webchat. Returns the message and, on SMS, the estimate of its
     segments and cost. A message with an `idempotency_key` is unique per workspace: a workflow step that runs twice
-    looks for it first."""
+    looks for it first. A paid message is charged to the wallet here, in the caller's transaction (module 06), and
+    `usage.wallet.Blocked` is raised when the wallet may not pay for it: the caller's transaction must then roll back,
+    which takes the message with it."""
     email, estimate, wire = channel.kind == "email", None, {}
     if channel.kind == "sms":
         estimate = channels.estimate(channel, body)
@@ -101,9 +105,19 @@ def queue_reply(db: Session, conv: Conversation, contact: Record, channel: Chann
         events.emit(db, "message.sent", "message", msg.id,
                     threads.message_data(msg, contact.id, provider_message_id=None), actor=actor)
     else:
+        charge(db, msg, channel, source=source, actor=actor)
         events.emit(db, "message.queued", "message", msg.id, threads.message_data(msg, contact.id), actor=actor)
         queue_send(db, msg)
     return msg, estimate
+
+
+def charge(db: Session, msg: Message, channel: Channel, *, source: str, actor: tuple[str, uuid.UUID] | None = None,
+           enforce: bool = True) -> None:
+    """Records what the message costs in the wallet's ledger, once per message, or raises Blocked."""
+    for meter, quantity, unit_cost in sending.items(channel, msg.body):
+        wallet.charge(db, db.get(Workspace, msg.workspace_id), meter, quantity, source=source,
+                      key=f"message:{msg.id}", unit_cost=unit_cost, subject=("message", msg.id), actor=actor,
+                      enforce=enforce)
 
 
 @router.post("/{conversation_id}/messages", status_code=201)
@@ -128,14 +142,21 @@ def post_message(conversation_id: uuid.UUID, body: NewMessage, c: Ctx = Depends(
             raise refused("no_address", f"The contact has no way to be reached on {channel.name}")
         if refusal := consent.verdict(c.db, channel, contact, conv):
             raise consent.refuse(refusal)
-        msg, estimate = queue_reply(c.db, conv, contact, channel, body=body.body, subject=body.subject,
-                                    html=body.html, attachments=urls, sent_by=c.user_id, actor=actor)
+        try:
+            msg, estimate = queue_reply(c.db, conv, contact, channel, body=body.body, subject=body.subject,
+                                        html=body.html, attachments=urls, sent_by=c.user_id, actor=actor)
+        except wallet.Blocked as e:
+            c.db.rollback()
+            raise ApiError(422, e.code, e.message) from None
     mark_read(c.db, conv, c.user_id, msg.seq)
     return idem.commit(201, {**threads.message_json(msg), "estimate": estimate})
 
 
 def fail(db: Session, msg: Message, conv: Conversation, error: str) -> None:
+    """Marks the message failed for good and gives back what it was charged: it was never sent."""
     msg.status, msg.error = "failed", error[:500]
+    if paid := wallet.usage_of(db, msg.workspace_id, msg.id):
+        wallet.reverse(db, paid, f"the message was not sent ({msg.error[:200]})", source="inbox")
     events.emit(db, "message.failed", "message", msg.id, threads.message_data(msg, conv.contact_id, error=msg.error),
                 workspace_id=msg.workspace_id)
     db.commit()

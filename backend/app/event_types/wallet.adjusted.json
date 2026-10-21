@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "wallet.adjusted",
+  "description": "An organization owner or admin credited (positive) or debited (negative) the wallet by hand, with a reason. Amounts in micros. Subject: the ledger entry.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "amount": {
+      "type": "integer"
+    },
+    "currency": {
+      "type": "string"
+    },
+    "balance_after": {
+      "type": "integer"
+    },
+    "description": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "amount",
+    "currency",
+    "balance_after",
+    "description"
+  ],
+  "additionalProperties": false
+}

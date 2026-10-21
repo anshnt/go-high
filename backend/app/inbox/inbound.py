@@ -160,6 +160,7 @@ def keyword(db: Session, workspace: Workspace, channel: Channel, contact: Record
     if reply:
         msg = threads.append(db, conv, direction="out", status="queued", kind="system", channel_id=channel.id,
                              body=reply)
+        outbound.charge(db, msg, channel, source="inbox", enforce=False)  # the answer to a STOP goes out regardless
         outbound.queue_send(db, msg)
 
 

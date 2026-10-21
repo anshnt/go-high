@@ -28,6 +28,8 @@ from .records import routes as records
 from .security import COOKIE, UNSAFE
 from .tasks import day
 from .tasks import routes as tasks
+from .usage import routes as billing
+from .usage import topups  # noqa: F401  (the auto-recharge job)
 from .workflows import delivery, enroll  # noqa: F401  (the webhook outbox job and the events consumer)
 from .workflows import routes as workflows
 
@@ -116,8 +118,9 @@ for module in (objects, records, associations, tags, views, timeline, pipelines,
                simulator, audit, tasks, day, notifications, channels, conversations, outbound,
                consent, inbound, stream, chat,
                forms, form_responses, form_analytics, form_public, calendars, availability, bookings, public,
-               workflows):
+               workflows, billing):
     app.include_router(module.router)
+app.include_router(billing.previews)
 app.include_router(simulator.mine)
 app.include_router(form_public.pages)  # /f/{key} and /embed.js, before the catch-all below
 app.include_router(public.pages)

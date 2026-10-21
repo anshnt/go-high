@@ -25,6 +25,7 @@ from ..records import stages, store, tags, types
 from ..records.models import Stage, Tag
 from ..records.schema import FieldKey
 from ..tasks import store as tasks
+from ..usage import sending, wallet
 from . import registry
 from .models import Delivery, Run, Step
 from .registry import Offset, Out, StepError, action, seconds
@@ -303,15 +304,23 @@ def send_message(env, cfg: SendMessage) -> Out:
         if cfg.if_refused == "skip":
             return Out(shown, {"skipped": verdict.reason, "code": verdict.code})
         raise StepError(verdict.reason)
-    if env.test:
-        return Out(shown, {"would_send": True, "sent": False})
+    if env.test:  # the cost preview of the send, and whether the wallet would let it through now
+        cost = wallet.preview(env.db, env.ctx.workspace, sending.items(channel, body)).json()
+        return Out(shown, {"would_send": True, "sent": False, "price": cost["price"], "currency": cost["currency"],
+                           "allowed": cost["allowed"], **({"refused": cost["reason"]} if not cost["allowed"] else {})})
     key = env.key()
     msg = env.db.scalar(select(Message).where(Message.workspace_id == env.run.workspace_id,
                                               Message.idempotency_key == key))
     if msg is not None:  # a step that runs again finds the message it queued before, and moves on
         return Out(shown, {"message_id": msg.id, "already_queued": True})
-    msg, _ = outbound.queue_reply(env.db, conv, contact, channel, body=body, subject=subject,
-                                  actor=env.ctx.author(), idempotency_key=key)
+    try:
+        with env.db.begin_nested():  # a refused charge takes the message it was for with it
+            msg, _ = outbound.queue_reply(env.db, conv, contact, channel, body=body, subject=subject,
+                                          actor=env.ctx.author(), idempotency_key=key, source="workflow")
+    except wallet.Blocked as e:
+        if cfg.if_refused == "skip":
+            return Out(shown, {"skipped": e.message, "code": e.code})
+        raise StepError(e.message) from None
     return Out(shown, {"message_id": msg.id})
 
 

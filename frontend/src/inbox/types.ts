@@ -84,7 +84,9 @@ export type Channel = {
 export type ConsentStatus = "opted_out" | "opted_in" | "dnd";
 export type Consent = { kind: ChannelKind; status: ConsentStatus; source: string; reason: string | null; changed_at: string };
 
-export type Estimate = { encoding: "gsm7" | "ucs2"; segments: number; chars: number; estimated_cost: string };
+/** What the wallet would charge for a message (micros) and whether it would let it through now (module 06). */
+export type Charge = { currency: string; price: number; balance: number; balance_after: number; allowed: boolean; code: string | null; reason: string | null; warnings: string[] };
+export type Estimate = { encoding: "gsm7" | "ucs2"; segments: number; chars: number; estimated_cost: string; charge?: Charge };
 export type SentMessage = Message & { estimate: Estimate | null };
 
 export type Team = { id: string; name: string };

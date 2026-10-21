@@ -4,7 +4,9 @@
 import { whenLabel } from "./time.ts";
 import type { ChannelKind, Consent } from "./types.ts";
 
-export const REFUSAL_CODES = ["opted_out", "dnd", "quiet_hours", "frequency_cap", "no_address", "no_channel", "channel_disabled"] as const;
+export const REFUSAL_CODES = ["opted_out", "dnd", "quiet_hours", "frequency_cap", "no_address", "no_channel", "channel_disabled", "wallet_empty", "credit_limit", "usage_cap"] as const;
+/** The refusals the wallet makes (module 06): the fix is on the billing screen. */
+export const WALLET_CODES: readonly RefusalCode[] = ["wallet_empty", "credit_limit", "usage_cap"];
 export type RefusalCode = (typeof REFUSAL_CODES)[number];
 export const isRefusalCode = (code: unknown): code is RefusalCode => typeof code === "string" && (REFUSAL_CODES as readonly string[]).includes(code);
 
@@ -29,6 +31,9 @@ const TITLE: Record<RefusalCode, string> = {
   no_address: "No way to reach this contact here",
   no_channel: "Choose a channel",
   channel_disabled: "This channel is switched off",
+  wallet_empty: "The wallet is empty",
+  credit_limit: "Credit limit reached",
+  usage_cap: "Monthly usage cap reached",
 };
 const HINT: Record<RefusalCode, string> = {
   opted_out: "Only the contact can opt back in, by replying START. Use another channel they have not opted out of.",
@@ -38,6 +43,10 @@ const HINT: Record<RefusalCode, string> = {
   no_address: "Add the phone number or email address to the contact, or pick another channel.",
   no_channel: "Pick a channel in the list above the message.",
   channel_disabled: "Ask an admin to switch it on in Settings > Channels, or pick another channel.",
+  // the server's sentence already says where to fix it
+  wallet_empty: "Your draft is kept: send again once the wallet is topped up.",
+  credit_limit: "Your draft is kept: send again once the balance is settled.",
+  usage_cap: "Your draft is kept: send again once the cap is raised.",
 };
 // Whether trying again as it is could ever work.
 const BLOCKING = new Set<RefusalCode>(["opted_out", "no_address", "no_channel", "channel_disabled"]);
@@ -62,6 +71,12 @@ export function describeRefusal(e: ErrorLike, now: Date = new Date()): Refusal |
 const SOURCE: Record<string, string> = { stop: "STOP", unsubscribe: "unsubscribe", complaint: "a spam complaint", manual: "staff" };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const KIND: Record<ChannelKind, string> = { sms: "sms", email: "email", whatsapp: "whatsapp", webchat: "webchat" };
+
+/** The same banner before anyone presses Send, when the cost preview says the wallet would refuse it. */
+export function walletRefusal(charge: { allowed: boolean; code: string | null; reason: string | null } | null | undefined): Refusal | null {
+  if (!charge || charge.allowed || !isRefusalCode(charge.code)) return null;
+  return { ...base(charge.code), text: charge.reason ?? "" };
+}
 
 /** The same banner for a consent already on file, before anyone presses Send. */
 export function consentRefusal(c: Consent): Refusal | null {

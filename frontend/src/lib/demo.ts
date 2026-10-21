@@ -1,3 +1,4 @@
+import { demoBilling } from "../billing/demoBilling";
 import { ApiError } from "./api";
 import { demoCalendars } from "./demoCalendars";
 import { demoInbox } from "./demoInbox";
@@ -65,6 +66,8 @@ export async function demoRequest<T>(method: string, path: string, body?: unknow
     return answer(undefined);
   }
   try {
+    const billed = demoBilling(method, path, body);
+    if (billed !== undefined) return answer(billed); // wallet, ledger, usage, top-ups and rate cards: in memory (demoBilling.ts)
     const booked = demoCalendars(method, path, body);
     if (booked !== undefined) return answer(booked); // calendars and bookings: in memory (demoCalendars.ts)
     const mine = demoTasks(method, path, body, { id: me.user.id, name: me.user.name, email: me.user.email });

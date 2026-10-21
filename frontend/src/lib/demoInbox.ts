@@ -423,7 +423,7 @@ function replySubject(c: Conv): string {
   return last?.subject ? (/^re:/i.test(last.subject) ? last.subject : `Re: ${last.subject}`) : "(no subject)";
 }
 
-const CAPABILITIES = ["contacts.read", "contacts.write", "contacts.delete", "contacts.export", "companies.read", "companies.write", "companies.delete", "companies.export", "deals.read", "deals.write", "deals.delete", "deals.export", "records.read", "records.write", "records.delete", "records.export", "schema.read", "objects.manage", "fields.manage", "tags.write", "tags.manage", "views.write", "views.manage", "pipelines.manage", "tasks.read", "tasks.write", "tasks.delete", "forms.read", "forms.write", "forms.publish", "forms.delete", "responses.read", "responses.export", "calendars.read", "calendars.write", "calendars.manage", "workflows.publish", "messages.send", "conversations.read", "conversations.write", "consents.manage", "channels.manage", "billing.manage", "webhooks.manage", "members.read", "members.manage", "roles.manage", "audit.read"];
+const CAPABILITIES = ["contacts.read", "contacts.write", "contacts.delete", "contacts.export", "companies.read", "companies.write", "companies.delete", "companies.export", "deals.read", "deals.write", "deals.delete", "deals.export", "records.read", "records.write", "records.delete", "records.export", "schema.read", "objects.manage", "fields.manage", "tags.write", "tags.manage", "views.write", "views.manage", "pipelines.manage", "tasks.read", "tasks.write", "tasks.delete", "forms.read", "forms.write", "forms.publish", "forms.delete", "responses.read", "responses.export", "calendars.read", "calendars.write", "calendars.manage", "workflows.publish", "messages.send", "conversations.read", "conversations.write", "consents.manage", "channels.manage", "usage.read", "billing.manage", "webhooks.manage", "members.read", "members.manage", "roles.manage", "audit.read"];
 const FULL = { scope: "all", rule_scope: "all", hidden_fields: [], readonly_fields: [], can: { read: true, write: true, delete: true, export: true } };
 
 function channelFrom(body: Json): Channel {
@@ -497,7 +497,11 @@ export function demoInbox(method: string, path: string, body: unknown, headers: 
     }
     if (method === "POST" && ch[2] === "estimate") {
       const est = smsSegments(typeof input.body === "string" ? input.body : "");
-      return { ...est, estimated_cost: (est.segments * Number((channel.config?.segment_cost as number) ?? 0)).toFixed(6) };
+      const units = channel.kind === "sms" ? est.segments : 1;
+      // the demo wallet's prices (src/billing/demoBilling.ts): SMS at cost plus the agency's 25 %
+      const price = channel.kind === "webchat" ? 0 : units * ({ sms: 9_875, email: 400, whatsapp: 5_000 } as Record<string, number>)[channel.kind]!;
+      const charge = { currency: "USD", price, balance: 50_000_000, balance_after: 50_000_000 - price, allowed: true, code: null, reason: null, warnings: [] };
+      return { ...est, estimated_cost: (est.segments * Number((channel.config?.segment_cost as number) ?? 0)).toFixed(6), charge };
     }
     return undefined;
   }

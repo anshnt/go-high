@@ -17,6 +17,7 @@ from inbox_helpers import (
     sql,
 )
 from sqlalchemy import text
+from usage_helpers import USD, fund
 
 from app import compliance
 from app.inbox import consent
@@ -122,6 +123,7 @@ def test_segments_and_estimated_cost_come_back_with_the_message(crm):
     assert free["segments"] == 2 and free["estimated_cost"] == "0.000000"
     assert free["estimate"] == {"encoding": "gsm7", "segments": 2, "chars": 200, "estimated_cost": "0.000000"}
     configure(client, ws, channel, segment_cost="0.0079")
+    fund(client, ws, USD)  # a paid message needs money in the wallet (module 06)
     priced = reply(client, ws, conv, "x" * 200).json()
     assert (priced["segments"], priced["estimated_cost"]) == (2, "0.015800")
     emoji = reply(client, ws, conv, "hi \U0001f600").json()["estimate"]
@@ -213,6 +215,11 @@ def test_quiet_hours_follow_the_contacts_time_zone_unless_they_wrote_recently(cr
     assert error(reply(client, ws, ny))["code"] == "quiet_hours"  # 01:00 in New York
     sms_in(anonymous, channel, "+13105550123", "I just wrote")  # a contact who wrote within a day may be answered
     talking = [c for c in conversations_of(client, ws)["data"] if c["contact"]["phone"] == "+13105550123"][0]
+    # the message is stamped by the real clock and the consent clock is faked to tomorrow: date it an hour before
+    # that, or the test fails when the suite runs in the first hours of a UTC day
+    db.execute(text("UPDATE conversations SET last_inbound_at = :t WHERE id = :c"),
+               {"t": night - timedelta(hours=1), "c": talking["id"]})
+    db.commit()
     assert reply(client, ws, talking).status_code == 201
 
 

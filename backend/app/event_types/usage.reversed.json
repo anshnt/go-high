@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "usage.reversed",
+  "description": "A usage charge was given back because the action did not happen (a message the provider refused): a ledger entry of kind reversal. Subject: the new ledger entry; `reverses_id` is the charge.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "meter": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "quantity": {
+      "type": "integer"
+    },
+    "cost": {
+      "type": "integer"
+    },
+    "price": {
+      "type": "integer"
+    },
+    "amount": {
+      "type": "integer"
+    },
+    "balance_after": {
+      "type": "integer"
+    },
+    "currency": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string"
+    },
+    "subject_type": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "subject_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "reverses_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "reason": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "kind",
+    "meter",
+    "quantity",
+    "cost",
+    "price",
+    "amount",
+    "balance_after",
+    "currency",
+    "source",
+    "subject_type",
+    "subject_id",
+    "reverses_id",
+    "reason"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "wallet.topped_up",
+  "description": "A top-up was paid and credited to the wallet; `trigger` is manual or auto (auto-recharge). Amounts in micros. Subject: the top-up.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "amount": {
+      "type": "integer"
+    },
+    "currency": {
+      "type": "string"
+    },
+    "trigger": {
+      "type": "string"
+    },
+    "balance_after": {
+      "type": "integer"
+    },
+    "provider": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "amount",
+    "currency",
+    "trigger",
+    "balance_after",
+    "provider"
+  ],
+  "additionalProperties": false
+}

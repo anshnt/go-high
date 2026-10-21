@@ -35,6 +35,7 @@ export const router = createBrowserRouter([
       { path: "forms", lazy: async () => ({ Component: (await import("./forms/FormsPage")).FormsPage }) },
       { path: "forms/:id", lazy: async () => ({ Component: (await import("./forms/FormBuilder")).FormBuilder }) },
       { path: "settings", element: <SettingsPage /> },
+      { path: "settings/billing", lazy: async () => ({ Component: (await import("./billing/BillingSettings")).BillingSettings }) },
       { path: "settings/channels", lazy: async () => ({ Component: (await import("./inbox/ChannelsSettings")).ChannelsSettings }) },
       { path: "settings/notifications", lazy: async () => ({ Component: (await import("./pages/NotificationSettings")).NotificationSettings }) },
       { path: "settings/pipelines", lazy: async () => ({ Component: (await import("./pipeline/PipelineSettings")).PipelineSettings }) },

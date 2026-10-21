@@ -27,11 +27,13 @@ from ..records.store import scope
 from ..security import Ctx
 from ..tasks.models import Task
 from ..tenancy import effective_role
+from ..usage import notify as billing_notice
 from .models import Notification, NotificationPref
 
 # kind: what the setting is called (shown in Settings > Notifications)
 KINDS = {"task_assigned": "A task is assigned to you", "task_due": "A task you own is due",
-         "record_assigned": "A record is assigned to you", "workflow": "A workflow notifies you"}
+         "record_assigned": "A record is assigned to you", "workflow": "A workflow notifies you",
+         "billing": "The wallet runs low, usage nears the monthly cap or a top-up fails (billing managers)"}
 
 
 @dataclass
@@ -154,15 +156,27 @@ def deliver(db: Session, cache: dict, draft: Draft) -> None:
                 index_elements=["user_id", "dedupe_key"]))
 
 
+def billing(db: Session, cache: dict, e: Event) -> None:
+    """A wallet alert, for each person who manages billing in the workspace."""
+    title, body = billing_notice.text(e)
+    for person in billing_notice.billing_people(db, e.workspace_id):
+        deliver(db, cache, Draft("billing", e.workspace_id, person, None, title, title, body, billing_notice.LINK,
+                                 ("wallet", e.subject_id), f"billing:{e.id}"))
+
+
 @events.consumer("notifications")
 def from_events(db: Session, batch: list[Event]) -> None:
+    cache: dict = {}
+    for e in batch:
+        if e.type in billing_notice.TYPES:
+            billing(db, cache, e)
     mine = [e for e in batch if e.type in ("task.created", "task.updated", "record.created", "record.updated")]
     if not mine:
         return
     ids = {e.actor_id for e in mine} | {uuid.UUID(v) for e in mine for v in (
         e.data.get("assignee_id"), e.data.get("owner_id"),
         *((e.data.get("changes") or {}).get(k, {}).get("new") for k in ("assignee_id", "owner_id"))) if v}
-    names, cache = people(db, ids), {}
+    names = people(db, ids)
     for e in mine:
         for draft in drafts(e, names):
             deliver(db, cache, draft)
