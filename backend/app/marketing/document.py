@@ -348,7 +348,7 @@ def block_html(block, r: Recipient, s: Style, font: str, width: int) -> str:
     if isinstance(block, Button):
         label = inline(block.label, r, s)
         return (f'<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="{block.align}" '
-                f'style="margin:0 {"auto" if block.align == "center" else "0"}"><tr>'
+                f'style="margin:0 {"auto" if block.align == "center" else "0"};border-collapse:separate"><tr>'
                 f'<td align="center" bgcolor="{s.button_color}" style="border-radius:6px;background-color:'
                 f'{s.button_color};border:1px solid {s.button_color}">'
                 f'<a href="{html.escape(href(block.url, r))}" target="_blank" style="display:inline-block;'
@@ -358,8 +358,8 @@ def block_html(block, r: Recipient, s: Style, font: str, width: int) -> str:
         w = min(block.width, width)
         place = {"center": "margin:0 auto", "right": "margin-left:auto"}.get(block.align, "")
         img = (f'<img src="{html.escape(block.src)}" alt="{html.escape(block.alt)}" width="{w}" '
-               f'style="display:block;width:100%;max-width:{w}px;height:auto;border:0;'
-               f'{place}">')
+               f'class="gh-text" style="display:block;width:100%;max-width:{w}px;height:auto;border:0;'
+               f'color:{s.text_color};font-family:{font};font-size:14px;{place}">')
         if block.href:
             img = f'<a href="{html.escape(href(block.href, r))}" target="_blank">{img}</a>'
         return img

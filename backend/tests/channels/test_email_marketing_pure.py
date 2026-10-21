@@ -63,7 +63,7 @@ def test_the_plain_text_part_has_every_link_and_the_footer():
     assert "Shop Ada: https://ex.com/shop" in text and "[A photo] (https://ex.com/photo)" in text
     assert "Unsubscribe here (https://u.test/x)" in text and "mail us (mailto:hi@ex.com)" in text
     assert text.endswith("--\n\nAcme | 1 Main St\n\nUnsubscribe: https://u.test/x\nEmail preferences: https://u.test/p")
-    assert "<" not in text.replace("<", "", 0) or "**" not in text
+    assert "**" not in text and "<a " not in text  # markup gone, links written out
 
 
 def test_merge_values_are_escaped_and_cannot_add_markup_or_links():

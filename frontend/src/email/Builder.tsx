@@ -7,7 +7,7 @@ import { errorText } from "../lib/api";
 import { Badge, Button, DropdownMenu, Input, MenuItem, Select, Skeleton, Textarea, useToast } from "../ui";
 import { Segmented } from "../ui/Segmented";
 import { email, type Block, type BlockType, type Doc, type Issue, type MergeField, type Rendered, type Style } from "./api";
-import { BLOCK_LABEL, byLevel, duplicateBlock, insertAt, moveBlock, newBlock, removeBlock, summary, updateBlock } from "./blocks";
+import { asDark, BLOCK_LABEL, byLevel, duplicateBlock, insertAt, moveBlock, newBlock, removeBlock, summary, updateBlock } from "./blocks";
 import { IssueList } from "./Issues";
 
 const TYPES: BlockType[] = ["heading", "text", "button", "image", "divider", "spacer", "columns"];
@@ -438,8 +438,7 @@ export function PreviewPane({ doc, subject, preheader }: { doc: Doc; subject: st
             title={`Email preview, ${width} width, ${scheme} mode`}
             className="em-frame"
             sandbox=""
-            srcDoc={out.html}
-            style={{ colorScheme: scheme }}
+            srcDoc={scheme === "dark" ? asDark(out.html) : out.html}
           />
         </div>
       )}

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { byLevel, duplicateBlock, insertAt, issuesByBlock, moveBlock, newBlock, percent, ratio, removeBlock, scheduleBody, summary, updateBlock, withIds } from "../src/email/blocks.ts";
+import { asDark, byLevel, duplicateBlock, insertAt, issuesByBlock, moveBlock, newBlock, percent, ratio, removeBlock, scheduleBody, summary, updateBlock, withIds } from "../src/email/blocks.ts";
 import type { Doc } from "../src/email/api.ts";
 
 const doc = (): Doc => withIds({ blocks: [{ type: "heading", text: "Hi" }, { type: "text", text: "Body [link](https://x.test)" }, { type: "divider" }] });
@@ -82,4 +82,12 @@ test("a schedule is a wall clock time and its zone; the server places it", () =>
   assert.deepEqual(scheduleBody("2027-03-14", "09:00", "America/New_York"), { scheduled_at: "2027-03-14T09:00:00", timezone: "America/New_York" });
   assert.equal(scheduleBody("", "09:00", "UTC"), null);
   assert.equal(scheduleBody("2027-03-14", "9am", "UTC"), null);
+});
+
+test("the dark preview applies the renderer's dark rules outright", () => {
+  const html = "<html><head><style>a{color:red}@media (prefers-color-scheme:dark){.gh-bg{background-color:#000!important}.gh-text{color:#fff!important}}[data-ogsc] .x{}</style></head><body></body></html>";
+  const dark = asDark(html);
+  assert.ok(dark.includes("<style>:root{color-scheme:dark}.gh-bg{background-color:#000!important}.gh-text{color:#fff!important}</style></head>"));
+  assert.equal(asDark("<html><head></head></html>"), "<html><head></head></html>");
+  assert.equal(summary({ type: "heading", text: "Hi {{first_name|there}} **now** _yes_" }), "Hi {{first_name|there}} now yes");
 });

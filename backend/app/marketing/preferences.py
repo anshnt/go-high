@@ -78,9 +78,9 @@ def save_topics(db: Session, s: EmailSend, chosen: set[str]) -> bool:
 
 STYLE = """
 :root{color-scheme:light dark;--bg:#f4f4f5;--card:#fff;--text:#18181b;--muted:#52525b;--line:#e4e4e7;--accent:#2563eb;
---ok:#15803d}
+--ok:#15803d;--on:#ffffff}
 @media (prefers-color-scheme:dark){:root{--bg:#0b0b0e;--card:#18181b;--text:#e4e4e7;--muted:#a1a1aa;--line:#27272a;
---accent:#7aa7ff;--ok:#4ade80}}
+--accent:#7aa7ff;--ok:#4ade80;--on:#0b0b0e}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 -apple-system,
 BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
 main{max-width:520px;margin:0 auto;padding:40px 16px}
@@ -94,7 +94,7 @@ label small{display:block;color:var(--muted)}input[type=checkbox]{width:18px;hei
 accent-color:var(--accent)}
 button{font:inherit;font-weight:600;border-radius:8px;padding:10px 16px;border:1px solid var(--line);
 background:var(--card);color:var(--text);cursor:pointer;min-height:44px}
-button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--on)}
 button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .row{display:flex;flex-wrap:wrap;gap:8px}hr{border:0;border-top:1px solid var(--line);margin:24px 0}
 .who{font-size:14px;color:var(--muted);margin-top:16px;text-align:center}

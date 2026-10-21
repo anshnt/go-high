@@ -31,6 +31,8 @@ const SEND_TONE: Record<string, "neutral" | "success" | "warning" | "danger" | "
   uncertain: "warning",
 };
 
+const many = (n: number, one: string, more: string) => `${n.toLocaleString()} ${n === 1 ? one : more}`;
+
 function Tile({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
     <div className="em-tile">
@@ -64,16 +66,16 @@ export function Report({ campaign }: { campaign: Campaign }) {
         <div className="em-tiles">
           <Tile label="Recipients" value={t.recipients.toLocaleString()} note={t.waiting ? `${t.waiting.toLocaleString()} still to go` : undefined} />
           <Tile label={data.rates.base === "delivered" ? "Delivered" : "Sent"} value={base.toLocaleString()} note={data.rates.base === "sent" ? "Your provider sends no delivery reports" : undefined} />
-          <Tile label="Opened" value={percent(data.rates.open)} note={`${t.opened.toLocaleString()} people`} />
-          <Tile label="Clicked" value={percent(data.rates.click)} note={`${t.clicked.toLocaleString()} people`} />
-          <Tile label="Unsubscribed" value={percent(data.rates.unsubscribe)} note={`${t.unsubscribed.toLocaleString()} people`} />
-          <Tile label="Bounced" value={percent(data.rates.bounce)} note={`${t.bounced.toLocaleString()} addresses, now suppressed`} />
+          <Tile label="Opened" value={percent(data.rates.open)} note={many(t.opened, "person", "people")} />
+          <Tile label="Clicked" value={percent(data.rates.click)} note={many(t.clicked, "person", "people")} />
+          <Tile label="Unsubscribed" value={percent(data.rates.unsubscribe)} note={many(t.unsubscribed, "person", "people")} />
+          <Tile label="Bounced" value={percent(data.rates.bounce)} note={`${many(t.bounced, "address", "addresses")}, now suppressed`} />
           <Tile label="Spam complaints" value={percent(data.rates.complaint)} note="Keep this under 0.1%" />
         </div>
         <p className="em-muted">
-          Opens and clicks count people only. Left out: {t.machine_opens.toLocaleString()} opens by privacy proxies and scanners
-          {t.privacy_proxy_only ? ` (${t.privacy_proxy_only.toLocaleString()} recipients opened only through Apple's privacy proxy, so we cannot tell if they read it)` : ""} and{" "}
-          {t.machine_clicks.toLocaleString()} clicks by link scanners.
+          Opens and clicks count people only. Left out: {many(t.machine_opens, "open", "opens")} by privacy proxies and scanners
+          {t.privacy_proxy_only ? ` (${many(t.privacy_proxy_only, "recipient", "recipients")} opened only through Apple's privacy proxy, so we cannot tell if they read it)` : ""} and{" "}
+          {many(t.machine_clicks, "click", "clicks")} by link scanners.
         </p>
       </section>
 

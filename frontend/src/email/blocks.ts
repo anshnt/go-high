@@ -81,7 +81,7 @@ export function summary(b: Block): string {
   switch (b.type) {
     case "heading":
     case "text":
-      return clip(b.text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/[*_]/g, ""));
+      return clip(b.text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/\*\*(.+?)\*\*/g, "$1").replace(/(^|[^\w{])_(.+?)_(?![\w}])/g, "$1$2"));
     case "button":
       return clip(b.label);
     case "image":
@@ -150,3 +150,21 @@ export function scheduleBody(date: string, time: string, zone: string): { schedu
 }
 
 export const SUPPRESSION_LABEL = { hard_bounce: "Hard bounce", complaint: "Spam complaint", unsubscribe: "Unsubscribed", manual: "Added by hand" } as const;
+
+/**
+ * The email as a mail app in dark mode shows it: the renderer's `prefers-color-scheme: dark` rules applied outright.
+ * A preview frame cannot be told to prefer dark, so the rules are lifted out of their media query.
+ */
+export function asDark(html: string): string {
+  const start = html.indexOf("@media (prefers-color-scheme:dark){");
+  if (start < 0) return html;
+  let depth = 0;
+  let i = html.indexOf("{", start);
+  const from = i + 1;
+  for (; i < html.length; i++) {
+    if (html[i] === "{") depth++;
+    else if (html[i] === "}" && --depth === 0) break;
+  }
+  const rules = html.slice(from, i);
+  return html.replace("</head>", `<style>:root{color-scheme:dark}${rules}</style></head>`);
+}
